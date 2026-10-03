@@ -1,0 +1,207 @@
+/*
+뉴모피즘 (neumorphism). 배경과 같은 색의 도형이 밝은 그림자와 어두운 그림자로 튀어나오거나 눌려 보인다.
+
+사용법
+    #include <std/widget/neumorphism>
+    slide {
+        background = hex(E0E5EC);
+        put neu_button { text = "시작"; x = 100px; y = 100px; width = 200px; height = 64px; }
+        put neu_card { title = "제목"; content = "내용"; x = 100px; y = 220px; width = 400px; height = 240px; state = pressed; }
+    }
+
+slide 배경을 color(기본 hex(E0E5EC))와 같게 두어야 효과가 보인다.
+color를 바꾸면 그림자 색(light, dark)과 눌린 모양의 그라데이션 색(shade, highlight)도 함께 맞춰야 한다.
+depth는 그림자가 떨어지는 거리이고, 흐림은 그 두 배다.
+*/
+#include <std/stddef>
+
+/* 튀어나온 모양과 눌린 모양 */
+enum neu_state { raised, pressed }
+
+style neu_title {
+    color = hex(3D4852);
+    font-size = 20pt;
+    font-weight = bold;
+}
+style neu_body {
+    color = hex(6B7280);
+    font-size = 14pt;
+}
+style neu_label {
+    color = hex(4A5568);
+    font-size = 16pt;
+    font-weight = bold;
+}
+
+/*
+모든 뉴모피즘 위젯의 바탕. radius는 모서리 반지름이다.
+튀어나온 모양은 같은 도형 두 개에 어두운 그림자(오른쪽 아래)와 밝은 그림자(왼쪽 위)를 하나씩 준다.
+눌린 모양은 PowerPoint이 안쪽 그림자를 도형 하나에 하나만 그려서, 어두운 안쪽 그림자에 그라데이션과 아래쪽 밝은 테두리를 더한다.
+*/
+template neu_surface {
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var int radius;
+    var text text = "";
+    var neu_state state = raised;
+    var int depth = 10px;
+    var color color = hex(E0E5EC);
+    var color light = rgba(255, 255, 255, 0.9);
+    var color dark = rgba(163, 177, 198, 0.6);
+    var color shade = hex(D1D9E6);
+    var color highlight = hex(F0F3F7);
+    if (state == raised) {
+        put shape {
+            kind = roundRect;
+            x = x; y = y; width = width; height = height; radius = radius;
+            fill = color;
+            line_color = rgba(0, 0, 0, 0);
+            shadow = dark; shadow_blur = depth * 2; shadow_distance = depth; shadow_angle = 45;
+        }
+        put shape {
+            kind = roundRect;
+            x = x; y = y; width = width; height = height; radius = radius;
+            fill = color;
+            line_color = rgba(0, 0, 0, 0);
+            shadow = light; shadow_blur = depth * 2; shadow_distance = depth; shadow_angle = 225;
+            text = neu_label text;
+        }
+    } else {
+        put shape {
+            kind = roundRect;
+            x = x; y = y; width = width; height = height; radius = radius;
+            fill = linear(45, shade, highlight);
+            line_color = rgba(0, 0, 0, 0);
+            inner_shadow = dark; inner_shadow_blur = depth * 1.6; inner_shadow_distance = depth * 0.8; inner_shadow_angle = 225;
+            shadow = light; shadow_blur = depth * 0.4; shadow_distance = depth * 0.2; shadow_angle = 45;
+            text = neu_label text;
+        }
+    }
+}
+
+template neu_rect {
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var neu_state state = raised;
+    var int depth = 10px;
+    var color color = hex(E0E5EC);
+    var color light = rgba(255, 255, 255, 0.9);
+    var color dark = rgba(163, 177, 198, 0.6);
+    var color shade = hex(D1D9E6);
+    var color highlight = hex(F0F3F7);
+    put neu_surface {
+        x = x; y = y; width = width; height = height; radius = 0px;
+        state = state; depth = depth; color = color; light = light; dark = dark; shade = shade; highlight = highlight;
+    }
+}
+
+template neu_round_rect {
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var int radius = 24px;
+    var neu_state state = raised;
+    var int depth = 10px;
+    var color color = hex(E0E5EC);
+    var color light = rgba(255, 255, 255, 0.9);
+    var color dark = rgba(163, 177, 198, 0.6);
+    var color shade = hex(D1D9E6);
+    var color highlight = hex(F0F3F7);
+    put neu_surface {
+        x = x; y = y; width = width; height = height; radius = radius;
+        state = state; depth = depth; color = color; light = light; dark = dark; shade = shade; highlight = highlight;
+    }
+}
+
+/* size는 지름 */
+template neu_circle {
+    var int x;
+    var int y;
+    var int size;
+    var neu_state state = raised;
+    var int depth = 10px;
+    var color color = hex(E0E5EC);
+    var color light = rgba(255, 255, 255, 0.9);
+    var color dark = rgba(163, 177, 198, 0.6);
+    var color shade = hex(D1D9E6);
+    var color highlight = hex(F0F3F7);
+    put neu_surface {
+        x = x; y = y; width = size; height = size; radius = size;
+        state = state; depth = depth; color = color; light = light; dark = dark; shade = shade; highlight = highlight;
+    }
+}
+
+/* 짧은 변의 양 끝이 반원인 알약 모양 */
+template neu_pill {
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var neu_state state = raised;
+    var int depth = 10px;
+    var color color = hex(E0E5EC);
+    var color light = rgba(255, 255, 255, 0.9);
+    var color dark = rgba(163, 177, 198, 0.6);
+    var color shade = hex(D1D9E6);
+    var color highlight = hex(F0F3F7);
+    put neu_surface {
+        x = x; y = y; width = width; height = height; radius = width + height;
+        state = state; depth = depth; color = color; light = light; dark = dark; shade = shade; highlight = highlight;
+    }
+}
+
+template neu_button {
+    var text text;
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var int radius = 16px;
+    var neu_state state = raised;
+    var int depth = 8px;
+    var color color = hex(E0E5EC);
+    var color light = rgba(255, 255, 255, 0.9);
+    var color dark = rgba(163, 177, 198, 0.6);
+    var color shade = hex(D1D9E6);
+    var color highlight = hex(F0F3F7);
+    put neu_surface {
+        x = x; y = y; width = width; height = height; radius = radius; text = text;
+        state = state; depth = depth; color = color; light = light; dark = dark; shade = shade; highlight = highlight;
+    }
+}
+
+/* 위쪽에 제목, 그 아래에 내용이 들어가는 카드. 안쪽 여백은 24px */
+template neu_card {
+    var text title;
+    var text content = "";
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var int radius = 24px;
+    var neu_state state = raised;
+    var int depth = 12px;
+    var color color = hex(E0E5EC);
+    var color light = rgba(255, 255, 255, 0.9);
+    var color dark = rgba(163, 177, 198, 0.6);
+    var color shade = hex(D1D9E6);
+    var color highlight = hex(F0F3F7);
+    put neu_surface {
+        x = x; y = y; width = width; height = height; radius = radius;
+        state = state; depth = depth; color = color; light = light; dark = dark; shade = shade; highlight = highlight;
+    }
+    put text_box {
+        text = neu_title title;
+        x = x + 24px; y = y + 20px; width = width - 48px; height = 40px;
+        anchor = middle;
+    }
+    put text_box {
+        text = neu_body content;
+        x = x + 24px; y = y + 64px; width = width - 48px; height = height - 84px;
+    }
+}

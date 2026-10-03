@@ -1,0 +1,31 @@
+[package]
+name = "templide-editor"
+version = "1.0.0"
+edition = "2021"
+license = "MIT"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-dialog = "2"
+serde_json = "1"
+base64 = "0.22"
+portable-pty = "0.9.0"
+tiny_http = "0.12.0"
+notify = "8.2.0"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
+
+# 개발용 빠른 빌드 (npm run build:fast). LTO를 끄고 여러 코어로 증분 컴파일한다
+[profile.fast]
+inherits = "release"
+lto = false
+codegen-units = 256
+incremental = true

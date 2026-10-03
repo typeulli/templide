@@ -1,0 +1,192 @@
+
+color yellow rgb(255, 255, 0);
+
+style bold {
+    font-weight = bold;
+}
+style reset {
+    font-weight = normal;
+    color = hex(000);
+}
+
+style brgap(int gap) {
+    line-height = gap;
+}
+
+/* 상자 안에서 글자를 세로로 놓는 위치 */
+enum text_anchor { top, middle, bottom }
+
+object text_box {
+    var text text;
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var text_anchor anchor = top;
+}
+
+/* stretch는 상자에 맞게 늘리고, cover는 비율을 지키며 상자를 채우고 넘치는 쪽을 자르고, contain은 비율을 지키며 상자 안에 다 보이게 한다 */
+enum image_fit { stretch, cover, contain }
+
+/* crop_*은 그림에서 잘라 낼 부분으로 %는 그림 크기에 대한 비율이다. kind로 그림을 도형 모양으로 자른다 */
+object image {
+    var string path;
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var image_fit fit = stretch;
+    var float crop_left = 0%;
+    var float crop_top = 0%;
+    var float crop_right = 0%;
+    var float crop_bottom = 0%;
+    var shape_kind kind = rect;
+}
+
+/* PowerPoint의 도형 종류 (preset geometry) */
+enum shape_kind {
+    accentBorderCallout1, accentBorderCallout2, accentBorderCallout3, accentCallout1, accentCallout2,
+    accentCallout3, actionButtonBackPrevious, actionButtonBeginning, actionButtonBlank, actionButtonDocument,
+    actionButtonEnd, actionButtonForwardNext, actionButtonHelp, actionButtonHome, actionButtonInformation,
+    actionButtonMovie, actionButtonReturn, actionButtonSound, arc, bentArrow, bentConnector2, bentConnector3,
+    bentConnector4, bentConnector5, bentUpArrow, bevel, blockArc, borderCallout1, borderCallout2,
+    borderCallout3, bracePair, bracketPair, callout1, callout2, callout3, can, chartPlus, chartStar, chartX,
+    chevron, chord, circularArrow, cloud, cloudCallout, corner, cornerTabs, cube, curvedConnector2,
+    curvedConnector3, curvedConnector4, curvedConnector5, curvedDownArrow, curvedLeftArrow, curvedRightArrow,
+    curvedUpArrow, decagon, diagStripe, diamond, dodecagon, donut, doubleWave, downArrow, downArrowCallout,
+    ellipse, ellipseRibbon, ellipseRibbon2, flowChartAlternateProcess, flowChartCollate, flowChartConnector,
+    flowChartDecision, flowChartDelay, flowChartDisplay, flowChartDocument, flowChartExtract,
+    flowChartInputOutput, flowChartInternalStorage, flowChartMagneticDisk, flowChartMagneticDrum,
+    flowChartMagneticTape, flowChartManualInput, flowChartManualOperation, flowChartMerge,
+    flowChartMultidocument, flowChartOfflineStorage, flowChartOffpageConnector, flowChartOnlineStorage,
+    flowChartOr, flowChartPredefinedProcess, flowChartPreparation, flowChartProcess, flowChartPunchedCard,
+    flowChartPunchedTape, flowChartSort, flowChartSummingJunction, flowChartTerminator, foldedCorner, frame,
+    funnel, gear6, gear9, halfFrame, heart, heptagon, hexagon, homePlate, horizontalScroll, irregularSeal1,
+    irregularSeal2, leftArrow, leftArrowCallout, leftBrace, leftBracket, leftCircularArrow, leftRightArrow,
+    leftRightArrowCallout, leftRightCircularArrow, leftRightRibbon, leftRightUpArrow, leftUpArrow,
+    lightningBolt, line, lineInv, mathDivide, mathEqual, mathMinus, mathMultiply, mathNotEqual, mathPlus,
+    moon, nonIsoscelesTrapezoid, noSmoking, notchedRightArrow, octagon, parallelogram, pentagon, pie,
+    pieWedge, plaque, plaqueTabs, plus, quadArrow, quadArrowCallout, rect, ribbon, ribbon2, rightArrow,
+    rightArrowCallout, rightBrace, rightBracket, round1Rect, round2DiagRect, round2SameRect, roundRect,
+    rtTriangle, smileyFace, snip1Rect, snip2DiagRect, snip2SameRect, snipRoundRect, squareTabs, star10,
+    star12, star16, star24, star32, star4, star5, star6, star7, star8, straightConnector1, stripedRightArrow,
+    sun, swooshArrow, teardrop, trapezoid, triangle, upArrow, upArrowCallout, upDownArrow, upDownArrowCallout,
+    uturnArrow, verticalScroll, wave, wedgeEllipseCallout, wedgeRectCallout, wedgeRoundRectCallout
+}
+
+object shape {
+    var shape_kind kind;
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var text text = "";
+    var text_anchor anchor = middle;
+}
+
+/*
+slide(없으면 layout)의 배경에서 자기 자리를 잘라 blur만큼 흐리게 한 조각. 모양은 shape처럼 kind로 정한다.
+그 위에 반투명한 shape를 겹치면 뒤가 흐리게 비치는 유리가 된다. 흐려지는 것은 배경뿐이고 다른 도형은 흐려지지 않는다.
+fill은 쓸 수 없다
+*/
+object backdrop {
+    var shape_kind kind;
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var int blur;
+}
+
+/* 선 끝 모양. 선 종류는 모든 개체의 line_dash 속성이다 */
+enum line_arrow { none, triangle, stealth, diamond, oval, arrow }
+
+/* 두 점 (x1, y1), (x2, y2)을 잇는 선 */
+object line {
+    var int x1;
+    var int y1;
+    var int x2;
+    var int y2;
+    var line_arrow start_arrow = none;
+    var line_arrow end_arrow = none;
+}
+
+/* 연결선 모양과 붙는 쪽. auto면 두 개체가 놓인 방향을 보고 마주 보는 쪽을 고른다 */
+enum connector_kind { straight, elbow, curved }
+enum connector_side { auto, top, right, bottom, left }
+
+/* put ... as로 이름을 붙인 두 개체를 잇는 선. PowerPoint에서 개체를 옮기면 선이 따라간다 */
+object connector {
+    var ref from;
+    var ref to;
+    var connector_kind kind = straight;
+    var connector_side from_side = auto;
+    var connector_side to_side = auto;
+    var line_arrow start_arrow = none;
+    var line_arrow end_arrow = none;
+}
+
+/* SVG path 문법(M, L, H, V, C, S, Q, T, A, Z)으로 그리는 도형. 좌표는 (x, y)에서 잰 px이고 크기는 path에서 정해진다 */
+object freeform {
+    var int x;
+    var int y;
+    var string path;
+}
+
+/*
+layout의 개체 틀(제목, 부제목, 본문). slide는 title, subtitle, body 속성으로 내용만 채운다.
+text는 비어 있을 때 보이는 안내 글이고, 그 첫 글자의 모양이 slide 글자의 기본 모양이 된다
+*/
+object placeholder {
+    var placeholder_role role;
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var text text = "";
+    var text_anchor anchor = top;
+}
+
+/* 비디오와 오디오가 재생을 시작하는 때. click_sequence는 애니메이션 순서에 들어가 그 차례의 클릭에, auto는 앞 애니메이션이 끝나면 저절로,
+   when_clicked는 그 개체를 눌렀을 때 재생한다 */
+enum media_start { click_sequence, auto, when_clicked }
+
+/* 비디오(mp4, webm). poster는 재생하기 전에 보이는 그림이고, 없으면 회색 판에 재생 단추를 그린다.
+   trim_*은 앞뒤에서 잘라 낼 길이, fade_*는 소리가 커지고 작아지는 길이다 */
+object video {
+    var string path;
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var string poster = "";
+    var media_start start = click_sequence;
+    var bool fullscreen = false;
+    var bool loop = false;
+    var bool rewind = false;
+    var bool hide_when_stopped = false;
+    var float volume = 100%;
+    var float trim_start = 0s;
+    var float trim_end = 0s;
+    var float fade_in = 0s;
+    var float fade_out = 0s;
+}
+
+/* 오디오(mp3, wav, m4a). 슬라이드에는 스피커 아이콘으로 보인다. across_slides면 다음 슬라이드로 넘어가도 계속 재생한다 */
+object audio {
+    var string path;
+    var int x;
+    var int y;
+    var int width = 48;
+    var int height = 48;
+    var media_start start = click_sequence;
+    var bool across_slides = false;
+    var bool loop = false;
+    var bool rewind = false;
+    var bool hide_icon = false;
+    var float volume = 100%;
+    var float trim_start = 0s;
+    var float trim_end = 0s;
+    var float fade_in = 0s;
+    var float fade_out = 0s;
+}

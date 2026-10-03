@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="panel" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0" stop-color="#7d9cf2"/>
+      <stop offset="1" stop-color="#5b7cf0"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- back blue panel -->
+  <path d="M700,300 L832,273 Q857,268 857,296 L857,712 Q857,786 790,779 L430,735 L744,700 L700,300 Z" fill="url(#panel)"/>
+ 
+  <!-- dark offset of the card -->
+  <path d="M272,330 L740,232 Q762,227 762,250 L764,680 Q764,698 744,700 L272,742 Q250,744 250,722 L250,355 Q250,335 272,330 Z" fill="#151b2c"/>
+ 
+  <!-- white card -->
+  <path d="M250,320 L718,222 Q740,217 740,240 L742,670 Q742,688 722,690 L250,732 Q228,734 228,712 L228,345 Q228,325 250,320 Z" fill="#ffffff"/>
+ 
+  <!-- <T>, centered on the card and skewed with it -->
+  <g transform="matrix(1,-0.17,0,1,0,153)">
+    <path d="M372,323 L292,420 L372,517" fill="none" stroke="#151b2c" stroke-width="46"/>
+    <path d="M598,323 L678,420 L598,517" fill="none" stroke="#151b2c" stroke-width="46"/>
+    <path d="M400,315 L570,315 L570,361 L512,361 L512,525 L458,525 L458,361 L400,361 Z" fill="#151b2c"/>
+  </g>
+</svg>
+ 

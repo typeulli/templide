@@ -1,0 +1,160 @@
+/*
+클레이모피즘 (claymorphism). 파스텔 색의 점토를 부풀린 것처럼 둥글고 폭신해 보인다.
+
+사용법
+    #include <std/widget/claymorphism>
+    slide {
+        background = hex(F3F0FF);
+        put clay_card { title = "제목"; content = "내용"; x = 100px; y = 100px; width = 400px; height = 240px; }
+        put clay_button { text = "시작"; x = 100px; y = 380px; width = 200px; height = 64px; color = hex(FDA4AF); highlight = hex(FFE4E6); }
+    }
+
+왼쪽 위의 highlight에서 오른쪽 아래의 color로 바뀌는 채우기에, 오른쪽 아래 안쪽 그림자(inner)와 바깥 그림자(shade)를 더한다.
+color를 바꾸면 highlight, inner, shade도 같은 색 계열로 맞추는 것이 좋다.
+*/
+#include <std/stddef>
+
+style clay_title {
+    color = hex(312E81);
+    font-size = 20pt;
+    font-weight = bold;
+}
+style clay_body {
+    color = hex(4338CA);
+    font-size = 14pt;
+}
+style clay_label {
+    color = hex(312E81);
+    font-size = 16pt;
+    font-weight = bold;
+}
+
+/* 모든 클레이모피즘 위젯의 바탕. radius는 모서리 반지름이다 */
+template clay_surface {
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var int radius;
+    var text text = "";
+    var color color = hex(A5B4FC);
+    var color highlight = hex(E0E7FF);
+    var color inner = rgba(79, 70, 229, 0.35);
+    var color shade = rgba(79, 70, 229, 0.3);
+    put shape {
+        kind = roundRect;
+        x = x; y = y; width = width; height = height; radius = radius;
+        fill = linear(45, highlight, color);
+        line_color = rgba(0, 0, 0, 0);
+        inner_shadow = inner; inner_shadow_blur = 20px; inner_shadow_distance = 8px; inner_shadow_angle = 45;
+        shadow = shade; shadow_blur = 40px; shadow_distance = 20px; shadow_angle = 45;
+        text = clay_label text;
+    }
+}
+
+template clay_rect {
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var color color = hex(A5B4FC);
+    var color highlight = hex(E0E7FF);
+    var color inner = rgba(79, 70, 229, 0.35);
+    var color shade = rgba(79, 70, 229, 0.3);
+    put clay_surface {
+        x = x; y = y; width = width; height = height; radius = 0px;
+        color = color; highlight = highlight; inner = inner; shade = shade;
+    }
+}
+
+template clay_round_rect {
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var int radius = 32px;
+    var color color = hex(A5B4FC);
+    var color highlight = hex(E0E7FF);
+    var color inner = rgba(79, 70, 229, 0.35);
+    var color shade = rgba(79, 70, 229, 0.3);
+    put clay_surface {
+        x = x; y = y; width = width; height = height; radius = radius;
+        color = color; highlight = highlight; inner = inner; shade = shade;
+    }
+}
+
+/* size는 지름 */
+template clay_circle {
+    var int x;
+    var int y;
+    var int size;
+    var color color = hex(A5B4FC);
+    var color highlight = hex(E0E7FF);
+    var color inner = rgba(79, 70, 229, 0.35);
+    var color shade = rgba(79, 70, 229, 0.3);
+    put clay_surface {
+        x = x; y = y; width = size; height = size; radius = size;
+        color = color; highlight = highlight; inner = inner; shade = shade;
+    }
+}
+
+/* 짧은 변의 양 끝이 반원인 알약 모양 */
+template clay_pill {
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var color color = hex(A5B4FC);
+    var color highlight = hex(E0E7FF);
+    var color inner = rgba(79, 70, 229, 0.35);
+    var color shade = rgba(79, 70, 229, 0.3);
+    put clay_surface {
+        x = x; y = y; width = width; height = height; radius = width + height;
+        color = color; highlight = highlight; inner = inner; shade = shade;
+    }
+}
+
+template clay_button {
+    var text text;
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var int radius = 24px;
+    var color color = hex(A5B4FC);
+    var color highlight = hex(E0E7FF);
+    var color inner = rgba(79, 70, 229, 0.35);
+    var color shade = rgba(79, 70, 229, 0.3);
+    put clay_surface {
+        x = x; y = y; width = width; height = height; radius = radius; text = text;
+        color = color; highlight = highlight; inner = inner; shade = shade;
+    }
+}
+
+/* 위쪽에 제목, 그 아래에 내용이 들어가는 카드. 안쪽 여백은 28px */
+template clay_card {
+    var text title;
+    var text content = "";
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var int radius = 32px;
+    var color color = hex(A5B4FC);
+    var color highlight = hex(E0E7FF);
+    var color inner = rgba(79, 70, 229, 0.35);
+    var color shade = rgba(79, 70, 229, 0.3);
+    put clay_surface {
+        x = x; y = y; width = width; height = height; radius = radius;
+        color = color; highlight = highlight; inner = inner; shade = shade;
+    }
+    put text_box {
+        text = clay_title title;
+        x = x + 28px; y = y + 24px; width = width - 56px; height = 40px;
+        anchor = middle;
+    }
+    put text_box {
+        text = clay_body content;
+        x = x + 28px; y = y + 68px; width = width - 56px; height = height - 92px;
+    }
+}

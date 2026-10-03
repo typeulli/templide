@@ -1,0 +1,293 @@
+/*
+libs/std/widget의 디자인 스타일을 한 장씩 보여 주는 발표 자료.
+글래스모피즘 페이지는 styles_bg.png를 배경으로 쓴다
+*/
+#include <std/widget/flat>
+#include <std/widget/material>
+#include <std/widget/skeuomorphism>
+#include <std/widget/neumorphism>
+#include <std/widget/glassmorphism>
+#include <std/widget/claymorphism>
+#include <std/widget/neobrutalism>
+
+style page_title(color ink) {
+    color = ink;
+    font-size = 32pt;
+    font-weight = bold;
+}
+style page_subtitle(color ink) {
+    color = ink;
+    font-size = 16pt;
+}
+style code {
+    font-family = "Consolas";
+}
+style feature {
+    font-size = 16pt;
+    line-height = 1.4;
+}
+style stat {
+    font-size = 40pt;
+    font-weight = bold;
+}
+style stat_unit {
+    font-size = 16pt;
+    font-weight = normal;
+}
+style cover_list {
+    color = hex(FFF);
+    font-size = 18pt;
+    line-height = 1.2;
+}
+
+/* 페이지 위쪽의 제목과 한 줄 설명 */
+template page_header {
+    var text title;
+    var text subtitle;
+    var color ink;
+    put text_box {
+        text = page_title(ink) title;
+        x = 60px; y = 36px; width = 1100px; height = 56px;
+        anchor = middle;
+    }
+    put text_box {
+        text = page_subtitle(ink) subtitle;
+        x = 60px; y = 94px; width = 1100px; height = 36px;
+        anchor = middle;
+    }
+}
+
+/* ---- 표지 */
+
+slide {
+    background = image("styles_bg.png");
+    put glass_round_rect { x = 240px; y = 120px; width = 800px; height = 480px; radius = 32px; blur = 24px; }
+    put text_box {
+        text = page_title(hex(FFF)) "templide 위젯 스타일";
+        x = 300px; y = 160px; width = 680px; height = 60px;
+        anchor = middle;
+    }
+    put text_box {
+        text = page_subtitle(rgba(255, 255, 255, 0.85)) "#include <std/widget/...>로 불러 쓰는 디자인 스타일 7가지";
+        x = 300px; y = 222px; width = 680px; height = 36px;
+        anchor = middle;
+    }
+    put text_box {
+        text = cover_list numbers [
+            "Flat 플랫 디자인",
+            "Material 머티리얼 디자인",
+            "Skeuomorphism 스큐어모피즘",
+            "Neumorphism 뉴모피즘",
+            "Glassmorphism 글래스모피즘",
+            "Claymorphism 클레이모피즘",
+            "Neo-brutalism 네오 브루탈리즘"
+        ];
+        x = 300px; y = 280px; width = 680px; height = 290px;
+    }
+    transition fade 0.5s;
+}
+
+/* ---- 플랫 */
+
+slide {
+    background = hex(FFF);
+    put page_header { title = "Flat 플랫 디자인"; subtitle = "그림자와 테두리 없이 선명한 단색 면만 쓰는 디자인"; ink = hex(2C3E50); }
+    put flat_card {
+        title = "특징";
+        content = feature bullets ["그림자, 그라데이션, 테두리가 없다", "채도가 높은 단색과 단순한 도형", "글자와 아이콘이 또렷하게 읽힌다"];
+        x = 60px; y = 160px; width = 520px; height = 240px;
+    }
+    put flat_card {
+        title = "이번 달 방문자";
+        content = stat "12,480" stat_unit " 명";
+        x = 60px; y = 430px; width = 520px; height = 230px;
+    }
+    put flat_rect { x = 660px; y = 180px; width = 120px; height = 90px; }
+    put flat_round_rect { x = 805px; y = 180px; width = 120px; height = 90px; color = hex(E74C3C); }
+    put flat_circle { x = 950px; y = 180px; size = 90px; color = hex(F1C40F); }
+    put flat_pill { x = 1070px; y = 197px; width = 170px; height = 56px; color = hex(2ECC71); }
+    put flat_button { text = "Primary"; x = 660px; y = 320px; width = 250px; height = 64px; }
+    put flat_button { text = "Secondary"; x = 950px; y = 320px; width = 250px; height = 64px; color = hex(2ECC71); }
+    put flat_card {
+        title = "사용법";
+        content = bullets [code "#include <std/widget/flat>", code "flat_rect, flat_round_rect, flat_circle", code "flat_pill, flat_button, flat_card"];
+        x = 660px; y = 430px; width = 560px; height = 230px;
+    }
+    transition fade 0.5s;
+}
+
+/* ---- 머티리얼 */
+
+slide {
+    background = hex(FEF7FF);
+    put page_header { title = "Material 머티리얼 디자인"; subtitle = "면이 높이(elevation)만큼 떠서 그림자를 드리우는 구글의 디자인 체계"; ink = hex(1D1B20); }
+    put material_card {
+        title = "특징";
+        content = feature bullets ["면은 종이처럼 높이를 가진다", "높을수록 그림자가 멀고 넓게 퍼진다", "알약 모양 버튼과 12px 둥근 카드"];
+        x = 60px; y = 160px; width = 520px; height = 240px;
+    }
+    put material_card {
+        title = "이번 달 방문자";
+        content = stat "12,480" stat_unit " 명";
+        x = 60px; y = 430px; width = 520px; height = 230px; elevation = 3;
+    }
+    put material_rect { x = 660px; y = 180px; width = 120px; height = 90px; elevation = 1; }
+    put material_round_rect { x = 805px; y = 180px; width = 120px; height = 90px; elevation = 2; }
+    put material_circle { x = 950px; y = 180px; size = 90px; elevation = 3; color = hex(FFD8E4); }
+    put material_pill { x = 1070px; y = 197px; width = 170px; height = 56px; elevation = 4; }
+    put material_button { text = "Elevation 1"; x = 660px; y = 320px; width = 250px; height = 60px; }
+    put material_button { text = "Elevation 3"; x = 950px; y = 320px; width = 250px; height = 60px; elevation = 3; color = hex(7D5260); }
+    put material_card {
+        title = "사용법";
+        content = bullets [code "#include <std/widget/material>", code "material_rect, material_round_rect", code "material_circle, material_pill, ..."];
+        x = 660px; y = 430px; width = 560px; height = 230px; elevation = 2;
+    }
+    transition fade 0.5s;
+}
+
+/* ---- 스큐어모피즘 */
+
+slide {
+    background = linear(90, hex(E6E6E6), hex(C8C8C8));
+    put page_header { title = "Skeuomorphism 스큐어모피즘"; subtitle = "위에서 빛을 받는 실제 물체를 흉내 내는 디자인"; ink = hex(333); }
+    put skeuo_card {
+        title = "특징";
+        content = feature bullets ["위는 밝고 아래는 어두운 그라데이션", "윗면 안쪽의 반사광과 얇은 테두리", "아래로 떨어지는 그림자"];
+        x = 60px; y = 160px; width = 520px; height = 240px;
+    }
+    put skeuo_card {
+        title = "이번 달 방문자";
+        content = stat "12,480" stat_unit " 명";
+        x = 60px; y = 430px; width = 520px; height = 230px;
+    }
+    put skeuo_rect { x = 660px; y = 180px; width = 120px; height = 90px; }
+    put skeuo_round_rect { x = 805px; y = 180px; width = 120px; height = 90px; }
+    put skeuo_circle { x = 950px; y = 180px; size = 90px; top = hex(FFE08A); bottom = hex(E0A800); border = hex(9A7400); }
+    put skeuo_pill { x = 1070px; y = 197px; width = 170px; height = 56px; }
+    put skeuo_button { text = "Blue"; x = 660px; y = 320px; width = 250px; height = 64px; }
+    put skeuo_button { text = "Green"; x = 950px; y = 320px; width = 250px; height = 64px; top = hex(7FD17F); bottom = hex(2E8B2E); border = hex(1B5E20); }
+    put skeuo_card {
+        title = "사용법";
+        content = bullets [code "#include <std/widget/skeuomorphism>", code "skeuo_rect, skeuo_round_rect, skeuo_circle", code "skeuo_pill, skeuo_button, skeuo_card"];
+        x = 660px; y = 430px; width = 560px; height = 230px;
+    }
+    transition fade 0.5s;
+}
+
+/* ---- 뉴모피즘 */
+
+slide {
+    background = hex(E0E5EC);
+    put page_header { title = "Neumorphism 뉴모피즘"; subtitle = "배경과 같은 색의 면이 빛과 그림자로 튀어나오거나 눌려 보이는 디자인"; ink = hex(3D4852); }
+    put neu_card {
+        title = "특징";
+        content = feature bullets ["배경과 위젯의 색이 같다", "밝은 그림자와 어두운 그림자로 입체감", "pressed는 안쪽 그림자로 눌린 모양"];
+        x = 60px; y = 160px; width = 520px; height = 240px;
+    }
+    put neu_card {
+        title = "이번 달 방문자";
+        content = stat "12,480" stat_unit " 명";
+        x = 60px; y = 430px; width = 520px; height = 230px; state = pressed;
+    }
+    put neu_rect { x = 660px; y = 180px; width = 120px; height = 90px; }
+    put neu_round_rect { x = 805px; y = 180px; width = 120px; height = 90px; }
+    put neu_circle { x = 950px; y = 180px; size = 90px; state = pressed; }
+    put neu_pill { x = 1070px; y = 197px; width = 170px; height = 56px; }
+    put neu_button { text = "Raised"; x = 660px; y = 320px; width = 250px; height = 64px; }
+    put neu_button { text = "Pressed"; x = 950px; y = 320px; width = 250px; height = 64px; state = pressed; }
+    put neu_card {
+        title = "사용법";
+        content = bullets [code "#include <std/widget/neumorphism>", code "background = hex(E0E5EC);", code "state = raised 또는 pressed"];
+        x = 660px; y = 430px; width = 560px; height = 230px;
+    }
+    transition fade 0.5s;
+}
+
+/* ---- 글래스모피즘 */
+
+slide {
+    background = image("styles_bg.png");
+    put page_header { title = "Glassmorphism 글래스모피즘"; subtitle = "뒤 배경이 흐리게 비치는 반투명한 유리판"; ink = hex(FFF); }
+    put glass_card {
+        title = "특징";
+        content = feature bullets ["backdrop으로 흐린 배경을 밑에 깐다", "반투명한 흰 막과 얇은 흰 테두리", "색이 많은 배경 위에서 돋보인다"];
+        x = 60px; y = 160px; width = 520px; height = 240px;
+    }
+    put glass_card {
+        title = "이번 달 방문자";
+        content = stat "12,480" stat_unit " 명";
+        x = 60px; y = 430px; width = 520px; height = 230px;
+    }
+    put glass_rect { x = 660px; y = 180px; width = 120px; height = 90px; }
+    put glass_round_rect { x = 805px; y = 180px; width = 120px; height = 90px; }
+    put glass_circle { x = 950px; y = 180px; size = 90px; }
+    put glass_pill { x = 1070px; y = 197px; width = 170px; height = 56px; }
+    put glass_button { text = "Blur 16px"; x = 660px; y = 320px; width = 250px; height = 64px; }
+    put glass_button { text = "Blur 40px"; x = 950px; y = 320px; width = 250px; height = 64px; blur = 40px; }
+    put glass_card {
+        title = "사용법";
+        content = bullets [code "#include <std/widget/glassmorphism>", code "background = image(...);", code "glass_card { blur = 16px; ... }"];
+        x = 660px; y = 430px; width = 560px; height = 230px;
+    }
+    transition fade 0.5s;
+}
+
+/* ---- 클레이모피즘 */
+
+slide {
+    background = hex(F3F0FF);
+    put page_header { title = "Claymorphism 클레이모피즘"; subtitle = "파스텔 색 점토를 부풀린 것처럼 둥글고 폭신한 디자인"; ink = hex(312E81); }
+    put clay_card {
+        title = "특징";
+        content = feature bullets ["크게 둥근 모서리와 파스텔 색", "오른쪽 아래 안쪽 그림자로 볼륨을 준다", "넓게 퍼진 색 있는 그림자"];
+        x = 60px; y = 160px; width = 520px; height = 240px;
+    }
+    put clay_card {
+        title = "이번 달 방문자";
+        content = stat "12,480" stat_unit " 명";
+        x = 60px; y = 430px; width = 520px; height = 230px; color = hex(FDA4AF); highlight = hex(FFE4E6); inner = rgba(225, 29, 72, 0.3); shade = rgba(225, 29, 72, 0.25);
+    }
+    put clay_rect { x = 660px; y = 180px; width = 120px; height = 90px; }
+    put clay_round_rect { x = 805px; y = 180px; width = 120px; height = 90px; }
+    put clay_circle { x = 950px; y = 180px; size = 90px; color = hex(FDA4AF); highlight = hex(FFE4E6); inner = rgba(225, 29, 72, 0.3); shade = rgba(225, 29, 72, 0.25); }
+    put clay_pill { x = 1070px; y = 197px; width = 170px; height = 56px; color = hex(86EFAC); highlight = hex(DCFCE7); inner = rgba(22, 163, 74, 0.3); shade = rgba(22, 163, 74, 0.25); }
+    put clay_button { text = "Indigo"; x = 660px; y = 320px; width = 250px; height = 64px; }
+    put clay_button { text = "Pink"; x = 950px; y = 320px; width = 250px; height = 64px; color = hex(FDA4AF); highlight = hex(FFE4E6); inner = rgba(225, 29, 72, 0.3); shade = rgba(225, 29, 72, 0.25); }
+    put clay_card {
+        title = "사용법";
+        content = bullets [code "#include <std/widget/claymorphism>", code "clay_rect, clay_round_rect, clay_circle", code "clay_pill, clay_button, clay_card"];
+        x = 660px; y = 430px; width = 560px; height = 230px;
+    }
+    transition fade 0.5s;
+}
+
+/* ---- 네오 브루탈리즘 */
+
+slide {
+    background = hex(FFF8E7);
+    put page_header { title = "Neo-brutalism 네오 브루탈리즘"; subtitle = "원색, 굵은 검은 테두리, 번지지 않는 그림자"; ink = hex(000); }
+    put brutal_card {
+        title = "특징";
+        content = feature bullets ["채도가 높은 원색 면", "굵은 검은 테두리", "흐림 없이 밀린 검은 그림자"];
+        x = 60px; y = 160px; width = 520px; height = 240px;
+    }
+    put brutal_card {
+        title = "이번 달 방문자";
+        content = stat "12,480" stat_unit " 명";
+        x = 60px; y = 430px; width = 520px; height = 230px; color = hex(A0E7E5);
+    }
+    put brutal_rect { x = 660px; y = 180px; width = 120px; height = 90px; }
+    put brutal_round_rect { x = 805px; y = 180px; width = 120px; height = 90px; color = hex(A0E7E5); }
+    put brutal_circle { x = 950px; y = 180px; size = 90px; color = hex(FF6B6B); }
+    put brutal_pill { x = 1070px; y = 197px; width = 170px; height = 56px; color = hex(B4F8C8); }
+    put brutal_button { text = "Primary"; x = 660px; y = 320px; width = 250px; height = 64px; }
+    put brutal_button { text = "Secondary"; x = 950px; y = 320px; width = 250px; height = 64px; color = hex(4ECDC4); }
+    put brutal_card {
+        title = "사용법";
+        content = bullets [code "#include <std/widget/neobrutalism>", code "brutal_rect, brutal_round_rect", code "brutal_circle, brutal_pill, ..."];
+        x = 660px; y = 430px; width = 560px; height = 230px; color = hex(FFDE59);
+    }
+    transition fade 0.5s;
+}
+
+target out { path = "styles.pptx"; type = pptx; }

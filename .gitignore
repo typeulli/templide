@@ -1,0 +1,11 @@
+.idea/
+.vscode/
+
+cmake-build-*/
+
+/installer/
+
+/editor/src/generated/
+
+__pycache__/
+*.py[cod]

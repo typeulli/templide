@@ -1,0 +1,153 @@
+/*
+머티리얼 디자인 (material design). 색이 칠해진 면이 높이(elevation)만큼 떠서 그림자를 드리운다.
+
+사용법
+    #include <std/widget/material>
+    slide {
+        background = hex(FEF7FF);
+        put material_card { title = "제목"; content = "내용"; x = 100px; y = 100px; width = 400px; height = 240px; }
+        put material_button { text = "시작"; x = 100px; y = 380px; width = 200px; height = 56px; }
+    }
+
+elevation은 0 ~ 5 정도의 높이이고, 높을수록 그림자가 멀리 떨어지고 넓게 퍼진다. 0이면 그림자가 없다.
+기본 색은 Material 3의 기본 보라색 계열이다.
+*/
+#include <std/stddef>
+
+style material_title {
+    color = hex(1D1B20);
+    font-size = 20pt;
+    font-weight = bold;
+}
+style material_body {
+    color = hex(49454F);
+    font-size = 14pt;
+}
+style material_label {
+    color = hex(FFF);
+    font-size = 14pt;
+    font-weight = bold;
+}
+
+/* 모든 머티리얼 위젯의 바탕. radius는 모서리 반지름이다 */
+template material_surface {
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var int radius;
+    var text text = "";
+    var color color = hex(EADDFF);
+    var int elevation = 1;
+    var color shade = rgba(0, 0, 0, 0.3);
+    put shape {
+        kind = roundRect;
+        x = x; y = y; width = width; height = height; radius = radius;
+        fill = color;
+        line_color = rgba(0, 0, 0, 0);
+        shadow = shade; shadow_blur = elevation * 4px; shadow_distance = elevation * 1.5px; shadow_angle = 90;
+        text = text;
+    }
+}
+
+template material_rect {
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var color color = hex(EADDFF);
+    var int elevation = 1;
+    var color shade = rgba(0, 0, 0, 0.3);
+    put material_surface {
+        x = x; y = y; width = width; height = height; radius = 0px;
+        color = color; elevation = elevation; shade = shade;
+    }
+}
+
+template material_round_rect {
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var int radius = 12px;
+    var color color = hex(EADDFF);
+    var int elevation = 1;
+    var color shade = rgba(0, 0, 0, 0.3);
+    put material_surface {
+        x = x; y = y; width = width; height = height; radius = radius;
+        color = color; elevation = elevation; shade = shade;
+    }
+}
+
+/* size는 지름 */
+template material_circle {
+    var int x;
+    var int y;
+    var int size;
+    var color color = hex(EADDFF);
+    var int elevation = 1;
+    var color shade = rgba(0, 0, 0, 0.3);
+    put material_surface {
+        x = x; y = y; width = size; height = size; radius = size;
+        color = color; elevation = elevation; shade = shade;
+    }
+}
+
+/* 짧은 변의 양 끝이 반원인 알약 모양 */
+template material_pill {
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var color color = hex(EADDFF);
+    var int elevation = 1;
+    var color shade = rgba(0, 0, 0, 0.3);
+    put material_surface {
+        x = x; y = y; width = width; height = height; radius = width + height;
+        color = color; elevation = elevation; shade = shade;
+    }
+}
+
+/* 채워진 버튼. 모서리는 기본으로 알약 모양이다 */
+template material_button {
+    var text text;
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var int radius = 999px;
+    var color color = hex(6750A4);
+    var int elevation = 1;
+    var color shade = rgba(0, 0, 0, 0.3);
+    put material_surface {
+        x = x; y = y; width = width; height = height; radius = radius; text = material_label text;
+        color = color; elevation = elevation; shade = shade;
+    }
+}
+
+/* 위쪽에 제목, 그 아래에 내용이 들어가는 카드. 안쪽 여백은 24px */
+template material_card {
+    var text title;
+    var text content = "";
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var int radius = 12px;
+    var color color = hex(F7F2FA);
+    var int elevation = 1;
+    var color shade = rgba(0, 0, 0, 0.3);
+    put material_surface {
+        x = x; y = y; width = width; height = height; radius = radius;
+        color = color; elevation = elevation; shade = shade;
+    }
+    put text_box {
+        text = material_title title;
+        x = x + 24px; y = y + 20px; width = width - 48px; height = 40px;
+        anchor = middle;
+    }
+    put text_box {
+        text = material_body content;
+        x = x + 24px; y = y + 64px; width = width - 48px; height = height - 84px;
+    }
+}

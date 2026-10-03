@@ -1,0 +1,159 @@
+/*
+네오 브루탈리즘 (neo-brutalism). 원색 채우기, 굵은 검은 테두리, 번지지 않는 검은 그림자.
+
+사용법
+    #include <std/widget/neobrutalism>
+    slide {
+        background = hex(FFF8E7);
+        put brutal_card { title = "제목"; content = "내용"; x = 100px; y = 100px; width = 400px; height = 240px; }
+        put brutal_button { text = "시작"; x = 100px; y = 380px; width = 200px; height = 64px; }
+    }
+
+offset은 그림자가 오른쪽과 아래로 각각 밀리는 거리다.
+*/
+#include <std/stddef>
+
+style brutal_title {
+    color = hex(000);
+    font-size = 20pt;
+    font-weight = bold;
+}
+style brutal_body {
+    color = hex(000);
+    font-size = 14pt;
+}
+style brutal_label {
+    color = hex(000);
+    font-size = 16pt;
+    font-weight = bold;
+}
+
+/* 모든 네오 브루탈리즘 위젯의 바탕. radius는 모서리 반지름이다 */
+template brutal_surface {
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var int radius;
+    var text text = "";
+    var color color = hex(FFDE59);
+    var color border = hex(000);
+    var int border_width = 3px;
+    var int offset = 6px;
+    put shape {
+        kind = roundRect;
+        x = x; y = y; width = width; height = height; radius = radius;
+        fill = color;
+        line_color = border; line_width = border_width;
+        /* 오른쪽 아래 45도로 offset * √2만큼 */
+        shadow = border; shadow_blur = 0px; shadow_distance = offset * 1.41421; shadow_angle = 45;
+        text = brutal_label text;
+    }
+}
+
+template brutal_rect {
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var color color = hex(FFDE59);
+    var color border = hex(000);
+    var int border_width = 3px;
+    var int offset = 6px;
+    put brutal_surface {
+        x = x; y = y; width = width; height = height; radius = 0px;
+        color = color; border = border; border_width = border_width; offset = offset;
+    }
+}
+
+template brutal_round_rect {
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var int radius = 12px;
+    var color color = hex(FFDE59);
+    var color border = hex(000);
+    var int border_width = 3px;
+    var int offset = 6px;
+    put brutal_surface {
+        x = x; y = y; width = width; height = height; radius = radius;
+        color = color; border = border; border_width = border_width; offset = offset;
+    }
+}
+
+/* size는 지름 */
+template brutal_circle {
+    var int x;
+    var int y;
+    var int size;
+    var color color = hex(FFDE59);
+    var color border = hex(000);
+    var int border_width = 3px;
+    var int offset = 6px;
+    put brutal_surface {
+        x = x; y = y; width = size; height = size; radius = size;
+        color = color; border = border; border_width = border_width; offset = offset;
+    }
+}
+
+/* 짧은 변의 양 끝이 반원인 알약 모양 */
+template brutal_pill {
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var color color = hex(FFDE59);
+    var color border = hex(000);
+    var int border_width = 3px;
+    var int offset = 6px;
+    put brutal_surface {
+        x = x; y = y; width = width; height = height; radius = width + height;
+        color = color; border = border; border_width = border_width; offset = offset;
+    }
+}
+
+template brutal_button {
+    var text text;
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var int radius = 8px;
+    var color color = hex(FF6B6B);
+    var color border = hex(000);
+    var int border_width = 3px;
+    var int offset = 5px;
+    put brutal_surface {
+        x = x; y = y; width = width; height = height; radius = radius; text = text;
+        color = color; border = border; border_width = border_width; offset = offset;
+    }
+}
+
+/* 위쪽에 제목, 그 아래에 내용이 들어가는 카드. 안쪽 여백은 24px */
+template brutal_card {
+    var text title;
+    var text content = "";
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var int radius = 12px;
+    var color color = hex(FFF);
+    var color border = hex(000);
+    var int border_width = 3px;
+    var int offset = 8px;
+    put brutal_surface {
+        x = x; y = y; width = width; height = height; radius = radius;
+        color = color; border = border; border_width = border_width; offset = offset;
+    }
+    put text_box {
+        text = brutal_title title;
+        x = x + 24px; y = y + 20px; width = width - 48px; height = 40px;
+        anchor = middle;
+    }
+    put text_box {
+        text = brutal_body content;
+        x = x + 24px; y = y + 64px; width = width - 48px; height = height - 84px;
+    }
+}

@@ -1,0 +1,167 @@
+/*
+스큐어모피즘 (skeuomorphism). 위에서 빛을 받는 실제 물체처럼 위가 밝고 아래가 어두우며, 윗면의 반사광과 그림자가 있다.
+
+사용법
+    #include <std/widget/skeuomorphism>
+    slide {
+        background = hex(D9D9D9);
+        put skeuo_card { title = "제목"; content = "내용"; x = 100px; y = 100px; width = 400px; height = 240px; }
+        put skeuo_button { text = "시작"; x = 100px; y = 380px; width = 200px; height = 56px; }
+    }
+
+top에서 bottom으로 위에서 아래로 바뀌는 채우기에, 위쪽 안쪽의 반사광(gloss), 테두리(border), 아래로 떨어지는 그림자(shade)를 더한다.
+*/
+#include <std/stddef>
+
+style skeuo_title {
+    color = hex(333);
+    font-size = 20pt;
+    font-weight = bold;
+}
+style skeuo_body {
+    color = hex(555);
+    font-size = 14pt;
+}
+style skeuo_label {
+    color = hex(FFF);
+    font-size = 16pt;
+    font-weight = bold;
+}
+
+/* 모든 스큐어모피즘 위젯의 바탕. radius는 모서리 반지름이다 */
+template skeuo_surface {
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var int radius;
+    var text text = "";
+    var color top = hex(FDFDFD);
+    var color bottom = hex(D4D4D4);
+    var color border = rgba(0, 0, 0, 0.35);
+    var color gloss = rgba(255, 255, 255, 0.9);
+    var color shade = rgba(0, 0, 0, 0.4);
+    put shape {
+        kind = roundRect;
+        x = x; y = y; width = width; height = height; radius = radius;
+        fill = linear(90, top, bottom);
+        line_color = border; line_width = 1px;
+        inner_shadow = gloss; inner_shadow_blur = 2px; inner_shadow_distance = 2px; inner_shadow_angle = 270;
+        shadow = shade; shadow_blur = 6px; shadow_distance = 3px; shadow_angle = 90;
+        text = skeuo_label text;
+    }
+}
+
+template skeuo_rect {
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var color top = hex(FDFDFD);
+    var color bottom = hex(D4D4D4);
+    var color border = rgba(0, 0, 0, 0.35);
+    var color gloss = rgba(255, 255, 255, 0.9);
+    var color shade = rgba(0, 0, 0, 0.4);
+    put skeuo_surface {
+        x = x; y = y; width = width; height = height; radius = 0px;
+        top = top; bottom = bottom; border = border; gloss = gloss; shade = shade;
+    }
+}
+
+template skeuo_round_rect {
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var int radius = 12px;
+    var color top = hex(FDFDFD);
+    var color bottom = hex(D4D4D4);
+    var color border = rgba(0, 0, 0, 0.35);
+    var color gloss = rgba(255, 255, 255, 0.9);
+    var color shade = rgba(0, 0, 0, 0.4);
+    put skeuo_surface {
+        x = x; y = y; width = width; height = height; radius = radius;
+        top = top; bottom = bottom; border = border; gloss = gloss; shade = shade;
+    }
+}
+
+/* size는 지름 */
+template skeuo_circle {
+    var int x;
+    var int y;
+    var int size;
+    var color top = hex(FDFDFD);
+    var color bottom = hex(D4D4D4);
+    var color border = rgba(0, 0, 0, 0.35);
+    var color gloss = rgba(255, 255, 255, 0.9);
+    var color shade = rgba(0, 0, 0, 0.4);
+    put skeuo_surface {
+        x = x; y = y; width = size; height = size; radius = size;
+        top = top; bottom = bottom; border = border; gloss = gloss; shade = shade;
+    }
+}
+
+/* 짧은 변의 양 끝이 반원인 알약 모양 */
+template skeuo_pill {
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var color top = hex(FDFDFD);
+    var color bottom = hex(D4D4D4);
+    var color border = rgba(0, 0, 0, 0.35);
+    var color gloss = rgba(255, 255, 255, 0.9);
+    var color shade = rgba(0, 0, 0, 0.4);
+    put skeuo_surface {
+        x = x; y = y; width = width; height = height; radius = width + height;
+        top = top; bottom = bottom; border = border; gloss = gloss; shade = shade;
+    }
+}
+
+/* 광택 있는 파란 버튼 */
+template skeuo_button {
+    var text text;
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var int radius = 8px;
+    var color top = hex(6CB4FF);
+    var color bottom = hex(1A62D6);
+    var color border = hex(0D47A1);
+    var color gloss = rgba(255, 255, 255, 0.7);
+    var color shade = rgba(0, 0, 0, 0.4);
+    put skeuo_surface {
+        x = x; y = y; width = width; height = height; radius = radius; text = text;
+        top = top; bottom = bottom; border = border; gloss = gloss; shade = shade;
+    }
+}
+
+/* 위쪽에 제목, 그 아래에 내용이 들어가는 카드. 안쪽 여백은 24px */
+template skeuo_card {
+    var text title;
+    var text content = "";
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var int radius = 12px;
+    var color top = hex(FFFFFF);
+    var color bottom = hex(E8E8E8);
+    var color border = rgba(0, 0, 0, 0.25);
+    var color gloss = rgba(255, 255, 255, 0.9);
+    var color shade = rgba(0, 0, 0, 0.35);
+    put skeuo_surface {
+        x = x; y = y; width = width; height = height; radius = radius;
+        top = top; bottom = bottom; border = border; gloss = gloss; shade = shade;
+    }
+    put text_box {
+        text = skeuo_title title;
+        x = x + 24px; y = y + 20px; width = width - 48px; height = 40px;
+        anchor = middle;
+    }
+    put text_box {
+        text = skeuo_body content;
+        x = x + 24px; y = y + 64px; width = width - 48px; height = height - 84px;
+    }
+}
