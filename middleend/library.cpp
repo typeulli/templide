@@ -11,6 +11,9 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
+#include <cstdint>
 #endif
 
 namespace templide::middleend {
@@ -28,6 +31,25 @@ namespace templide::middleend {
                     return buffer;
                 }
                 buffer.resize(buffer.size() * 2);
+            }
+#elif defined(__APPLE__)
+            std::uint32_t size = 0;
+            _NSGetExecutablePath(nullptr, &size);
+            std::string buffer(size, '\0');
+            if (_NSGetExecutablePath(buffer.data(), &size) == 0) {
+                std::error_code error;
+                const auto path = std::filesystem::weakly_canonical(buffer.c_str(), error);
+                if (!error) {
+                    return path;
+                }
+            }
+#elif defined(__linux__)
+            {
+                std::error_code error;
+                const auto path = std::filesystem::read_symlink("/proc/self/exe", error);
+                if (!error) {
+                    return path;
+                }
             }
 #endif
             std::error_code error;

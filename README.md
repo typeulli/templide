@@ -50,15 +50,24 @@ target web { path = "hello.html"; type = html; }
 
 ## 설치
 
-설치 파일 `templide_<버전>_x64-setup.exe`를 실행합니다. 직접 만들려면 아래 [소스에서 빌드](#소스에서-빌드)를 보세요.
+[Releases](https://github.com/typeulli/templide/releases)에서 운영체제에 맞는 파일을 받습니다. 직접 만들려면 아래 [소스에서 빌드](#소스에서-빌드)를 보세요.
 
-- Windows 10/11 (x64)에서 동작합니다. ARM PC에서는 x64 에뮬레이션으로 실행됩니다
-- 설치할 때 '나만' 또는 '모든 사용자'를 고를 수 있습니다. '모든 사용자'는 `C:\Program Files\templide`에 설치되며 관리자 권한이 필요합니다
+| 운영체제 | 파일 |
+|---|---|
+| Windows 10/11 (x64) | `templide_<버전>_x64-setup.exe` |
+| Windows 10/11 (32비트) | `templide_<버전>_x86-setup.exe` |
+| Windows 11 (ARM) | `templide_<버전>_arm64-setup.exe` |
+| Linux (Debian, Ubuntu 22.04 이상) | `templide_<버전>_amd64.deb` |
+| macOS (Apple Silicon, Intel) | `templide_<버전>_universal.dmg` |
+
+- Windows: 설치할 때 '나만' 또는 '모든 사용자'를 고를 수 있습니다. '모든 사용자'는 `C:\Program Files\templide`에 설치되며 관리자 권한이 필요합니다
+- Linux: `sudo apt install ./templide_<버전>_amd64.deb`로 설치합니다
+- macOS: 서명하지 않은 앱이라 처음 열 때 막힐 수 있습니다. 응용 프로그램 폴더로 옮긴 뒤 `xattr -dr com.apple.quarantine /Applications/templide.app`을 실행하거나, 시스템 설정 → 개인정보 보호 및 보안에서 '그래도 열기'를 누릅니다
 - 설치하면 `.tlide` 파일이 편집기와 연결됩니다
 
 ## 명령줄 컴파일러
 
-설치 폴더의 `templide.exe`로 편집기 없이 바로 내보낼 수 있습니다.
+설치된 컴파일러로 편집기 없이 바로 내보낼 수 있습니다. 위치는 Windows가 설치 폴더의 `templide.exe`, Linux가 `/usr/lib/templide/templide`, macOS가 `templide.app/Contents/Resources/templide`입니다.
 
 ```
 templide hello.tlide                 # 모든 target을 만든다
@@ -67,24 +76,35 @@ templide hello.tlide --ir            # 분석 결과(IR)를 출력한다
 templide hello.tlide --ast           # 구문 트리(AST)를 출력한다
 ```
 
-`#include <std/...>`는 `templide.exe` 옆의 `packages` 폴더에서, `#include "..."`는 그 `.tlide` 파일이 있는 폴더에서 찾습니다.
+`#include <std/...>`는 컴파일러 옆의 `packages` 폴더에서, `#include "..."`는 그 `.tlide` 파일이 있는 폴더에서 찾습니다.
 
 ## 소스에서 빌드
 
 ### 필요한 것
 
-- CMake 4.3 이상, Ninja, MinGW-w64 GCC (CLion에 들어 있는 것을 써도 됩니다)
+- CMake 4.3 이상, Ninja, C++20 컴파일러 (Windows는 MinGW-w64. CLion에 들어 있는 것을 써도 됩니다)
 - Node.js와 npm
-- Rust (stable, `x86_64-pc-windows-msvc`)와 Visual Studio C++ 빌드 도구
+- Rust (stable). Windows는 Visual Studio C++ 빌드 도구, Linux는 [Tauri가 요구하는 패키지](https://v2.tauri.app/start/prerequisites/)
 - Python 3
 
 ### 설치 파일 만들기
 
 ```
-python build.py
+python build.py                                   # 이 컴퓨터용
+python build.py --target i686-pc-windows-msvc     # 다른 타깃 (Rust 타깃 이름)
+python build.py --target universal-apple-darwin   # macOS Apple Silicon + Intel
 ```
 
-컴파일러(`cmake-build-release`), 오픈소스 라이선스 목록, 편집기를 차례로 빌드하고 NSIS 설치 파일을 `installer/`에 만듭니다.
+컴파일러(`cmake-build-release`), 오픈소스 라이선스 목록, 편집기를 차례로 빌드하고 설치 파일(Windows는 NSIS, Linux는 .deb, macOS는 .dmg)을 `installer/`에 만듭니다.
+
+### 릴리스
+
+`v1.2.0`처럼 `v`로 시작하는 태그를 올리면 GitHub Actions(`.github/workflows/release.yml`)가 다섯 가지 설치 파일을 빌드해 그 태그의 릴리스에 붙입니다. 릴리스 노트는 GitHub가 이전 태그 이후의 변경으로 만들고, 태그에 `-`가 있으면(`v1.2.0-beta.1`) 시험판으로 올립니다.
+
+```
+git tag v1.2.0
+git push origin v1.2.0
+```
 
 ### 개발
 
@@ -100,7 +120,7 @@ npm run build:fast       # 빠른 실행 파일 (target/fast)
 npm run build            # release 실행 파일
 ```
 
-개발 중의 편집기는 저장소의 `cmake-build-release/templide.exe`를 컴파일러로 씁니다. 다른 컴파일러를 쓰려면 `TEMPLIDE_EXE` 환경 변수에 경로를 넣습니다.
+개발 중의 편집기는 저장소의 `cmake-build-release/templide(.exe)`를 컴파일러로 씁니다. 다른 컴파일러를 쓰려면 `TEMPLIDE_EXE` 환경 변수에 경로를 넣습니다.
 
 ## 구조
 

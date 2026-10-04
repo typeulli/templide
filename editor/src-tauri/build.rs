@@ -10,7 +10,9 @@ fn copy_conpty() {
     }
     let arch = match std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() {
         Ok("x86_64") => "x64",
-        _ => return, // 다른 아키텍처는 아직 넣지 않았다. Windows의 ConPTY를 쓴다
+        Ok("x86") => "x86",
+        Ok("aarch64") => "arm64",
+        _ => return, // 다른 아키텍처는 Windows의 ConPTY를 쓴다
     };
     let source = std::path::Path::new("conpty").join(arch);
     println!("cargo:rerun-if-changed={}", source.display());

@@ -58,8 +58,13 @@ add_executable(templide main.cpp
 target_include_directories(templide PRIVATE ${stb_SOURCE_DIR} ${nlohmann_json_SOURCE_DIR})
 target_link_libraries(templide PRIVATE miniz)
 
+# MSYS2처럼 정적 라이브러리와 CRT가 맞는 MinGW에서는 winpthread까지 모두 exe에 넣는다 (CI)
+option(TEMPLIDE_STATIC "MinGW 런타임을 모두 정적으로 링크한다" OFF)
+
 # MinGW 런타임(libstdc++ 등)을 exe에 넣어 PATH에 있는 다른 버전의 DLL을 불러오지 않게 한다
-if (MINGW)
+if (MINGW AND TEMPLIDE_STATIC)
+    target_link_options(templide PRIVATE -static)
+elseif (MINGW)
     target_link_options(templide PRIVATE -static-libgcc -static-libstdc++)
     # CLion의 MinGW는 정적 winpthread가 ucrt용이라 msvcrt 프로그램에 넣을 수 없다.
     # 대신 같은 toolchain의 DLL을 exe 옆에 둔다. exe 폴더의 DLL이 PATH보다 먼저 쓰인다

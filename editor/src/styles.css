@@ -46,6 +46,7 @@ body.resizing-row, body.resizing-row * { cursor: row-resize !important; user-sel
 /* ---- 툴바 */
 
 .toolbar { grid-area: toolbar; display: flex; align-items: center; gap: 6px; padding: 0 0 0 10px; background: var(--panel); border-bottom: 1px solid var(--border); user-select: none; }
+.app.mac .toolbar { padding: 0 10px 0 84px; } /* 왼쪽은 신호등 버튼 자리 */
 .window-controls { display: flex; align-self: stretch; margin-left: 6px; }
 .window-controls button { display: grid; place-items: center; width: 46px; border: none; background: transparent; color: var(--text); cursor: default; }
 .window-controls button:hover { background: var(--hover); }

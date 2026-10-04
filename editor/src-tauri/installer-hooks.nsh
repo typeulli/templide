@@ -4,7 +4,7 @@
 !define MUI_HEADERIMAGE_BITMAP_STRETCH AspectFitHeight
 ; 언어 선택 창을 매번 띄운다. 없으면 처음 고른 언어를 레지스트리에 기억해 두고 다음부터 건너뛴다
 !define MUI_LANGDLL_ALWAYSSHOW
-; NSIS의 한국어 파일에 없는 '설치할 사용자 선택' 페이지 문구. 먼저 정의한 문구를 첫 언어(Korean, tauri.nsis.conf.json의 languages 순서)가 가져가고,
+; NSIS의 한국어 파일에 없는 '설치할 사용자 선택' 페이지 문구. 먼저 정의한 문구를 첫 언어(Korean, tauri.bundle.conf.json의 languages 순서)가 가져가고,
 ; 다음 언어(English)는 자기 언어 파일의 문구를 쓴다
 !define MULTIUSER_TEXT_INSTALLMODE_TITLE "사용자 선택"
 !define MULTIUSER_TEXT_INSTALLMODE_SUBTITLE "$(^NameDA)을(를) 설치할 사용자를 선택하세요."

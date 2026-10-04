@@ -1186,7 +1186,7 @@ export function App() {
         }
     };
     return (
-        <div className={'app' + (codeOpen ? '' : ' code-closed') + (paneOpen ? ' pane-open' : '')} style={{
+        <div className={'app' + (codeOpen ? '' : ' code-closed') + (paneOpen ? ' pane-open' : '') + (isMac ? ' mac' : '')} style={{
             '--slides-w': `${sizes.slides}px`, '--props-w': `${sizes.props}px`, '--pane-w': `${sizes.pane}px`, '--code-h': `${sizes.code}px`,
         } as CSSProperties}>
             {/* 창 제목 줄을 겸한다. 빈 곳을 끌면 창이 움직이고, 두 번 누르면 최대화한다 */}
@@ -1231,7 +1231,7 @@ export function App() {
                 </button>
                 <span className="separator" />
                 <SizeBar deck={deck} target={target} onTarget={(name) => { targetRef.current = name; setTarget(name); refreshDeck(); }} onSize={onSize} />
-                <WindowControls />
+                {!isMac && <WindowControls />}
             </header>
             <nav className="slides">
                 <SlideList deck={deck} count={slideCount} page={Math.min(page, slideCount - 1)} ready={ready} onPage={setPage} onAction={slideAction} onMove={moveSlide} />
@@ -1616,6 +1616,9 @@ function PresetMenu({ width, height, onSize }: { width: number; height: number; 
 }
 
 // 캔버스 위 선택 칸. target이 여러 개면 고르고, 고른 target의 크기를 바꾼다. target이 없으면 없다고만 보여 준다
+// macOS는 창 버튼(신호등)을 시스템이 상단 바 왼쪽에 그린다 (tauri.macos.conf.json)
+const isMac = navigator.userAgent.includes('Mac');
+
 // 로고를 누르면 버전, templide의 라이선스, 오픈소스 라이선스 창을 여는 메뉴
 function AppMenu() {
     const [open, setOpen] = useState(false);

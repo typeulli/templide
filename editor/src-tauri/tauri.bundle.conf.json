@@ -2,16 +2,8 @@
   "$schema": "https://schema.tauri.app/config/2",
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "category": "Productivity",
     "licenseFile": "../../LICENSE",
-    "resources": {
-      "../../cmake-build-release/templide.exe": "templide.exe",
-      "../../cmake-build-release/libwinpthread-1.dll": "libwinpthread-1.dll",
-      "../../packages/": "packages/",
-      "../../libs/": "libs/",
-      "conpty/x64/conpty.dll": "conpty.dll",
-      "conpty/x64/OpenConsole.exe": "OpenConsole.exe"
-    },
     "fileAssociations": [
       {
         "ext": ["tlide"],

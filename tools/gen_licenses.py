@@ -1,21 +1,30 @@
 """편집기에 들어가는 오픈소스의 라이선스 목록(editor/src/generated/licenses.json)을 만든다.
 편집기의 '오픈소스 라이선스' 창이 이 파일을 보여 준다. build.py가 편집기를 빌드하기 전에 실행한다.
 
-    python tools/gen_licenses.py
+    python tools/gen_licenses.py [--target <Rust 타깃>]
+
+--target은 편집기를 빌드하는 Rust 타깃(예: i686-pc-windows-msvc, universal-apple-darwin)이고, 없으면 이 컴퓨터의 타깃이다.
+타깃마다 링크되는 크레이트와 함께 넣는 파일이 다르다.
 
 - 편집기 화면: editor의 npm 패키지 중 실행에 쓰는 것 (devDependencies와 타입 정의는 뺀다)
-- 편집기 프로그램: src-tauri가 Windows에서 링크하는 Rust 크레이트 (빌드에만 쓰는 크레이트와 proc-macro는 뺀다)
-- 컴파일러: templide.exe에 들어가는 C++ 라이브러리와 MinGW-w64 런타임
-- 함께 넣은 파일: libs의 reveal.js, AI 탭의 ConPTY, monaco-editor에 든 Codicons 아이콘 글꼴
+- 편집기 프로그램: src-tauri가 그 타깃에서 링크하는 Rust 크레이트 (빌드에만 쓰는 크레이트와 proc-macro는 뺀다)
+- 컴파일러: templide에 들어가는 C++ 라이브러리. Windows는 MinGW-w64 런타임과 GCC 또는 LLVM 런타임도 들어간다
+- 함께 넣은 파일: libs의 reveal.js, monaco-editor에 든 Codicons 아이콘 글꼴, Windows는 AI 탭의 ConPTY
 
 패키지에 라이선스 파일이 없는 것은 원본에서 받아 tools/licenses에 둔 본문을 쓴다
 - webview2-rs.txt: webview2-com, webview2-com-sys (https://github.com/wravery/webview2-rs 의 LICENSE)
 - webview2-sdk.txt: webview2-com-sys가 링크하는 WebView2LoaderStatic.lib (NuGet Microsoft.Web.WebView2 의 LICENSE.txt)
 - codicons.txt: monaco-editor에 든 codicon.ttf (https://github.com/microsoft/vscode-codicons 의 LICENSE, CC BY 4.0).
   monaco-editor의 MIT 고지에는 들어 있지 않아 따로 고지한다
+- mingw-winpthreads.txt, mingw-w64-runtime.txt, gcc-runtime-exception.txt: MinGW-w64 배포판의 licenses 폴더
+  (winpthreads/COPYING, crt/COPYING.MinGW-w64-runtime.txt, gcc/COPYING.RUNTIME). CI의 MSYS2에는 같은 폴더가 없어서 저장해 둔다
+- llvm-runtime.txt: clang으로 빌드할 때 들어가는 libc++, libunwind (https://github.com/llvm/llvm-project 의 libcxx/LICENSE.TXT)
+- objc2-mit.txt: macOS의 objc2 계열 크레이트 (https://github.com/madsmtm/objc2 의 LICENSE-MIT.txt)
+- dlopen2.txt: Linux의 dlopen2 (https://github.com/OpenByteDev/dlopen2 의 LICENSE)
 
 npm, cargo가 있어야 하고, 컴파일러는 cmake-build-release로 한 번 빌드되어 있어야 한다 (FetchContent로 받은 소스를 읽는다).
 """
+import argparse
 import hashlib
 import json
 import pathlib
@@ -31,8 +40,9 @@ COMPILER_BUILD = ROOT / 'cmake-build-release'
 OUT = EDITOR / 'src' / 'generated' / 'licenses.json'
 SAVED = ROOT / 'tools' / 'licenses'
 # 패키지 안에 라이선스 파일이 없는 크레이트 -> tools/licenses의 본문
-SAVED_TEXTS = {'webview2-com': ['webview2-rs.txt'], 'webview2-com-sys': ['webview2-rs.txt', 'webview2-sdk.txt']}
-TARGET = 'x86_64-pc-windows-msvc'
+SAVED_TEXTS = {'webview2-com': ['webview2-rs.txt'], 'webview2-com-sys': ['webview2-rs.txt', 'webview2-sdk.txt'], 'dlopen2': ['dlopen2.txt']}
+# 저장소 전체가 같은 라이선스 파일을 쓰는 크레이트들. objc2 계열은 MIT 또는 (Zlib, Apache-2.0, MIT 중 선택)이라 MIT를 고른다
+SAVED_BY_REPOSITORY = {'https://github.com/madsmtm/objc2': ['objc2-mit.txt']}
 
 LICENSE_FILE = re.compile(r'^(licen[cs]e|copying|notice|unlicense|thirdpartynotices)', re.IGNORECASE)
 
@@ -98,15 +108,18 @@ def npm_packages(collector):
     collector.section('편집기 화면 (npm)', packages)
 
 
-def cargo_packages(collector):
+def cargo_packages(collector, target):
+    # universal-apple-darwin은 두 아키텍처를 합친 것이라 크레이트는 한쪽과 같다
+    if target == 'universal-apple-darwin':
+        target = 'aarch64-apple-darwin'
     # 실행 파일에 링크되는 크레이트: 일반 의존성만, proc-macro는 컴파일할 때만 쓰인다
-    tree = run(['cargo', 'tree', '-e', 'normal,no-proc-macro', '--target', TARGET, '--prefix', 'none', '-f', '{p}'], TAURI)
+    tree = run(['cargo', 'tree', '-e', 'normal,no-proc-macro', '--target', target, '--prefix', 'none', '-f', '{p}'], TAURI)
     linked = set()
     for line in tree.splitlines():
         parts = line.replace(' (*)', '').split()
         if len(parts) >= 2:
             linked.add((parts[0], parts[1].lstrip('v')))
-    metadata = json.loads(run(['cargo', 'metadata', '--format-version', '1', '--filter-platform', TARGET], TAURI))
+    metadata = json.loads(run(['cargo', 'metadata', '--format-version', '1', '--filter-platform', target], TAURI))
     root = metadata['resolve']['root']
     # 크레이트 안에 라이선스 파일이 없으면 같은 저장소의 다른 크레이트에 든 것을 쓴다 (예: webview2-com-sys)
     by_repository = {}
@@ -121,7 +134,9 @@ def cargo_packages(collector):
         folder = pathlib.Path(package['manifest_path']).parent
         license = package.get('license') or ''
         url = package.get('repository') or package.get('homepage') or f'https://crates.io/crates/{package["name"]}'
-        texts = collector.files(folder) or [collector.text((SAVED / name).read_text(encoding='utf-8')) for name in SAVED_TEXTS.get(package['name'], [])]
+        repository = (package.get('repository') or '').rstrip('/')
+        saved_names = SAVED_TEXTS.get(package['name']) or SAVED_BY_REPOSITORY.get(repository, [])
+        texts = collector.files(folder) or [saved(collector, name) for name in saved_names]
         if not texts and package.get('repository') and package['repository'].rstrip('/') in by_repository:
             texts = collector.files(by_repository[package['repository'].rstrip('/')])
         packages.append({'name': package['name'], 'version': package['version'], 'license': license, 'url': web_url(url), 'texts': texts})
@@ -152,19 +167,20 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.'''
 
 
-def mingw_licenses():
-    # 컴파일러를 빌드한 MinGW의 licenses 폴더 (CMAKE_CXX_COMPILER가 <mingw>/bin/c++.exe)
+def saved(collector, name):
+    return collector.text((SAVED / name).read_text(encoding='utf-8'))
+
+
+# 컴파일러를 빌드한 C++ 컴파일러가 clang인지 (CMAKE_CXX_COMPILER가 .../clang++ 이면 libc++를 쓴다)
+def built_with_clang():
     cache = (COMPILER_BUILD / 'CMakeCache.txt').read_text(encoding='utf-8', errors='replace')
-    match = re.search(r'^CMAKE_CXX_COMPILER:FILEPATH=(.+)$', cache, re.MULTILINE)
+    match = re.search(r'^CMAKE_CXX_COMPILER:\w+=(.+)$', cache, re.MULTILINE)
     if match is None:
         sys.exit('cmake-build-release/CMakeCache.txt에서 컴파일러를 찾을 수 없습니다')
-    folder = pathlib.Path(match.group(1).strip()).parent.parent / 'licenses'
-    if not folder.exists():
-        sys.exit(f'MinGW 라이선스 폴더가 없습니다: {folder}')
-    return folder
+    return 'clang' in pathlib.Path(match.group(1).strip()).name.lower()
 
 
-def compiler_packages(collector):
+def compiler_packages(collector, target):
     deps = COMPILER_BUILD / '_deps'
     if not deps.exists():
         sys.exit('cmake-build-release를 먼저 빌드해 주세요')
@@ -172,41 +188,59 @@ def compiler_packages(collector):
     stb_license = stb[stb.rindex('This software is available under 2 licenses'):].rstrip().rstrip('*/').strip()
     json_header = (deps / 'nlohmann_json-src' / 'json.hpp').read_text(encoding='utf-8', errors='replace')
     json_copyright = re.search(r'SPDX-FileCopyrightText: (.+)', json_header).group(1).strip()
-    mingw = mingw_licenses()
     packages = [
         {'name': 'miniz', 'version': '3.0.2', 'license': 'MIT', 'url': 'https://github.com/richgel999/miniz', 'texts': collector.files(deps / 'miniz-src')},
         {'name': 'stb_image', 'version': '', 'license': 'MIT OR Unlicense', 'url': 'https://github.com/nothings/stb', 'texts': [collector.text(stb_license)]},
         {'name': 'nlohmann/json', 'version': '3.11.3', 'license': 'MIT', 'url': 'https://github.com/nlohmann/json', 'texts': [collector.text(mit_text(f'Copyright (c) {json_copyright}'))]},
-        {'name': 'MinGW-w64 winpthreads', 'version': '', 'license': 'MIT', 'url': 'https://www.mingw-w64.org', 'texts': collector.files(mingw / 'winpthreads')},
-        {'name': 'MinGW-w64 runtime', 'version': '', 'license': 'ZPL-2.1, public domain', 'url': 'https://www.mingw-w64.org', 'texts': collector.files(mingw / 'crt')},
-        {'name': 'GCC runtime (libstdc++, libgcc)', 'version': '', 'license': 'GPL-3.0 WITH GCC-exception-3.1', 'url': 'https://gcc.gnu.org',
-         'texts': [collector.text((mingw / 'gcc' / 'COPYING.RUNTIME').read_text(encoding='utf-8', errors='replace'))]},
     ]
+    # Windows의 컴파일러는 MinGW로 빌드해 그 런타임이 exe에 들어간다. Linux, macOS는 시스템의 C++ 라이브러리를 쓴다
+    if 'windows' in target:
+        packages += [
+            {'name': 'MinGW-w64 winpthreads', 'version': '', 'license': 'MIT', 'url': 'https://www.mingw-w64.org', 'texts': [saved(collector, 'mingw-winpthreads.txt')]},
+            {'name': 'MinGW-w64 runtime', 'version': '', 'license': 'ZPL-2.1, public domain', 'url': 'https://www.mingw-w64.org', 'texts': [saved(collector, 'mingw-w64-runtime.txt')]},
+        ]
+        if built_with_clang():
+            packages.append({'name': 'LLVM runtime (libc++, libunwind)', 'version': '', 'license': 'Apache-2.0 WITH LLVM-exception', 'url': 'https://llvm.org',
+                             'texts': [saved(collector, 'llvm-runtime.txt')]})
+        else:
+            packages.append({'name': 'GCC runtime (libstdc++, libgcc)', 'version': '', 'license': 'GPL-3.0 WITH GCC-exception-3.1', 'url': 'https://gcc.gnu.org',
+                             'texts': [saved(collector, 'gcc-runtime-exception.txt')]})
     collector.section('컴파일러 (C++)', packages)
 
 
-def bundled_packages(collector):
+def bundled_packages(collector, target):
     packages = [
         {'name': 'reveal.js', 'version': '', 'license': 'MIT', 'url': 'https://revealjs.com', 'texts': [collector.text((ROOT / 'libs' / 'reveal' / 'LICENSE').read_text(encoding='utf-8'))]},
-        {'name': 'ConPTY, OpenConsole (Windows Terminal)', 'version': '1.25.260930003', 'license': 'MIT', 'url': 'https://github.com/microsoft/terminal',
-         'texts': [collector.text((TAURI / 'conpty' / 'LICENSE').read_text(encoding='utf-8'))]},
         # CC BY 4.0은 저작자, 라이선스, 수정 여부를 밝히도록 한다
         {'name': 'Codicons (monaco-editor의 아이콘 글꼴)', 'version': '', 'license': 'CC-BY-4.0', 'url': 'https://github.com/microsoft/vscode-codicons',
          'texts': [collector.text('Codicons\n'
                                   'Copyright (c) Microsoft Corporation\n'
                                   'Licensed under the Creative Commons Attribution 4.0 International Public License (https://creativecommons.org/licenses/by/4.0/).\n'
                                   'The font (codicon.ttf) is included unmodified as part of monaco-editor.'),
-                   collector.text((SAVED / 'codicons.txt').read_text(encoding='utf-8'))]},
+                   saved(collector, 'codicons.txt')]},
     ]
+    if 'windows' in target:
+        packages.append({'name': 'ConPTY, OpenConsole (Windows Terminal)', 'version': '1.25.260930003', 'license': 'MIT', 'url': 'https://github.com/microsoft/terminal',
+                         'texts': [collector.text((TAURI / 'conpty' / 'LICENSE').read_text(encoding='utf-8'))]})
     collector.section('함께 넣은 파일', packages)
 
 
+def host_target():
+    for line in run(['rustc', '-vV'], ROOT).splitlines():
+        if line.startswith('host:'):
+            return line.split(':', 1)[1].strip()
+    sys.exit('rustc에서 이 컴퓨터의 타깃을 알 수 없습니다')
+
+
 def main():
+    parser = argparse.ArgumentParser(description='편집기의 오픈소스 라이선스 목록을 만든다')
+    parser.add_argument('--target', help='편집기를 빌드하는 Rust 타깃 (기본: 이 컴퓨터)')
+    target = parser.parse_args().target or host_target()
     collector = Collector()
     npm_packages(collector)
-    cargo_packages(collector)
-    compiler_packages(collector)
-    bundled_packages(collector)
+    cargo_packages(collector, target)
+    compiler_packages(collector, target)
+    bundled_packages(collector, target)
     missing = [f'{section["title"]}: {package["name"]}' for section in collector.sections for package in section['packages'] if not package['texts']]
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps({'sections': collector.sections, 'texts': collector.texts}, ensure_ascii=False, indent=1), encoding='utf-8')

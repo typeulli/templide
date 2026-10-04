@@ -18,18 +18,21 @@ struct Compiler {
 
 struct Started(Instant);
 
-// TEMPLIDE_EXE, 편집기 옆의 templide.exe, 개발 중이면 저장소의 release 빌드 순서로 찾는다
-fn compiler_path() -> PathBuf {
+// TEMPLIDE_EXE, 설치된 리소스 폴더의 컴파일러, 개발 중이면 저장소의 release 빌드 순서로 찾는다.
+// 리소스 폴더는 Windows가 편집기 옆, macOS가 templide.app/Contents/Resources, Linux(deb)가 /usr/lib/templide 이다.
+// 컴파일러는 자기 옆의 packages, libs를 쓰므로 셋을 같은 폴더에 설치한다 (build.py)
+fn compiler_path(app: &tauri::AppHandle) -> PathBuf {
+    const NAME: &str = if cfg!(windows) { "templide.exe" } else { "templide" };
     if let Ok(path) = std::env::var("TEMPLIDE_EXE") {
         return PathBuf::from(path);
     }
-    if let Ok(exe) = std::env::current_exe() {
-        let beside = exe.with_file_name("templide.exe");
-        if beside.exists() {
-            return beside;
+    if let Ok(dir) = app.path().resource_dir() {
+        let installed = dir.join(NAME);
+        if installed.exists() {
+            return installed;
         }
     }
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cmake-build-release/templide.exe")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cmake-build-release").join(NAME)
 }
 
 // Content-Length 머리말이 붙은 메시지 하나. 끝나면 None
@@ -361,14 +364,15 @@ fn main() {
         .manage(Watcher::default())
         .setup(|app| {
             app.manage(mcp::start(app.handle().clone())?);
-            let mut command = Command::new(compiler_path());
+            let compiler = compiler_path(app.handle());
+            let mut command = Command::new(&compiler);
             command.arg("--serve").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::inherit());
             #[cfg(windows)]
             {
                 use std::os::windows::process::CommandExt;
                 command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
             }
-            let mut child = command.spawn().map_err(|e| format!("cannot start {}: {e}", compiler_path().display()))?;
+            let mut child = command.spawn().map_err(|e| format!("cannot start {}: {e}", compiler.display()))?;
             *app.state::<Compiler>().stdin.lock().unwrap() = child.stdin.take();
             let stdout = child.stdout.take().unwrap();
             let handle = app.handle().clone();
