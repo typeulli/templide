@@ -4,6 +4,7 @@
     "windows": [
       {
         "title": "templide",
+        "create": false,
         "visible": false,
         "width": 1400,
         "height": 900,

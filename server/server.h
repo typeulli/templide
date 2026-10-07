@@ -43,6 +43,7 @@
 //   {op: "animation", page, action: delete, index}                     지운다 (video, audio의 재생이면 start를 when_clicked로)
 //   {op: "animation", page, action: move, index, to}                   재생 차례를 옮기고 slide의 모든 애니메이션에 order 1..N을 붙인다
 // templide/build {uri, target?} -> {path, errors}  고른 target의 파일을 저장하지 않은 내용으로 만든다
+// templide/targets {uri} -> {targets: [{name, type, path}]} 또는 {error}  내보낼 수 있는 target 목록. path는 만들 파일의 경로
 // textDocument/completion                          자동 완성 (server/completion.h)
 // textDocument/hover, definition, references, documentHighlight, prepareRename, rename, documentSymbol
 //                                                  이름 찾기 (server/navigation.h). 이름 바꾸기는 편집 중인 파일 안의 이름만 된다

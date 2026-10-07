@@ -86,6 +86,8 @@ def bundle_config(target, system):
         arch = CONPTY[target.split('-')[0]]
         resources[f'conpty/{arch}/conpty.dll'] = 'conpty.dll'
         resources[f'conpty/{arch}/OpenConsole.exe'] = 'OpenConsole.exe'
+        # 탐색기의 '새로 만들기'가 복사하는 파일 (installer-hooks.nsh)
+        resources['templates/new.tlide'] = 'templates/new.tlide'
     config['bundle']['targets'] = [BUNDLES[system][0]]
     config['bundle']['resources'] = resources
     path = TAURI / 'target' / f'bundle.{target}.conf.json'

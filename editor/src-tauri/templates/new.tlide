@@ -1,0 +1,7 @@
+#include <std/stddef>
+
+slide {
+    put text_box { text = "제목을 입력하세요"; x = 80px; y = 280px; width = 1120px; height = 120px; anchor = middle; }
+}
+
+target out { path = "out.pptx"; type = pptx; }

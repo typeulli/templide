@@ -342,6 +342,13 @@ fn startup_file() -> Option<String> {
     std::env::args().nth(1).filter(|arg| !arg.starts_with('-'))
 }
 
+// --export <파일>로 실행되면 편집기 대신 그 파일의 내보내기 창만 연다 (탐색기의 'templide 내보내기')
+#[tauri::command]
+fn export_file() -> Option<String> {
+    let mut args = std::env::args().skip(1);
+    (args.next().as_deref() == Some("--export")).then(|| args.next()).flatten()
+}
+
 // 프로세스를 시작한 뒤 지난 시간(ms). 시작 속도를 재려고 화면이 단계마다 부른다.
 // TEMPLIDE_EDITOR_EXIT_AFTER가 그 단계 이름이면 시간을 출력하고 끝낸다
 #[tauri::command]
@@ -384,17 +391,26 @@ fn main() {
                 }
                 let _ = child.wait();
             });
-            // 창은 화면이 그린 뒤에 보여 준다(main.tsx). 화면이 실패해도 창이 숨은 채로 남지 않게 잠시 뒤 보여 준다
-            let handle = app.handle().clone();
+            // 편집기 창(main)은 tauri.conf.json에서 만들지 않고(create: false) 여기서 만든다. 내보내기면 작은 창만 연다
+            let window = if export_file().is_some() {
+                tauri::WebviewWindowBuilder::new(app, "export", tauri::WebviewUrl::App("export.html".into()))
+                    .title("templide 내보내기")
+                    .inner_size(560.0, 480.0)
+                    .min_inner_size(420.0, 320.0)
+                    .center()
+                    .visible(false)
+                    .build()?
+            } else {
+                tauri::WebviewWindowBuilder::from_config(app.handle(), &app.config().app.windows[0])?.build()?
+            };
+            // 창은 화면이 그린 뒤에 보여 준다(main.tsx, export.tsx). 화면이 실패해도 창이 숨은 채로 남지 않게 잠시 뒤 보여 준다
             std::thread::spawn(move || {
                 std::thread::sleep(std::time::Duration::from_secs(3));
-                if let Some(window) = handle.get_webview_window("main") {
-                    let _ = window.show();
-                }
+                let _ = window.show();
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![lsp_send, read_text, write_text, startup_file, mark, import_image, import_file, save_png, read_data_url, open_path, agent_start, agent_write, agent_resize, agent_stop, watch_file, mcp::mcp_set_tools, mcp::mcp_reply, mcp::mcp_config])
+        .invoke_handler(tauri::generate_handler![lsp_send, read_text, write_text, startup_file, export_file, mark, import_image, import_file, save_png, read_data_url, open_path, agent_start, agent_write, agent_resize, agent_stop, watch_file, mcp::mcp_set_tools, mcp::mcp_reply, mcp::mcp_config])
         .run(tauri::generate_context!())
         .expect("error while running templide editor");
 }

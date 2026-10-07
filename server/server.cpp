@@ -578,6 +578,8 @@ namespace templide::server {
                         reply(id, document_symbols(params));
                     } else if (method == "templide/build") {
                         reply(id, build(params));
+                    } else if (method == "templide/targets") {
+                        reply(id, targets(params));
                     } else if (method == "templide/deck") {
                         reply_deck(id, params);
                     } else if (method == "templide/edit") {
@@ -1490,6 +1492,21 @@ namespace templide::server {
                 const auto errors = backend::write_target(document, *target, base, libs_dir_, warnings);
                 const std::filesystem::path output = (base / backend::utf8_path(target->path)).lexically_normal();
                 return {{"path", backend::display(output)}, {"type", target->type}, {"errors", errors}, {"warnings", warnings}};
+            }
+
+            // 내보내기 창이 보여 주는 target. 덱 전체를 만들지 않으므로 가볍다
+            json targets(const json& params) const {
+                const Compiled& compiled = compiled_for(params);
+                if (!compiled.result.document) {
+                    return {{"error", "The document has errors"}};
+                }
+                const std::filesystem::path base = uri_to_path(params.at("uri").get<std::string>()).parent_path();
+                json targets = json::array();
+                for (const auto& target : compiled.result.document->targets) {
+                    const std::filesystem::path output = (base / backend::utf8_path(target.path)).lexically_normal();
+                    targets.push_back({{"name", target.name}, {"type", target.type}, {"path", backend::display(output)}});
+                }
+                return {{"targets", targets}};
             }
 
             json edit(const json& params) const {

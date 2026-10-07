@@ -12,6 +12,7 @@ import { ElementPanel, SlidePanel, type Pickers } from './Properties';
 import { AnimationPane, type AnimationOp } from './Animations';
 import type { SetValue } from './Fields';
 import { AgentPanel } from './Agents';
+import { ExportDialog, type BuildResult, type ExportTarget } from './ExportDialog';
 import { serveMcp, type EditorAccess } from './mcp';
 import { registerNavigation } from './navigation';
 import logo from '../../assets/icon/templide.svg';
@@ -60,6 +61,7 @@ export function App() {
     const storeSizes = useCallback(() => saveSizes(sizesRef.current), []);
     const [zoom, setZoom] = useState<number | null>(null); // null이면 화면에 맞춘다
     const [fitScale, setFitScale] = useState(1);
+    const [exportOpen, setExportOpen] = useState(false); // 내보낼 target을 고르는 창
     const [toast, setToast] = useState<{ message: string; path?: string; error?: boolean; warnings?: string[] } | null>(null);
     const [schema, setSchema] = useState<Schema | null>(null); // 속성 패널이 쓰는 object, enum, 애니메이션, 전환 목록
     const [paneOpen, setPaneOpen] = useState(false);            // 애니메이션 창
@@ -1225,7 +1227,7 @@ export function App() {
                 <span className="spacer" data-tauri-drag-region />
                 <IconButton icon={Presentation} title="슬라이드 설정 (배경, 화면 전환, 메모)" disabled={!deck} active={!selected && !!deck} onClick={() => setSelected(null)} />
                 <IconButton icon={Sparkles} title="애니메이션 창" disabled={!deck} active={paneOpen} onClick={() => setPaneOpen(!paneOpen)} />
-                <IconButton icon={FileOutput} title="내보내기 (고른 target 파일 만들기)" disabled={!deck} onClick={exportTarget} />
+                <IconButton icon={FileOutput} title="내보내기 (만들 target 고르기)" disabled={!deck} onClick={() => setExportOpen(true)} />
                 <button className="play-button" disabled={!deck} title="슬라이드 쇼 (F5: 처음부터, Shift+F5: 지금 슬라이드부터)" onClick={() => startShow(false)}>
                     <Play size={14} fill="currentColor" /> 슬라이드 쇼
                 </button>
@@ -1250,6 +1252,25 @@ export function App() {
                         <IconButton icon={Plus} title="확대" onClick={() => setZoom(Math.min(4, (zoom ?? fitScale) * 1.25))} />
                         <IconButton icon={Maximize} title="화면에 맞춤" onClick={() => setZoom(null)} />
                     </div>
+                )}
+                {exportOpen && uri.current && (
+                    <ExportDialog fileName={fileName ?? ''}
+                        load={async () => {
+                            flushChange();
+                            return lsp.request<{ targets?: ExportTarget[]; error?: string }>('templide/targets', { uri: uri.current });
+                        }}
+                        build={(name) => lsp.request<BuildResult>('templide/build', { uri: uri.current, target: name })}
+                        onClose={() => setExportOpen(false)}
+                        onDone={(results) => {
+                            // 창을 닫고 만든 파일을 알린다. 하나면 열기, 폴더에서 보기 버튼도 보인다
+                            setExportOpen(false);
+                            const paths = results.map((result) => result.path!);
+                            const warnings = results.flatMap((result) => result.warnings ?? []).map((line) => {
+                                const match = /^.*:(\d+):\d+: warning: (.*)$/.exec(line);
+                                return match ? `줄 ${match[1]}: ${match[2]}` : line;
+                            });
+                            setToast({ message: `만들었습니다: ${paths.join(', ')}`, path: paths.length === 1 ? paths[0] : undefined, warnings });
+                        }} />
                 )}
                 {toast && (
                     <div className={'toast' + (toast.error ? ' error' : '')}>
