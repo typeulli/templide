@@ -81,6 +81,20 @@ namespace {
                 print_line(depth, static_cast<const ast::ASTInclude*>(node)->relative ? "Include \"" + static_cast<const ast::ASTInclude*>(node)->name + "\""
                                                                                         : "Include <" + static_cast<const ast::ASTInclude*>(node)->name + ">");
                 break;
+            case ast::ASSET: {
+                const auto* asset = static_cast<const ast::ASTAsset*>(node);
+                print_line(depth, "Asset \"" + asset->path + "\"" + (asset->is_default ? " default" : "") + (asset->has_by ? " by" : ""));
+                for (const auto& item : asset->items) {
+                    print_line(depth + 1, (item.all ? "*" : "\"" + item.name + "\"") + " as " + item.alias->name);
+                }
+                break;
+            }
+            case ast::CONSTANT: {
+                const auto* constant = static_cast<const ast::ASTConstant*>(node);
+                print_line(depth, "Constant " + constant->type_name->name + " " + constant->name->name);
+                print(constant->expression, depth + 1);
+                break;
+            }
             case ast::ENUM: {
                 const auto* enumeration = static_cast<const ast::ASTEnum*>(node);
                 std::string text = "Enum " + enumeration->name + " {";

@@ -64,6 +64,8 @@ def build_compiler(target):
         configure = ['cmake', '-S', str(ROOT), '-B', str(COMPILER_BUILD), '-G', 'Ninja', '-DCMAKE_BUILD_TYPE=Release']
         if target == 'universal-apple-darwin':
             configure.append('-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64')
+            # 지정하지 않으면 빌드한 컴퓨터의 SDK 버전이 최소 버전이 된다. arm64가 지원하는 가장 낮은 버전이다 (tauri.macos.conf.json의 minimumSystemVersion과 같다)
+            configure.append('-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0')
         run('컴파일러 구성', configure)
     run('컴파일러 빌드', ['cmake', '--build', str(COMPILER_BUILD)])
 

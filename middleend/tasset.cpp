@@ -363,7 +363,7 @@ namespace templide::tasset {
             return std::nullopt;
         }
         std::ostringstream key;
-        key << Reader::display(absolute) << '\n' << size << '\n' << time.time_since_epoch().count() << '\n' << name;
+        key << Reader::display(absolute) << '\n' << size << '\n' << static_cast<long long>(time.time_since_epoch().count()) << '\n' << name;
         std::ostringstream folder;
         folder << std::hex << std::hash<std::string>{}(key.str());
         const std::filesystem::path relative = std::filesystem::path(std::u8string(name.begin(), name.end())).filename();
