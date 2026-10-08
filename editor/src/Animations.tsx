@@ -12,12 +12,12 @@ export type AnimationOp =
     | { action: 'update'; index: number; spec: Partial<AnimationSpec> }
     | { action: 'delete'; index: number }
     | { action: 'move'; index: number; to: number };
-export type AnimationSpec = { category: string; effect: string; option: string; path: string; start: string; duration: number | null; delay: number | null };
+type AnimationSpec = { category: string; effect: string; option: string; path: string; start: string; duration: number | null; delay: number | null };
 
 const categoryColors: Record<string, string> = { enter: '#30a46c', emphasis: '#e5a000', exit: '#e5484d', move: '#0d99ff', media: '#8e4ec6' };
 
 // 클릭 번호. PowerPoint처럼 클릭할 때 시작하는 효과마다 하나씩 늘고, 처음에 저절로 시작하는 효과는 0이다
-export function clickNumbers(animations: AnimationInfo[]): (number | null)[] {
+function clickNumbers(animations: AnimationInfo[]): (number | null)[] {
     let click = 0;
     return animations.map((animation, i) => {
         if (animation.start === 'on_click') {
@@ -29,7 +29,7 @@ export function clickNumbers(animations: AnimationInfo[]): (number | null)[] {
 }
 
 // 대상 개체를 부르는 이름: put ... as 이름, 없으면 종류와 글자 앞부분
-export function targetLabel(deck: DeckResult, page: number, animation: AnimationInfo): string {
+function targetLabel(deck: DeckResult, page: number, animation: AnimationInfo): string {
     const info = deck.elements[animation.elementId];
     if (info?.name) {
         return info.name;
@@ -52,9 +52,9 @@ export function animationsOf(slide: SlideInfo | undefined, id: string | null): {
 const effectLabel = (animation: { category: string; effect: string; option?: string }) =>
     label(effectNames, animation.effect) + (animation.option ? ` · ${label(optionNames, animation.option)}` : '');
 
-// ---- 효과 고르기
+// 효과 고르기
 
-export function EffectPicker({ schema, media, onPick, onClose }: { schema: Schema; media: boolean; onPick(category: string, effect: string): void; onClose(): void }) {
+function EffectPicker({ schema, media, onPick, onClose }: { schema: Schema; media: boolean; onPick(category: string, effect: string): void; onClose(): void }) {
     const categories = animationCategories.filter(([category]) => category !== 'media' || media);
     const [category, setCategory] = useState(categories[0][0]);
     const effects = category === 'media' ? ['play', 'pause', 'stop']
@@ -95,9 +95,9 @@ export function EffectPicker({ schema, media, onPick, onClose }: { schema: Schem
     );
 }
 
-// ---- 애니메이션 하나 고치기
+// 애니메이션 하나 고치기
 
-export function AnimationEditor({ schema, animation, index, count, onOp }: { schema: Schema; animation: AnimationInfo; index: number; count: number; onOp(op: AnimationOp): void }) {
+function AnimationEditor({ schema, animation, index, count, onOp }: { schema: Schema; animation: AnimationInfo; index: number; count: number; onOp(op: AnimationOp): void }) {
     const lock = lockOf(animation.source);
     const key = `${animation.category}.${animation.effect}`;
     const options = schema.animations[key] ?? [];
@@ -174,7 +174,7 @@ export function AnimationEditor({ schema, animation, index, count, onOp }: { sch
     );
 }
 
-// ---- 속성 패널의 애니메이션 탭: 고른 개체의 애니메이션
+// 속성 패널의 애니메이션 탭: 고른 개체의 애니메이션
 
 export function ObjectAnimations({ schema, slide, id, media, onOp, onPreview }: {
     schema: Schema | null; slide: SlideInfo | undefined; id: string; media: boolean; onOp(op: AnimationOp): void; onPreview(): void;
@@ -218,7 +218,7 @@ export function ObjectAnimations({ schema, slide, id, media, onOp, onPreview }: 
     );
 }
 
-// ---- 애니메이션 창: 슬라이드의 모든 애니메이션. 끌어서 재생 순서를 바꾼다
+// 애니메이션 창: 슬라이드의 모든 애니메이션. 끌어서 재생 순서를 바꾼다
 
 export function AnimationPane({ deck, schema, page, selected, playing, onSelect, onOp, onPreview, onStop, onClose }: {
     deck: DeckResult; schema: Schema | null; page: number; selected: string | null; playing: boolean;

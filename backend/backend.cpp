@@ -2,6 +2,7 @@
 
 #include "html.h"
 #include "pptx.h"
+#include "../middleend/tasset.h"
 
 #include <algorithm>
 #include <cmath>
@@ -173,9 +174,23 @@ namespace templide::backend {
     std::optional<std::string> read_file(const std::filesystem::path& file) {
         std::ifstream input(file, std::ios::binary);
         if (!input) {
+            if (const auto inside = tasset::split(file)) {
+                return tasset::read(inside->first, inside->second);
+            }
             return std::nullopt;
         }
         return std::string{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    }
+
+    std::optional<std::filesystem::path> disk_file(const std::filesystem::path& file) {
+        std::error_code code;
+        if (std::filesystem::is_regular_file(file, code)) {
+            return file;
+        }
+        if (const auto inside = tasset::split(file)) {
+            return tasset::extract(inside->first, inside->second);
+        }
+        return std::nullopt;
     }
 
     const ir::Value* find_property(const ir::Element& element, const std::string& name) {

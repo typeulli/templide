@@ -4,10 +4,11 @@
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::process::{ChildStdin, Command, Stdio};
 use std::sync::Mutex;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tauri::{Emitter, Manager, State};
 
 mod mcp;
@@ -77,55 +78,6 @@ fn write_text(path: String, text: String) -> Result<(), String> {
     std::fs::write(&path, text).map_err(|e| format!("{path}: {e}"))
 }
 
-// 그림을 문서 폴더의 images 폴더로 복사하고 문서에 적을 상대 경로(images/이름)를 돌려준다.
-// 같은 이름의 다른 파일이 있으면 이름 뒤에 -2, -3을 붙이고, 내용이 같은 파일이 있으면 그것을 쓴다
-#[tauri::command]
-fn import_image(source: String, document: String) -> Result<String, String> {
-    import_file(source, document, "images".into())
-}
-
-// 파일을 문서 폴더의 folder(images, media, sounds)로 복사하고 문서에 적을 상대 경로(folder/이름)를 돌려준다
-#[tauri::command]
-fn import_file(source: String, document: String, folder: String) -> Result<String, String> {
-    let source = PathBuf::from(source);
-    let name = folder.clone();
-    let folder = PathBuf::from(&document).parent().ok_or("the document has no folder")?.join(&folder);
-    std::fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
-    let bytes = std::fs::read(&source).map_err(|e| format!("{}: {e}", source.display()))?;
-    let stem = source.file_stem().and_then(|s| s.to_str()).unwrap_or("image").to_string();
-    let extension = source.extension().and_then(|s| s.to_str()).unwrap_or("png").to_lowercase();
-    for number in 1.. {
-        let file = if number == 1 { format!("{stem}.{extension}") } else { format!("{stem}-{number}.{extension}") };
-        let target = folder.join(&file);
-        if !target.exists() {
-            std::fs::write(&target, &bytes).map_err(|e| format!("{}: {e}", target.display()))?;
-            return Ok(format!("{name}/{file}"));
-        }
-        if std::fs::read(&target).map(|existing| existing == bytes).unwrap_or(false) {
-            return Ok(format!("{name}/{file}"));
-        }
-    }
-    unreachable!()
-}
-
-// 화면이 만든 그림(data URL의 base64)을 문서 폴더의 folder/이름.png로 저장하고 상대 경로를 돌려준다. 비디오의 표지 그림에 쓴다
-#[tauri::command]
-fn save_png(document: String, folder: String, stem: String, base64: String) -> Result<String, String> {
-    use base64::Engine;
-    let bytes = base64::engine::general_purpose::STANDARD.decode(base64.as_bytes()).map_err(|e| e.to_string())?;
-    let dir = PathBuf::from(&document).parent().ok_or("the document has no folder")?.join(&folder);
-    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    for number in 1.. {
-        let file = if number == 1 { format!("{stem}.png") } else { format!("{stem}-{number}.png") };
-        let target = dir.join(&file);
-        if !target.exists() || std::fs::read(&target).map(|existing| existing == bytes).unwrap_or(false) {
-            std::fs::write(&target, &bytes).map_err(|e| format!("{}: {e}", target.display()))?;
-            return Ok(format!("{folder}/{file}"));
-        }
-    }
-    unreachable!()
-}
-
 // 그림 파일을 data URL로 (화면에서 크기를 잴 때 쓴다)
 #[tauri::command]
 fn read_data_url(path: String) -> Result<String, String> {
@@ -167,7 +119,7 @@ fn open_path(path: String, reveal: bool) -> Result<(), String> {
     command.spawn().map(|_| ()).map_err(|e| format!("{path}: {e}"))
 }
 
-// ---- AI 탭의 에이전트. 설치된 프로그램(claude 등)을 고치지 않고 가상 터미널에서 그대로 실행하고,
+// AI 탭의 에이전트. 설치된 프로그램(claude 등)을 고치지 않고 가상 터미널에서 그대로 실행하고,
 // 출력은 가공하지 않고 화면의 터미널로 넘긴다. 탭에서 고른 에이전트마다 세션 하나
 
 struct Session {
@@ -311,14 +263,20 @@ fn agent_stop(agents: State<Agents>, id: String) -> Result<(), String> {
     Ok(())
 }
 
-// ---- 연 파일 감시. 다른 프로그램(AI 탭의 에이전트 등)이 파일을 고치면 "file-changed" {path}를 보낸다
+// 연 파일 감시. 다른 프로그램(AI 탭의 에이전트 등)이 파일을 고치면 "file-changed" {path}를 보낸다.
+// 탭마다 연 파일을 따로 본다. 키는 소문자 경로다
 
 #[derive(Default)]
-struct Watcher(Mutex<Option<notify::RecommendedWatcher>>);
+struct Watcher(Mutex<HashMap<String, notify::RecommendedWatcher>>);
 
 #[tauri::command]
 fn watch_file(app: tauri::AppHandle, watcher: State<Watcher>, path: String) -> Result<(), String> {
     use notify::{EventKind, RecursiveMode, Watcher as _};
+    let key = path.to_lowercase();
+    let mut watchers = watcher.0.lock().map_err(|e| e.to_string())?;
+    if watchers.contains_key(&key) {
+        return Ok(());
+    }
     let file = PathBuf::from(&path);
     let folder = file.parent().ok_or("the file has no folder")?.to_path_buf();
     // Windows의 경로는 대소문자를 가리지 않는다
@@ -332,14 +290,119 @@ fn watch_file(app: tauri::AppHandle, watcher: State<Watcher>, path: String) -> R
     }).map_err(|e| e.to_string())?;
     // 파일을 지우고 새로 쓰는 프로그램도 있어 파일 대신 폴더를 본다
     next.watch(&folder, RecursiveMode::NonRecursive).map_err(|e| e.to_string())?;
-    *watcher.0.lock().map_err(|e| e.to_string())? = Some(next);
+    watchers.insert(key, next);
     Ok(())
 }
 
-// 명령줄로 받은 파일
+// 탭을 닫으면 그 파일을 그만 본다
 #[tauri::command]
-fn startup_file() -> Option<String> {
-    std::env::args().nth(1).filter(|arg| !arg.starts_with('-'))
+fn unwatch_file(watcher: State<Watcher>, path: String) -> Result<(), String> {
+    watcher.0.lock().map_err(|e| e.to_string())?.remove(&path.to_lowercase());
+    Ok(())
+}
+
+// 설치된 폰트. 코드의 font("...") 옆 목록과 서식 막대의 글꼴 메뉴가 쓴다
+
+// 폰트 파일마다 이름 표(name)에서 글꼴 이름(name ID 1)을 읽는다. 한국어 이름이 있으면 그것을, 없으면 영어 이름을 쓴다.
+// PowerPoint가 찾는 이름과 같게 하려고 typographic family(16)가 아니라 family(1)를 쓴다.
+// 큰 폰트 파일 전체를 읽지 않도록 파일 머리의 표 목록에서 이름 표의 자리만 찾아 읽는다. 처음 한 번 읽고 기억한다
+static FONTS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+
+#[tauri::command]
+async fn system_fonts() -> Vec<String> {
+    tauri::async_runtime::spawn_blocking(|| FONTS.get_or_init(read_fonts).clone()).await.unwrap_or_default()
+}
+
+fn font_folders() -> Vec<PathBuf> {
+    let mut folders = Vec::new();
+    let env = |name: &str| std::env::var_os(name).map(PathBuf::from);
+    if cfg!(windows) {
+        folders.extend(env("WINDIR").map(|dir| dir.join("Fonts")));
+        folders.extend(env("LOCALAPPDATA").map(|dir| dir.join("Microsoft").join("Windows").join("Fonts")));
+    } else if cfg!(target_os = "macos") {
+        folders.extend(["/System/Library/Fonts", "/Library/Fonts"].map(PathBuf::from));
+        folders.extend(env("HOME").map(|dir| dir.join("Library").join("Fonts")));
+    } else {
+        folders.extend(["/usr/share/fonts", "/usr/local/share/fonts"].map(PathBuf::from));
+        folders.extend(env("HOME").map(|dir| dir.join(".local").join("share").join("fonts")));
+        folders.extend(env("HOME").map(|dir| dir.join(".fonts")));
+    }
+    folders
+}
+
+fn read_fonts() -> Vec<String> {
+    let mut names = std::collections::BTreeSet::new();
+    let mut folders = font_folders();
+    while let Some(folder) = folders.pop() {
+        let Ok(entries) = std::fs::read_dir(&folder) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                folders.push(path);
+                continue;
+            }
+            let extension = path.extension().map(|ext| ext.to_string_lossy().to_lowercase()).unwrap_or_default();
+            if matches!(extension.as_str(), "ttf" | "otf" | "ttc" | "otc") {
+                names.extend(font_families(&path).unwrap_or_default());
+            }
+        }
+    }
+    // @로 시작하는 이름은 세로쓰기용이다
+    names.into_iter().filter(|name| !name.starts_with('@')).collect()
+}
+
+// 폰트 파일(묶음이면 그 안의 폰트마다)의 글꼴 이름
+fn font_families(path: &std::path::Path) -> std::io::Result<Vec<String>> {
+    use std::io::{Seek, SeekFrom};
+    let mut file = std::fs::File::open(path)?;
+    let mut read_at = |offset: u64, length: usize| -> std::io::Result<Vec<u8>> {
+        let mut buffer = vec![0; length];
+        file.seek(SeekFrom::Start(offset))?;
+        file.read_exact(&mut buffer)?;
+        Ok(buffer)
+    };
+    let u16_at = |bytes: &[u8], at: usize| u16::from_be_bytes([bytes[at], bytes[at + 1]]);
+    let u32_at = |bytes: &[u8], at: usize| u32::from_be_bytes([bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]]);
+    let header = read_at(0, 12)?;
+    let offsets: Vec<u64> = if &header[0..4] == b"ttcf" {
+        let count = u32_at(&header, 8).min(256) as usize;
+        let table = read_at(12, count * 4)?;
+        (0..count).map(|i| u32_at(&table, i * 4) as u64).collect()
+    } else {
+        vec![0]
+    };
+    let mut families = Vec::new();
+    for offset in offsets {
+        let directory = read_at(offset, 12)?;
+        let tables = u16_at(&directory, 4) as usize;
+        let records = read_at(offset + 12, tables * 16)?;
+        let Some(record) = (0..tables).map(|i| &records[i * 16..i * 16 + 16]).find(|record| &record[0..4] == b"name") else { continue };
+        let data = read_at(u32_at(record, 8) as u64, (u32_at(record, 12) as usize).min(1 << 20))?;
+        let Some(table) = ttf_parser::name::Table::parse(&data) else { continue };
+        let mut english = None;
+        let mut other = None;
+        let mut korean = None;
+        for name in table.names {
+            if name.name_id != ttf_parser::name_id::FAMILY {
+                continue;
+            }
+            let Some(text) = name.to_string() else { continue };
+            match (name.platform_id, name.language_id) {
+                (ttf_parser::PlatformId::Windows, 0x0412) => korean = Some(text),
+                (ttf_parser::PlatformId::Windows, 0x0409) => english = Some(text),
+                _ => {
+                    other.get_or_insert(text);
+                }
+            }
+        }
+        families.extend(korean.or(english).or(other));
+    }
+    Ok(families)
+}
+
+// 명령줄로 받은 파일들 (편집기). 옵션(-로 시작)은 뺀다
+fn editor_args() -> Vec<String> {
+    std::env::args().skip(1).filter(|arg| !arg.starts_with('-')).collect()
 }
 
 // --export <파일>로 실행되면 편집기 대신 그 파일의 내보내기 창만 연다 (탐색기의 'templide 내보내기')
@@ -347,6 +410,150 @@ fn startup_file() -> Option<String> {
 fn export_file() -> Option<String> {
     let mut args = std::env::args().skip(1);
     (args.next().as_deref() == Some("--export")).then(|| args.next()).flatten()
+}
+
+// 탐색기의 'templide 불러오기' (--import <pptx>). 편집기 대신 pptx를 골라 .tlide로 바꾸는 창만 연다
+
+// --import 뒤의 파일들. --import로 실행하지 않았으면 None
+fn import_args() -> Option<Vec<String>> {
+    let mut args = std::env::args().skip(1);
+    (args.next().as_deref() == Some("--import")).then(|| args.collect())
+}
+
+// 창은 프로세스 하나만 연다. 탐색기에서 파일을 열면 파일마다 프로세스가 뜨므로, 먼저 뜬 프로세스가 창을 열고
+// 나머지 프로세스는 자기 파일을 그 프로세스에 보내고 끝난다. 편집기(파일을 탭으로 연다)와 불러오기 창은 따로 뽑는다.
+// 받은 파일은 Pending에 넣고 창에 event를 보낸다. 화면은 open_files(import_files)로 가져간다
+
+struct Single {
+    lock: &'static str,   // 창을 연 프로세스가 듣는 포트를 적어 두는 파일 (임시 폴더)
+    hello: &'static str,  // 다른 프로세스가 보내는 첫 줄. 잠금 파일이 남아 있어 엉뚱한 프로그램에 붙었을 때를 가려낸다
+    window: &'static str, // 앞으로 가져올 창
+    event: &'static str,  // 받은 파일을 알리는 event
+}
+
+static EDITOR: Single = Single { lock: "templide-editor.lock", hello: "templide-editor", window: "main", event: "open-files" };
+static IMPORT: Single = Single { lock: "templide-import.lock", hello: "templide-import", window: "import", event: "import-add" };
+
+impl Single {
+    fn lock_path(&self) -> PathBuf {
+        std::env::temp_dir().join(self.lock)
+    }
+}
+
+// 화면이 아직 가져가지 않은 파일 경로들. 처음에는 명령줄로 받은 파일이 들어 있다
+#[derive(Default)]
+struct Pending(Mutex<Vec<String>>);
+
+enum Election {
+    Leader(TcpListener), // 이 프로세스가 창을 연다
+    Forwarded,           // 파일을 창을 연 프로세스에 보냈다
+    Alone,               // 잠금 파일을 쓸 수 없다. 혼자 창을 연다
+}
+
+// 잠금 파일을 먼저 만든(create_new) 프로세스가 창을 연다. 이미 있으면 거기 적힌 포트로 파일을 보낸다.
+// 보낼 수 없으면 끝나지 않고 남은 잠금 파일이므로 지우고 한 번 더 해 본다
+fn elect(single: &Single, files: &[String]) -> Election {
+    let lock = single.lock_path();
+    for _ in 0..2 {
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(&lock) {
+            Ok(mut file) => {
+                let Ok(listener) = TcpListener::bind("127.0.0.1:0") else {
+                    let _ = std::fs::remove_file(&lock);
+                    return Election::Alone;
+                };
+                let port = listener.local_addr().map(|address| address.port()).unwrap_or(0);
+                let _ = write!(file, "{port}");
+                return Election::Leader(listener);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                // 먼저 뜬 프로세스가 포트를 적을 때까지 잠시 기다린다
+                let deadline = Instant::now() + Duration::from_secs(3);
+                loop {
+                    let port = std::fs::read_to_string(&lock).ok().and_then(|text| text.trim().parse::<u16>().ok()).filter(|port| *port > 0);
+                    if let Some(port) = port {
+                        if send_files(single, port, files) {
+                            return Election::Forwarded;
+                        }
+                        break;
+                    }
+                    if Instant::now() > deadline {
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                let _ = std::fs::remove_file(&lock);
+            }
+            Err(_) => return Election::Alone,
+        }
+    }
+    Election::Alone
+}
+
+// 창을 연 프로세스에 파일들을 한 줄에 하나씩 보내고 "ok"를 받는다. 파일이 없으면 창만 앞으로 가져온다
+fn send_files(single: &Single, port: u16, files: &[String]) -> bool {
+    let address = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    let Ok(mut stream) = TcpStream::connect_timeout(&address, Duration::from_secs(1)) else {
+        return false;
+    };
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(3)));
+    let mut message = format!("{}\n", single.hello);
+    for file in files {
+        message += &format!("{file}\n");
+    }
+    if stream.write_all(message.as_bytes()).is_err() || stream.shutdown(std::net::Shutdown::Write).is_err() {
+        return false;
+    }
+    let mut reply = String::new();
+    stream.read_to_string(&mut reply).is_ok() && reply.trim() == "ok"
+}
+
+// 다른 프로세스가 보낸 파일을 받아 Pending에 넣고 창에 알린 뒤, 창을 앞으로 가져온다
+fn accept_files(app: tauri::AppHandle, listener: TcpListener, single: &'static Single) {
+    for stream in listener.incoming().flatten() {
+        let _ = stream.set_read_timeout(Some(Duration::from_secs(3)));
+        let mut reader = BufReader::new(&stream);
+        let mut hello = String::new();
+        if reader.read_line(&mut hello).is_err() || hello.trim() != single.hello {
+            continue;
+        }
+        let files: Vec<String> = reader.lines().map_while(Result::ok).map(|line| line.trim().to_string()).filter(|line| !line.is_empty()).collect();
+        let _ = (&stream).write_all(b"ok\n");
+        if !files.is_empty() {
+            if let Ok(mut pending) = app.state::<Pending>().0.lock() {
+                pending.extend(files.iter().cloned());
+            }
+            let _ = app.emit_to(single.window, single.event, files);
+        }
+        if let Some(window) = app.get_webview_window(single.window) {
+            let _ = window.unminimize();
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+    }
+}
+
+// 아직 가져가지 않은 pptx 경로들을 가져간다. 화면은 처음에 한 번, "import-add"를 받을 때마다 부른다
+#[tauri::command]
+fn import_files(pending: State<Pending>) -> Vec<String> {
+    pending.0.lock().map(|mut pending| std::mem::take(&mut *pending)).unwrap_or_default()
+}
+
+// 아직 가져가지 않은, 탭으로 열 파일들을 가져간다. 화면은 처음에 한 번, "open-files"를 받을 때마다 부른다
+#[tauri::command]
+fn open_files(pending: State<Pending>) -> Vec<String> {
+    pending.0.lock().map(|mut pending| std::mem::take(&mut *pending)).unwrap_or_default()
+}
+
+// 만든 .tlide를 편집기로 연다. 편집기가 이미 떠 있으면 그 창의 탭으로 열린다
+#[tauri::command]
+fn open_in_editor(path: String) -> Result<(), String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    Command::new(exe).arg(&path).spawn().map(|_| ()).map_err(|e| format!("{path}: {e}"))
+}
+
+#[tauri::command]
+fn path_exists(path: String) -> bool {
+    std::path::Path::new(&path).exists()
 }
 
 // 프로세스를 시작한 뒤 지난 시간(ms). 시작 속도를 재려고 화면이 단계마다 부른다.
@@ -363,13 +570,30 @@ fn mark(app: tauri::AppHandle, started: State<Started>, label: String) -> f64 {
 
 fn main() {
     let started = Instant::now();
-    tauri::Builder::default()
+    // 편집기나 불러오기 창이 이미 열려 있으면 파일만 보내고 끝난다. 내보내기 창은 파일마다 따로 연다
+    let imports = import_args();
+    let single: Option<(&'static Single, Vec<String>)> = match &imports {
+        Some(files) => Some((&IMPORT, files.clone())),
+        None if export_file().is_none() => Some((&EDITOR, editor_args())),
+        None => None,
+    };
+    let mut leader = None;
+    if let Some((single, files)) = &single {
+        match elect(single, files) {
+            Election::Forwarded => return,
+            Election::Leader(listener) => leader = Some((*single, listener)),
+            Election::Alone => {}
+        }
+    }
+    let leader_lock = leader.as_ref().map(|(single, _)| single.lock_path());
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(Started(started))
+        .manage(Pending(Mutex::new(single.map(|(_, files)| files).unwrap_or_default())))
         .manage(Compiler { stdin: Mutex::new(None) })
         .manage(Agents::default())
         .manage(Watcher::default())
-        .setup(|app| {
+        .setup(move |app| {
             app.manage(mcp::start(app.handle().clone())?);
             let compiler = compiler_path(app.handle());
             let mut command = Command::new(&compiler);
@@ -391,7 +615,7 @@ fn main() {
                 }
                 let _ = child.wait();
             });
-            // 편집기 창(main)은 tauri.conf.json에서 만들지 않고(create: false) 여기서 만든다. 내보내기면 작은 창만 연다
+            // 편집기 창(main)은 tauri.conf.json에서 만들지 않고(create: false) 여기서 만든다. 내보내기, 불러오기면 그 창만 연다
             let window = if export_file().is_some() {
                 tauri::WebviewWindowBuilder::new(app, "export", tauri::WebviewUrl::App("export.html".into()))
                     .title("templide 내보내기")
@@ -400,9 +624,21 @@ fn main() {
                     .center()
                     .visible(false)
                     .build()?
+            } else if imports.is_some() {
+                tauri::WebviewWindowBuilder::new(app, "import", tauri::WebviewUrl::App("import.html".into()))
+                    .title("templide 불러오기")
+                    .inner_size(900.0, 640.0)
+                    .min_inner_size(560.0, 420.0)
+                    .center()
+                    .visible(false)
+                    .build()?
             } else {
                 tauri::WebviewWindowBuilder::from_config(app.handle(), &app.config().app.windows[0])?.build()?
             };
+            if let Some((single, listener)) = leader.take() {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || accept_files(handle, listener, single));
+            }
             // 창은 화면이 그린 뒤에 보여 준다(main.tsx, export.tsx). 화면이 실패해도 창이 숨은 채로 남지 않게 잠시 뒤 보여 준다
             std::thread::spawn(move || {
                 std::thread::sleep(std::time::Duration::from_secs(3));
@@ -410,7 +646,13 @@ fn main() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![lsp_send, read_text, write_text, startup_file, export_file, mark, import_image, import_file, save_png, read_data_url, open_path, agent_start, agent_write, agent_resize, agent_stop, watch_file, mcp::mcp_set_tools, mcp::mcp_reply, mcp::mcp_config])
-        .run(tauri::generate_context!())
+        .invoke_handler(tauri::generate_handler![lsp_send, read_text, write_text, open_files, export_file, import_files, open_in_editor, path_exists, mark, read_data_url, open_path, agent_start, agent_write, agent_resize, agent_stop, watch_file, unwatch_file, system_fonts, mcp::mcp_set_tools, mcp::mcp_reply, mcp::mcp_config])
+        .build(tauri::generate_context!())
         .expect("error while running templide editor");
+    app.run(move |_, event| {
+        // 창을 연 프로세스가 끝나면 다음에 뜨는 프로세스가 창을 열 수 있게 잠금 파일을 지운다
+        if let (Some(lock), tauri::RunEvent::Exit) = (&leader_lock, &event) {
+            let _ = std::fs::remove_file(lock);
+        }
+    });
 }

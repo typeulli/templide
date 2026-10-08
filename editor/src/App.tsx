@@ -1,32 +1,54 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
-import { ask, message, open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
+import { message, open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
 import { emitTo, listen } from '@tauri-apps/api/event';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { getVersion } from '@tauri-apps/api/app';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { Lsp, pathToUri, type DeckResult, type Diagnostic, type Origin, type Range, type Schema, type TargetWarning } from './lsp';
+import { lsp, pathToUri, type DeckResult, type Diagnostic, type Origin, type Range, type Schema, type TargetWarning } from './lsp';
 import { SlideView, findElement, selectionIn, type EditingRun, type Point, type Resize } from './SlideView';
 import { FormatBar, IconButton, Thumbnail, type StyleProperty, type Toggle } from './Panels';
 import { ElementPanel, SlidePanel, type Pickers } from './Properties';
 import { AnimationPane, type AnimationOp } from './Animations';
-import type { SetValue } from './Fields';
+import { quote, type SetValue } from './Fields';
 import { AgentPanel } from './Agents';
 import { ExportDialog, type BuildResult, type ExportTarget } from './ExportDialog';
-import { serveMcp, type EditorAccess } from './mcp';
-import { registerNavigation } from './navigation';
+import type { EditorAccess } from './mcp';
+import { attachDocument } from './navigation';
+import { FontPopup } from './FontPicker';
 import logo from '../../assets/icon/templide.svg';
 import license from '../../LICENSE?raw';
 import {
     Blend, Bot, ChevronDown, ChevronUp, CircleAlert, CircleCheck, CodeXml, Copy, FileOutput, FilePlus, Film, FolderOpen, Image as ImageIcon, Maximize, Minus,
-    Music, PanelBottomClose, PanelBottomOpen, PenTool, Play, Plus, Presentation, Redo2, Save, Slash, Sparkles, Spline, Square, Trash2, TriangleAlert, Type, Undo2, X,
+    Music, PanelBottomClose, PanelBottomOpen, PanelRightClose, PanelRightOpen, PenTool, Play, Plus, Redo2, Save, Slash, Sparkles, Spline, Square, Trash2, TriangleAlert, Type, Undo2, X,
 } from 'lucide-react';
 
 type MonacoModule = typeof import('./monaco');
+
+type AssetKind = 'image' | 'video' | 'audio';
+
+// 묶음 안 파일에 붙일 이름으로 쓸 수 없는 낱말 (키워드, 내장 이름, 함수 이름)
+const reservedNames = [
+    'slide', 'put', 'template', 'style', 'object', 'var', 'master', 'case', 'target', 'if', 'else', 'for', 'in', 'enum', 'transition', 'animate', 'group',
+    'as', 'theme', 'section', 'review', 'comment', 'bullets', 'numbers', 'dashes', 'paragraphs', 'true', 'false', 'color', 'int', 'float', 'string', 'text',
+    'bool', 'ref', 'asset', 'by', 'default', 'image', 'video', 'audio', 'file', 'link', 'action', 'run', 'program', 'macro', 'action_file', 'linear',
+    'radial', 'pattern', 'hex', 'rgb', 'rgba',
+];
+
+// 묶음 안 파일 이름(logo-1.png)에서 이름(logo_1)을 만든다. 영문자, 숫자, _만 쓸 수 있고 숫자로 시작할 수 없다
+function identifierOf(entry: string, kind: AssetKind): string {
+    const stem = entry.split('/').pop()!.replace(/\.[^.]*$/, '').replace(/[^A-Za-z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
+    return !stem ? kind : /^[0-9]/.test(stem) ? `${kind}_${stem}` : stem;
+}
+
+// folder 안의 파일이면 folder 기준 상대 경로('/'로 나눈다), 아니면 절대 경로
+function relativeTo(folder: string, file: string): string {
+    const prefix = folder.replace(/[\\/]+$/, '') + '\\';
+    const inside = file.toLowerCase().startsWith(prefix.toLowerCase()) || file.toLowerCase().startsWith(prefix.replace(/\\/g, '/').toLowerCase());
+    return (inside ? file.slice(prefix.length) : file).replace(/\\/g, '/');
+}
 type Editor = import('monaco-editor/editor/editor.api').editor.IStandaloneCodeEditor;
 type ServerEdit = { uri: string; range: Range; newText: string };
-
-const lsp = new Lsp();
 
 // LSP 범위(0부터)를 Monaco 범위(1부터)로
 const toMonaco = (range: Range) => ({
@@ -40,7 +62,30 @@ const contains = (range: Range, line: number, character: number) =>
     (line > range.start.line || (line === range.start.line && character >= range.start.character)) &&
     (line < range.end.line || (line === range.end.line && character <= range.end.character));
 
-export function App() {
+// 파일 탭 하나의 손잡이. 창(Shell)이 저장, 묶음 이름 바꾸기에 따른 코드 고치기 등을 이것으로 부탁한다
+export type DocumentHandle = {
+    path(): string | null;
+    uri(): string | null;
+    dirty(): boolean;
+    save(): Promise<boolean>; // 저장했으면 true
+    flush(): void;            // 입력 중인 내용을 컴파일러에 보낸다
+    edit(edits: { range: Range; newText: string }[]): boolean; // 코드를 고친다. 한 번의 실행 취소로 되돌릴 수 있다
+    reveal(range: Range): void; // 코드에서 그 자리를 보여 준다
+    refresh(): void;          // 다시 컴파일한 덱을 받는다 (묶음이 바뀌었을 때)
+};
+
+type DocumentProps = {
+    tab: string;          // 탭 id. AI 탭의 에이전트는 MCP로 이 탭의 문서를 고친다
+    file: string | null;  // 처음에 열 파일. 없으면 빈 탭
+    active: boolean;      // 보이는 탭
+    accesses: Map<string, EditorAccess>; // 탭 id -> MCP 도구가 보는 상태
+    register(handle: DocumentHandle | null): void;
+    onInfo(info: { path: string | null; dirty: boolean }): void; // 탭에 보일 파일과 저장하지 않은 변경
+    onOpen(file: string): void; // 파일을 탭으로 연다 (새 파일, 열기)
+};
+
+// 파일 탭 하나의 편집 화면. 창(Shell)이 탭마다 하나씩 띄우고 보이지 않는 탭은 숨겨 둔다
+export function App({ tab, file, active, accesses, register, onInfo, onOpen }: DocumentProps) {
     const [path, setPath] = useState<string | null>(null);
     const [text, setText] = useState('');
     const [deck, setDeck] = useState<DeckResult | null>(null);
@@ -54,6 +99,7 @@ export function App() {
     const [monacoReady, setMonacoReady] = useState(false);
     const [notice, setNotice] = useState<string | null>(null);
     const [codeOpen, setCodeOpen] = useState(true); // 코드 패널은 처음부터 보인다
+    const propsOpen = usePropsOpen(); // 오른쪽 패널 (속성)
     const [bottomTab, setBottomTab] = useState<BottomTab>('code'); // 코드 패널에서 보이는 탭
     const [sizes, setSizes] = useState<Sizes>(loadSizes); // 경계를 끌어 바꾼 패널 크기
     const sizesRef = useRef(sizes);
@@ -75,6 +121,15 @@ export function App() {
     type Clip = { kind: 'copy'; id: string; page: number } | { kind: 'cut'; text: string };
     const clipboard = useRef<Clip | null>(null);
     const openFileRef = useRef<(file: string) => Promise<void>>(async () => {}); // 아래에서 만드는 openFile
+    const activeRef = useRef(active);
+    activeRef.current = active;
+    const onOpenRef = useRef(onOpen);
+    onOpenRef.current = onOpen;
+    const onInfoRef = useRef(onInfo);
+    onInfoRef.current = onInfo;
+    const detachDocument = useRef<(() => void) | null>(null); // 이름 찾기, 자동 완성에서 이 편집기를 뗀다
+    // 코드의 font("...") 옆 ▾를 눌러 연 폰트 목록. range는 따옴표 안의 글자
+    const [fontPopup, setFontPopup] = useState<{ x: number; y: number; range: import('monaco-editor/editor/editor.api').IRange; current: string } | null>(null);
 
     const uri = useRef<string | null>(null);
     const version = useRef(1);       // 컴파일러에 보낸 문서의 판
@@ -281,7 +336,10 @@ export function App() {
             showNotice('다시 컴파일하는 중이거나 코드에 오류가 있어 지금은 캔버스에서 고칠 수 없습니다');
             return false;
         }
-        const result = await lsp.request<{ edits?: ServerEdit[]; error?: string }>('templide/edit', { uri: uri.current, target: targetRef.current, edits });
+        // 값과 함께 온 선언(declare)은 모아서 파일 위쪽에 넣는 op 하나로 보낸다
+        const declarations = (edits as { declare?: string }[]).map((each) => each.declare ?? '').join('');
+        const ops = [...(declarations ? [{ op: 'declare', text: declarations }] : []), ...(edits as { declare?: string }[]).map(({ declare: _, ...rest }) => rest)];
+        const result = await lsp.request<{ edits?: ServerEdit[]; error?: string }>('templide/edit', { uri: uri.current, target: targetRef.current, edits: ops });
         if (result.error) {
             showNotice(result.error);
             return false;
@@ -295,7 +353,6 @@ export function App() {
         requestEdit(Object.entries(change).map(([name, value]) => ({ op: 'set', id, name, length: value, instance }))), [requestEdit]);
     const onText = useCallback((id: string, paragraph: number, run: number, value: string) =>
         requestEdit([{ op: 'text', id, paragraph, run, text: value }]), [requestEdit]);
-    const onSize = useCallback((width: number, height: number) => requestEdit([{ op: 'size', width, height }]), [requestEdit]);
 
     const onSetProperty = useCallback((name: string, value: SetValue) => {
         if (selectedRef.current) {
@@ -325,8 +382,8 @@ export function App() {
         return model.getValueInRange(toMonaco(origin.range));
     }, []);
 
-    // 슬라이드 가운데에 w x h 크기로 새 요소를 넣고, 다시 컴파일한 뒤 그 요소를 고른다
-    const insertObject = useCallback(async (object: string, w: number, h: number, extra: object[]) => {
+    // 슬라이드 가운데에 w x h 크기로 새 요소를 넣고, 다시 컴파일한 뒤 그 요소를 고른다. declare는 함께 넣을 파일 위쪽의 선언이다
+    const insertObject = useCallback(async (object: string, w: number, h: number, extra: object[], declare = '') => {
         const current = deckRef.current;
         if (!current) {
             return;
@@ -339,7 +396,7 @@ export function App() {
         ];
         const before = new Set(Object.keys(current.elements).filter((id) => id.startsWith(`${pageRef.current + 1}/`)));
         newElement.current = { page: pageRef.current, before };
-        if (!await requestEdit([{ op: 'insert', page: pageRef.current + 1, object, properties }])) {
+        if (!await requestEdit([{ op: 'insert', page: pageRef.current + 1, object, properties, declare }])) {
             newElement.current = null;
         }
     }, [requestEdit]);
@@ -348,7 +405,68 @@ export function App() {
         ? insertObject('text_box', 400, 80, [{ name: 'text', string: '새 글상자' }])
         : insertObject('shape', 300, 200, [{ name: 'kind', enum: 'rect' }]), [insertObject]);
 
-    // 그림을 문서 폴더의 images로 복사하고, 비율을 지켜 슬라이드의 절반 안에 들어가게 넣는다
+    // 파일들을 기본 묶음(asset "..." default;)에 넣고, 파일마다 이름을 붙인 선언(image 이름 = asset("...");)을 만든다.
+    // 기본 묶음이 없으면 새 묶음을 저장할 곳을 묻고 asset 문도 함께 만든다. codes는 파일마다 붙인 이름이다
+    const addAssets = useCallback(async (files: { kind: AssetKind; file: { source: string } | { base64: string; name: string } }[]): Promise<{ codes: string[]; declare: string } | null> => {
+        if (!pathRef.current || !uri.current) {
+            showNotice('먼저 파일을 저장하거나 열어 주세요');
+            return null;
+        }
+        const current = await lsp.request<Schema & { error?: string }>('templide/schema', { uri: uri.current });
+        if (current.error) {
+            showNotice('코드를 아직 분석하지 못해 파일을 넣을 수 없습니다');
+            return null;
+        }
+        const folder = pathRef.current.replace(/[\\/][^\\/]*$/, '');
+        let declare = '';
+        let bundle: string;
+        let reference: (entry: string) => string;
+        const target = current.assets.find((asset) => asset.default);
+        if (target) {
+            bundle = target.bundle;
+            reference = (entry) => !target.hasBy ? `asset(${quote(entry)})`
+                : target.namespaces.length > 0 ? `asset(${quote(target.namespaces[0] + '.' + entry)})` : `file(${quote(target.written + '/' + entry)})`;
+        } else {
+            const stem = pathRef.current.split(/[\\/]/).pop()!.replace(/\.[^.]*$/, '');
+            const chosen = await saveDialog({ title: '그림과 미디어를 담을 묶음 만들기', defaultPath: `${folder}\\${stem}.tasset`, filters: [{ name: 'Templide Asset', extensions: ['tasset'] }] });
+            if (!chosen) {
+                return null;
+            }
+            bundle = chosen;
+            declare += `asset ${quote(relativeTo(folder, chosen))} default;\n`;
+            reference = (entry) => `asset(${quote(entry)})`;
+        }
+        const taken = new Set([...reservedNames, ...Object.keys(current.constants), ...Object.keys(current.styles), ...Object.keys(current.objects),
+            ...Object.keys(current.templates), ...Object.keys(current.enums), ...Object.keys(current.masters), ...current.themes]);
+        const codes: string[] = [];
+        for (const { kind, file } of files) {
+            const added = await lsp.request<{ name?: string; error?: string }>('templide/asset_add', { bundle, ...file });
+            if (!added.name) {
+                showNotice(added.error ?? '파일을 묶음에 넣을 수 없습니다');
+                return null;
+            }
+            let name = identifierOf(added.name, kind);
+            for (let number = 2; taken.has(name); ++number) {
+                name = `${identifierOf(added.name, kind)}_${number}`;
+            }
+            taken.add(name);
+            codes.push(name);
+            declare += `${kind} ${name} = ${reference(added.name)};\n`;
+        }
+        return { codes, declare };
+    }, [showNotice]);
+
+    // 파일을 골라 기본 묶음에 넣는다
+    const pickAsset = useCallback(async (kind: AssetKind, title: string, extensions: string[]): Promise<SetValue | null> => {
+        const file = await openDialog({ multiple: false, filters: [{ name: title, extensions }] });
+        if (typeof file !== 'string') {
+            return null;
+        }
+        const added = await addAssets([{ kind, file: { source: file } }]);
+        return added ? { code: added.codes[0], declare: added.declare } : null;
+    }, [addAssets]);
+
+    // 그림을 기본 묶음에 넣고, 비율을 지켜 슬라이드의 절반 안에 들어가게 넣는다
     const insertImage = useCallback(async () => {
         const current = deckRef.current;
         if (!current || !pathRef.current) {
@@ -359,7 +477,6 @@ export function App() {
             return;
         }
         try {
-            const relative = await invoke<string>('import_image', { source: file, document: pathRef.current });
             const url = await invoke<string>('read_data_url', { path: file });
             const size = await new Promise<{ w: number; h: number }>((resolve) => {
                 const image = new Image();
@@ -367,43 +484,23 @@ export function App() {
                 image.onerror = () => resolve({ w: 400, h: 300 });
                 image.src = url;
             });
+            const added = await addAssets([{ kind: 'image', file: { source: file } }]);
+            if (!added) {
+                return;
+            }
             const fit = Math.min(1, current.width / 2 / size.w, current.height / 2 / size.h);
-            await insertObject('image', size.w * fit, size.h * fit, [{ name: 'path', string: relative }]);
+            await insertObject('image', size.w * fit, size.h * fit, [{ name: 'data', code: added.codes[0] }], added.declare);
         } catch (error) {
             showNotice(String(error));
         }
-    }, [insertObject, showNotice]);
+    }, [insertObject, addAssets, showNotice]);
 
-    // 문서 폴더로 파일을 가져와 적을 상대 경로를 돌려준다
-    const importFile = useCallback(async (title: string, extensions: string[], folder: string): Promise<string | null> => {
-        if (!pathRef.current) {
-            showNotice('먼저 파일을 저장하거나 열어 주세요');
-            return null;
-        }
-        const file = await openDialog({ multiple: false, filters: [{ name: title, extensions }] });
-        if (typeof file !== 'string') {
-            return null;
-        }
-        try {
-            return await invoke<string>('import_file', { source: file, document: pathRef.current, folder });
-        } catch (error) {
-            showNotice(String(error));
-            return null;
-        }
-    }, [showNotice]);
-
-    // 문서 폴더 기준 상대 경로를 절대 경로로
-    const absolute = (relative: string) => {
-        const folder = pathRef.current!.replace(/[\\/][^\\/]*$/, '');
-        return /^[a-zA-Z]:|^[\\/]/.test(relative) ? relative : `${folder}\\${relative.replace(/\//g, '\\')}`;
-    };
-
-    // 비디오의 크기와 첫 장면(0.1초)을 읽는다. 첫 장면은 문서 폴더의 media에 png로 저장한다
-    const probeVideo = useCallback(async (relative: string): Promise<{ w: number; h: number; poster: string | null }> => {
+    // 비디오(url)의 크기와 첫 장면(0.1초)을 읽는다. 첫 장면은 png의 base64다
+    const probeVideo = useCallback(async (url: string): Promise<{ w: number; h: number; poster: string | null }> => {
         const video = document.createElement('video');
         video.muted = true;
         video.preload = 'auto';
-        video.src = convertFileSrc(absolute(relative));
+        video.src = url;
         const loaded = await new Promise<boolean>((resolve) => {
             video.onloadeddata = () => resolve(true);
             video.onerror = () => resolve(false);
@@ -423,9 +520,7 @@ export function App() {
         let poster: string | null = null;
         try {
             canvas.getContext('2d')!.drawImage(video, 0, 0);
-            const data = canvas.toDataURL('image/png').split(',')[1];
-            const stem = relative.split(/[\\/]/).pop()!.replace(/\.[^.]*$/, '') + '-poster';
-            poster = await invoke<string>('save_png', { document: pathRef.current, folder: 'media', stem, base64: data });
+            poster = canvas.toDataURL('image/png').split(',')[1];
         } catch (error) {
             showNotice(`표지 그림을 만들 수 없습니다: ${error}`);
         }
@@ -433,33 +528,52 @@ export function App() {
     }, [showNotice]);
 
     const pickers: Pickers = {
-        image: () => importFile('그림', ['png', 'jpg', 'jpeg', 'gif', 'bmp'], 'images'),
-        media: (kind) => kind === 'video' ? importFile('비디오', ['mp4', 'webm'], 'media') : importFile('오디오', ['mp3', 'wav', 'm4a'], 'media'),
-        sound: () => importFile('소리 (wav)', ['wav'], 'sounds'),
+        image: () => pickAsset('image', '그림', ['png', 'jpg', 'jpeg', 'gif', 'bmp']),
+        media: (kind) => kind === 'video' ? pickAsset('video', '비디오', ['mp4', 'webm']) : pickAsset('audio', '오디오', ['mp3', 'wav', 'm4a']),
+        sound: () => pickAsset('audio', '소리 (wav)', ['wav']),
         poster: async (id) => {
-            const path = deckRef.current?.elements[id]?.values.path;
-            return typeof path === 'string' && path ? (await probeVideo(path)).poster : null;
+            // 캔버스의 비디오는 디스크 파일(묶음 안의 파일은 풀어 둔 것)을 "file:경로"로 가리킨다
+            const element = findElement(deckRef.current?.deck.slides.flatMap((slide: { els: unknown[] }) => slide.els) ?? [], id);
+            const source = typeof element?.src === 'string' && element.src.startsWith('file:') ? element.src.slice(5) : null;
+            if (!source) {
+                return null;
+            }
+            const { poster } = await probeVideo(convertFileSrc(source));
+            if (!poster) {
+                return null;
+            }
+            const stem = source.split(/[\\/]/).pop()!.replace(/\.[^.]*$/, '');
+            const added = await addAssets([{ kind: 'image', file: { base64: poster, name: `${stem}-poster.png` } }]);
+            return added ? { code: added.codes[0], declare: added.declare } : null;
         },
     };
 
-    // 비디오: 가져와서 비율을 지켜 슬라이드의 절반 안에 넣고, 첫 장면을 표지 그림으로 쓴다
+    // 비디오: 기본 묶음에 넣고 비율을 지켜 슬라이드의 절반 안에 넣는다. 첫 장면을 표지 그림으로 쓴다
     const insertVideo = useCallback(async () => {
         const current = deckRef.current;
-        const relative = await importFile('비디오', ['mp4', 'webm'], 'media');
-        if (!current || !relative) {
+        const file = await openDialog({ multiple: false, filters: [{ name: '비디오', extensions: ['mp4', 'webm'] }] });
+        if (!current || typeof file !== 'string') {
             return;
         }
-        const { w, h, poster } = await probeVideo(relative);
+        const { w, h, poster } = await probeVideo(convertFileSrc(file));
+        const stem = file.split(/[\\/]/).pop()!.replace(/\.[^.]*$/, '');
+        const added = await addAssets([
+            { kind: 'video', file: { source: file } },
+            ...(poster ? [{ kind: 'image' as const, file: { base64: poster, name: `${stem}-poster.png` } }] : []),
+        ]);
+        if (!added) {
+            return;
+        }
         const fit = Math.min(1, current.width / 2 / w, current.height / 2 / h);
-        await insertObject('video', w * fit, h * fit, [{ name: 'path', string: relative }, ...(poster ? [{ name: 'poster', string: poster }] : [])]);
-    }, [importFile, probeVideo, insertObject]);
+        await insertObject('video', w * fit, h * fit, [{ name: 'data', code: added.codes[0] }, ...(poster ? [{ name: 'poster', code: added.codes[1] }] : [])], added.declare);
+    }, [addAssets, probeVideo, insertObject]);
 
     const insertAudio = useCallback(async () => {
-        const relative = await importFile('오디오', ['mp3', 'wav', 'm4a'], 'media');
-        if (relative) {
-            await insertObject('audio', 48, 48, [{ name: 'path', string: relative }]);
+        const picked = await pickAsset('audio', '오디오', ['mp3', 'wav', 'm4a']);
+        if (picked) {
+            await insertObject('audio', 48, 48, [{ name: 'data', code: picked.code }], picked.declare);
         }
-    }, [importFile, insertObject]);
+    }, [pickAsset, insertObject]);
 
     // 선은 가운데 가로로, 배경 흐림은 가운데 사각형으로 넣는다
     const insertLine = useCallback(async () => {
@@ -602,7 +716,7 @@ export function App() {
             '',
         ].join('\n');
         await invoke('write_text', { path: file, text: content });
-        await openFileRef.current(file);
+        onOpenRef.current(file);
     }, []);
 
     // 복사한 요소를 지금 slide에 붙인다. 같은 slide면 조금 옮긴다. 잘라 낸 것은 원래 자리 그대로 붙인다
@@ -755,7 +869,8 @@ export function App() {
         }
         const { MarkerSeverity } = monaco.current.monaco;
         monaco.current.monaco.editor.setModelMarkers(model, 'templide', [
-            ...list.map((d) => ({ ...toMonaco(d.range), message: d.message, severity: MarkerSeverity.Error })),
+            // 컴파일러의 경고(severity 2, sRGB 밖의 색 등)는 노란 밑줄
+            ...list.map((d) => ({ ...toMonaco(d.range), message: d.message, severity: d.severity === 2 ? MarkerSeverity.Warning : MarkerSeverity.Error })),
             ...warningList.map((d) => ({ ...toMonaco(d.range), message: d.message, severity: MarkerSeverity.Warning })),
         ]);
     }, []);
@@ -832,9 +947,9 @@ export function App() {
         return { count: offsets.length, renamed: lastRenamed.current };
     }, [sendChange]);
 
-    const save = useCallback(async () => {
+    const save = useCallback(async (): Promise<boolean> => {
         if (!pathRef.current || !editor.current) {
-            return;
+            return false;
         }
         // VS Code처럼, 연 뒤에 다른 프로그램이 파일을 고쳤으면 덮어쓸지 묻는다
         const disk = await invoke<string>('read_text', { path: pathRef.current }).catch(() => null);
@@ -844,50 +959,18 @@ export function App() {
             });
             if (choice === 'No' || choice === '파일 내용으로 되돌리기') {
                 reloadFromDisk(disk);
-                return;
+                return false;
             }
             if (choice !== 'Yes' && choice !== '덮어쓰기') {
-                return;
+                return false;
             }
         }
         const content = editor.current.getValue();
         await invoke('write_text', { path: pathRef.current, text: content });
         diskText.current = content;
         setDirty(false);
+        return true;
     }, [reloadFromDisk]);
-
-    // 자동 완성은 컴파일러(textDocument/completion)에 묻는다. LSP의 종류 번호를 Monaco의 것으로 바꾼다
-    const registerCompletion = useCallback((m: MonacoModule['monaco']) => {
-        const K = m.languages.CompletionItemKind;
-        const kinds: Record<number, number> = {
-            3: K.Function, 6: K.Variable, 7: K.Class, 9: K.Module, 10: K.Property, 12: K.Value, 14: K.Keyword, 15: K.Snippet,
-            16: K.Color, 17: K.File, 20: K.EnumMember, 22: K.Struct,
-        };
-        m.languages.registerCompletionItemProvider('tlide', {
-            triggerCharacters: ['.', '<', ' ', '=', '('],
-            provideCompletionItems: async (model, position) => {
-                if (!uri.current) {
-                    return { suggestions: [] };
-                }
-                flushChange();
-                const result = await lsp.request<{ items: any[] }>('textDocument/completion', {
-                    textDocument: { uri: uri.current },
-                    position: { line: position.lineNumber - 1, character: position.column - 1 },
-                });
-                return {
-                    suggestions: result.items.map((item) => ({
-                        label: item.label,
-                        kind: kinds[item.kind] ?? K.Text,
-                        detail: item.detail,
-                        insertText: item.textEdit.newText,
-                        insertTextRules: item.insertTextFormat === 2 ? m.languages.CompletionItemInsertTextRule.InsertAsSnippet : undefined,
-                        range: toMonaco(item.textEdit.range),
-                        sortText: item.sortText,
-                    })),
-                };
-            },
-        });
-    }, [flushChange]);
 
     const loadMonaco = useCallback(async () => {
         if (monaco.current) {
@@ -901,6 +984,7 @@ export function App() {
             fontFamily: 'Consolas, "Malgun Gothic", monospace',
             fontSize: 14,
             minimap: { enabled: false },
+            theme: 'templide',
         });
         editor.current = instance;
         instance.onDidChangeModelContent(() => {
@@ -943,16 +1027,28 @@ export function App() {
             }
             setSelected(best);
         });
-        instance.addCommand(monaco.current.monaco.KeyMod.CtrlCmd | monaco.current.monaco.KeyCode.KeyS, () => save());
-        registerCompletion(monaco.current.monaco);
-        registerNavigation(monaco.current.monaco, { lsp, editor: instance, mainUri: () => uri.current, flush: flushChange });
+        // addCommand는 마지막에 만든 편집기에 걸리므로, 탭마다 있는 편집기에는 그 편집기에만 붙는 동작으로 둔다
+        instance.addAction({ id: 'templide.save', label: '저장', keybindings: [monaco.current.monaco.KeyMod.CtrlCmd | monaco.current.monaco.KeyCode.KeyS], run: () => { save(); } });
+        detachDocument.current = attachDocument(monaco.current.monaco, lsp, instance, {
+            uri: () => uri.current,
+            flush: flushChange,
+            // ▾ 아래에 폰트 목록을 연다
+            pickFont: (range) => {
+                const at = instance.getScrolledVisiblePosition({ lineNumber: range.endLineNumber, column: range.endColumn + 2 });
+                const box = instance.getDomNode()?.getBoundingClientRect();
+                const model = instance.getModel();
+                if (at && box && model) {
+                    setFontPopup({ x: box.left + at.left, y: box.top + at.top + at.height + 2, range, current: model.getValueInRange(range) });
+                }
+            },
+        });
         setMonacoReady(true);
         setMarkers(diagnosticsRef.current);
         if (deckRef.current && deckVersion.current === version.current) {
             retrackIds(deckRef.current); // 덱이 Monaco보다 먼저 나왔으면 여기서 id 추적을 시작한다
         }
         await mark('monaco');
-    }, [sendChange, flushChange, setMarkers, mark, save, registerCompletion, retrackIds]);
+    }, [sendChange, flushChange, setMarkers, mark, save, retrackIds]);
 
     const openFile = useCallback(async (file: string) => {
         const content = await invoke<string>('read_text', { path: file });
@@ -1007,45 +1103,34 @@ export function App() {
         anchor.current = { decorations, head: parts[0], rest: parts.slice(2).join('/') };
     }, [selected, deck, monacoReady]);
 
-    // 시작: 컴파일러와 연결하고, 명령줄의 파일을 열고, 첫 슬라이드를 그린 뒤에 Monaco를 불러온다
+    // 시작: 탭의 파일을 열고, 첫 슬라이드를 그린 뒤에 Monaco를 불러온다. 컴파일러 연결, MCP, 창 닫기 확인은 창(Shell)이 한다
     useEffect(() => {
+        const offDiagnostics = lsp.onNotification('textDocument/publishDiagnostics', (params) => {
+            if (params.uri === uri.current) {
+                setDiagnostics(params.diagnostics);
+                setMarkers(params.diagnostics);
+            }
+        });
+        // 연 파일이 밖에서 바뀌면: 저장하지 않은 변경이 없으면 다시 읽고, 있으면 알리기만 한다 (저장할 때 묻는다)
+        let changeTimer = 0;
+        const offChanged = listen<string>('file-changed', ({ payload }) => {
+            if (payload !== pathRef.current) {
+                return;
+            }
+            window.clearTimeout(changeTimer);
+            changeTimer = window.setTimeout(async () => {
+                const content = await invoke<string>('read_text', { path: payload }).catch(() => null);
+                if (content === null || content === diskText.current) {
+                    return;
+                }
+                if (dirtyRef.current) {
+                    showNotice('파일이 편집기 밖에서 바뀌었습니다. 저장할 때 어떻게 할지 묻습니다');
+                } else {
+                    reloadFromDisk(content);
+                }
+            }, 200);
+        });
         (async () => {
-            await lsp.start();
-            lsp.onNotification('textDocument/publishDiagnostics', (params) => {
-                if (params.uri === uri.current) {
-                    setDiagnostics(params.diagnostics);
-                    setMarkers(params.diagnostics);
-                }
-            });
-            await lsp.request('initialize', { processId: null, rootUri: null, capabilities: {} });
-            lsp.notify('initialized', {});
-            serveMcp(() => mcpAccess.current!).catch((error) => console.error('mcp', error));
-            // 연 파일이 밖에서 바뀌면: 저장하지 않은 변경이 없으면 다시 읽고, 있으면 알리기만 한다 (저장할 때 묻는다)
-            let changeTimer = 0;
-            listen<string>('file-changed', ({ payload }) => {
-                window.clearTimeout(changeTimer);
-                changeTimer = window.setTimeout(async () => {
-                    if (payload !== pathRef.current) {
-                        return;
-                    }
-                    const content = await invoke<string>('read_text', { path: payload }).catch(() => null);
-                    if (content === null || content === diskText.current) {
-                        return;
-                    }
-                    if (dirtyRef.current) {
-                        showNotice('파일이 편집기 밖에서 바뀌었습니다. 저장할 때 어떻게 할지 묻습니다');
-                    } else {
-                        reloadFromDisk(content);
-                    }
-                }, 200);
-            });
-            // 마지막으로 저장한 뒤 고친 것이 있으면 창을 닫기 전에 묻는다
-            getCurrentWindow().onCloseRequested(async (event) => {
-                if (dirtyRef.current && !await ask('저장하지 않은 변경이 있습니다. 정말 종료할까요?', { title: 'templide', kind: 'warning', okLabel: '종료', cancelLabel: '취소' })) {
-                    event.preventDefault();
-                }
-            });
-            const file = await invoke<string | null>('startup_file');
             if (file) {
                 await openFile(file);
             } else {
@@ -1053,14 +1138,37 @@ export function App() {
                 loadMonaco();
             }
         })().catch((error) => setDeckError(String(error)));
+        // 탭을 닫으면 컴파일러에 알리고 파일 감시와 편집기를 정리한다
+        return () => {
+            offDiagnostics();
+            offChanged.then((off) => off());
+            window.clearTimeout(changeTimer);
+            window.clearTimeout(pending.current);
+            if (uri.current) {
+                lsp.notify('textDocument/didClose', { textDocument: { uri: uri.current } });
+            }
+            if (pathRef.current) {
+                invoke('unwatch_file', { path: pathRef.current }).catch(() => {});
+            }
+            detachDocument.current?.();
+            editor.current?.dispose();
+            accesses.delete(tab);
+        };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // 다른 탭으로 가면 자유형 그리기를 그만둔다 (그리기는 창 전체의 키를 듣는다)
+    useEffect(() => {
+        if (!active) {
+            setMode((current) => current === 'draw' ? null : current);
+        }
+    }, [active]);
 
     // 캔버스에서 고친 것도 코드의 실행 취소 기록에 있으므로, 포커스가 코드 밖에 있어도 Ctrl+Z, Ctrl+Y는 Monaco로 보낸다
     useEffect(() => {
         const keydown = (event: KeyboardEvent) => {
             const target = event.target as HTMLElement;
-            if (!editor.current || target.closest('.code-host, input, select, textarea, [contenteditable="true"]')) {
+            if (!activeRef.current || !editor.current || target.closest('.code-host, input, select, textarea, [contenteditable="true"]')) {
                 return;
             }
             if (event.key === 'F5') {
@@ -1116,12 +1224,13 @@ export function App() {
         return () => window.removeEventListener('keydown', keydown);
     }, [save, remove, slideAction, startShow, paste, cut, showNotice]);
 
+    // 고른 파일마다 탭을 연다. .tasset은 묶음 보기 탭으로 열린다
     const pickFile = useCallback(async () => {
-        const file = await openDialog({ multiple: false, filters: [{ name: 'templide', extensions: ['tlide'] }] });
-        if (typeof file === 'string') {
-            await openFile(file);
+        const files = await openDialog({ multiple: true, filters: [{ name: 'templide (.tlide, .tasset)', extensions: ['tlide', 'tasset'] }] });
+        for (const each of Array.isArray(files) ? files : typeof files === 'string' ? [files] : []) {
+            onOpenRef.current(each);
         }
-    }, [openFile]);
+    }, []);
 
     // 요소를 누르면 그 요소를 만든 put을 코드에서 보여 준다
     const select = useCallback((id: string | null) => {
@@ -1152,8 +1261,18 @@ export function App() {
         }
     }, [mark, loadMonaco]);
 
+    // 그릴 슬라이드가 없거나(슬라이드가 없는 문서) 처음부터 코드에 오류가 있어 덱이 없으면 첫 그림을 기다리지 않고 코드 편집기를 띄운다
+    useEffect(() => {
+        if ((deck && deck.deck.slides.length === 0) || (!deck && deckError)) {
+            onFirstPaint();
+        }
+    }, [deck, deckError, onFirstPaint]);
+
     const slideCount = deck?.deck.slides.length ?? 0;
-    const errorCount = diagnostics.length;
+    const errors = diagnostics.filter((diagnostic) => diagnostic.severity !== 2);
+    const compileWarnings = diagnostics.filter((diagnostic) => diagnostic.severity === 2); // sRGB 밖의 색 등
+    const errorCount = errors.length;
+    const warningCount = compileWarnings.length + warnings.length;
     const ready = !!deck && monacoReady;
     const textSelected = !!selected && !!deck?.elements[selected]?.text;
     const fileName = path ? path.split(/[\\/]/).pop() : null;
@@ -1177,6 +1296,27 @@ export function App() {
         build: exportTarget,
         resolve: (id) => deck?.elements[id] ? id : idAliases.current.get(id) ?? null,
     };
+    accesses.set(tab, mcpAccess.current);
+    // 손잡이는 처음 한 번 넘기므로 지금 함수를 ref로 읽는다
+    const latest = useRef({ save, flushChange, applyEdits, revealProblem, refreshDeck });
+    latest.current = { save, flushChange, applyEdits, revealProblem, refreshDeck };
+    useEffect(() => {
+        register({
+            path: () => pathRef.current,
+            uri: () => uri.current,
+            dirty: () => dirtyRef.current,
+            save: () => latest.current.save(),
+            flush: () => latest.current.flushChange(),
+            edit: (edits) => !!editor.current && !!uri.current && latest.current.applyEdits(edits.map((edit) => ({ uri: uri.current!, ...edit }))),
+            reveal: (range) => latest.current.revealProblem({ range, message: '', severity: 1 }),
+            refresh: () => { latest.current.refreshDeck(); },
+        });
+        return () => register(null);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+    useEffect(() => {
+        onInfoRef.current({ path, dirty });
+    }, [path, dirty]);
     const folder = path ? path.replace(/[\\/][^\\/]*$/, '') : null; // AI 탭의 에이전트를 실행하는 폴더
     // 다른 탭을 누르면 그 탭을 펼치고, 보이는 탭을 다시 누르면 패널을 접는다
     const openTab = (tab: BottomTab) => {
@@ -1188,20 +1328,16 @@ export function App() {
         }
     };
     return (
-        <div className={'app' + (codeOpen ? '' : ' code-closed') + (paneOpen ? ' pane-open' : '') + (isMac ? ' mac' : '')} style={{
-            '--slides-w': `${sizes.slides}px`, '--props-w': `${sizes.props}px`, '--pane-w': `${sizes.pane}px`, '--code-h': `${sizes.code}px`,
+        <div className={'app' + (codeOpen ? '' : ' code-closed') + (paneOpen ? ' pane-open' : '')} style={{
+            '--slides-w': `${sizes.slides}px`, '--props-w': propsOpen ? `${sizes.props}px` : '0px', '--pane-w': `${sizes.pane}px`, '--code-h': `${sizes.code}px`,
         } as CSSProperties}>
-            {/* 창 제목 줄을 겸한다. 빈 곳을 끌면 창이 움직이고, 두 번 누르면 최대화한다 */}
+            {/* 빈 곳을 끌면 창이 움직이고, 두 번 누르면 최대화한다. 로고와 창 버튼은 위의 탭 줄(Shell)에 있다 */}
             <header className="toolbar" data-tauri-drag-region>
-                <span className="brand" data-tauri-drag-region><AppMenu /></span>
                 <span className="tool-group">
                     <IconButton icon={FilePlus} title="새 파일" onClick={newFile} />
                     <IconButton icon={FolderOpen} title="열기" onClick={pickFile} />
                     <IconButton icon={Save} title="저장 (Ctrl+S)" onClick={save} disabled={!path || !dirty} />
-                </span>
-                <span className="file" title={path ?? undefined}>
-                    {fileName ?? '파일을 열어 주세요'}
-                    {dirty && <span className="dirty" title="저장하지 않은 변경" />}
+                    <IconButton icon={FileOutput} title="내보내기 (만들 target 고르기)" disabled={!deck} onClick={() => setExportOpen(true)} />
                 </span>
                 <span className="separator" />
                 {/* 글자가 있는 개체를 고르면 서식 막대를, 아니면 넣기 버튼을 보여 준다 */}
@@ -1225,15 +1361,13 @@ export function App() {
                     <IconButton icon={Trash2} title="선택한 요소 지우기 (Delete)" disabled={!selected || !monacoReady} onClick={remove} danger />
                 </span>
                 <span className="spacer" data-tauri-drag-region />
-                <IconButton icon={Presentation} title="슬라이드 설정 (배경, 화면 전환, 메모)" disabled={!deck} active={!selected && !!deck} onClick={() => setSelected(null)} />
+                {/* 오른쪽 패널은 고른 개체가 있으면 개체 설정, 없으면 슬라이드 설정을 보인다 */}
+                <IconButton icon={propsOpen ? PanelRightClose : PanelRightOpen} title={propsOpen ? '오른쪽 패널 닫기' : '오른쪽 패널 열기'} onClick={() => setPropsOpen(!propsOpen)} />
                 <IconButton icon={Sparkles} title="애니메이션 창" disabled={!deck} active={paneOpen} onClick={() => setPaneOpen(!paneOpen)} />
-                <IconButton icon={FileOutput} title="내보내기 (만들 target 고르기)" disabled={!deck} onClick={() => setExportOpen(true)} />
+                <TargetPicker deck={deck} target={target} onTarget={(name) => { targetRef.current = name; setTarget(name); refreshDeck(); }} />
                 <button className="play-button" disabled={!deck} title="슬라이드 쇼 (F5: 처음부터, Shift+F5: 지금 슬라이드부터)" onClick={() => startShow(false)}>
                     <Play size={14} fill="currentColor" /> 슬라이드 쇼
                 </button>
-                <span className="separator" />
-                <SizeBar deck={deck} target={target} onTarget={(name) => { targetRef.current = name; setTarget(name); refreshDeck(); }} onSize={onSize} />
-                {!isMac && <WindowControls />}
             </header>
             <nav className="slides">
                 <SlideList deck={deck} count={slideCount} page={Math.min(page, slideCount - 1)} ready={ready} onPage={setPage} onAction={slideAction} onMove={moveSlide} />
@@ -1289,7 +1423,7 @@ export function App() {
                     </div>
                 )}
             </main>
-            {deck && selected && deck.elements[selected]
+            {!propsOpen ? null : deck && selected && deck.elements[selected]
                 ? <ElementPanel key={selected} deck={deck} schema={schema} page={Math.min(page, slideCount - 1)} id={selected} info={deck.elements[selected]} pickers={pickers}
                     readSource={readSource} onSet={onSetProperty} onUnset={onUnsetProperty} onOrder={order} onAnimation={onAnimation} onPreview={() => startPreview(false)} />
                 : deck && slideCount > 0
@@ -1311,8 +1445,8 @@ export function App() {
                     <button className={'code-tab' + (bottomTab === 'problems' ? ' active' : '')} onClick={() => openTab('problems')}>
                         {errorCount > 0
                             ? <span className="error-count">{errorCount}</span>
-                            : warnings.length > 0
-                                ? <span className="warning-count">{warnings.length}</span>
+                            : warningCount > 0
+                                ? <span className="warning-count">{warningCount}</span>
                                 : <CircleCheck size={15} className="problems-ok" />}
                         문제
                     </button>
@@ -1329,15 +1463,22 @@ export function App() {
                 <div className="code-body">
                     <div ref={codeHost} className="code-host" style={{ display: monacoReady && bottomTab === 'code' ? 'block' : 'none' }} />
                     {!monacoReady && bottomTab === 'code' && <pre className="code-placeholder">{text}</pre>}
-                    <AgentPanel visible={codeOpen && bottomTab === 'ai'} folder={folder} />
+                    <AgentPanel visible={codeOpen && bottomTab === 'ai'} folder={folder} session={tab} />
                     {bottomTab === 'problems' && (
                         <div className="problems">
-                            {errorCount === 0 && warnings.length === 0 && <div className="problems-empty"><CircleCheck size={13} /> 오류 없음</div>}
-                            {diagnostics.map((diagnostic, i) => (
+                            {errorCount === 0 && warningCount === 0 && <div className="problems-empty"><CircleCheck size={13} /> 오류 없음</div>}
+                            {errors.map((diagnostic, i) => (
                                 <button key={'e' + i} className="problems-item error" onClick={() => revealProblem(diagnostic)}>
                                     <CircleAlert size={13} />
                                     <span className="problems-message">{diagnostic.message}</span>
                                     <span className="problems-line">줄 {diagnostic.range.start.line + 1}</span>
+                                </button>
+                            ))}
+                            {compileWarnings.map((warning, i) => (
+                                <button key={'c' + i} className="problems-item warning" onClick={() => revealProblem(warning)}>
+                                    <TriangleAlert size={13} />
+                                    <span className="problems-message">{warning.message}</span>
+                                    <span className="problems-line">줄 {warning.range.start.line + 1}</span>
                                 </button>
                             ))}
                             {warnings.map((warning, i) => (
@@ -1351,14 +1492,28 @@ export function App() {
                     )}
                 </div>
             </section>
+            {fontPopup && (
+                <FontPopup x={fontPopup.x} y={fontPopup.y} current={fontPopup.current} onClose={() => setFontPopup(null)} onPick={(name) => {
+                    const instance = editor.current;
+                    setFontPopup(null);
+                    if (instance) {
+                        instance.pushUndoStop();
+                        instance.executeEdits('font', [{ range: fontPopup.range, text: quote(name).slice(1, -1) }]);
+                        instance.pushUndoStop();
+                        instance.focus();
+                    }
+                }} />
+            )}
             {/* 패널 경계. 끌면 크기가 바뀌고, 캔버스에는 적어도 200px을 남긴다 */}
             <Resizer area="slides" edge="right" value={sizes.slides} min={120}
-                max={() => window.innerWidth - sizes.props - (paneOpen ? sizes.pane : 0) - 200} onChange={(slides) => setSizes((old) => ({ ...old, slides }))} onEnd={storeSizes} />
-            <Resizer area="props" edge="left" value={sizes.props} min={200}
-                max={() => window.innerWidth - sizes.slides - (paneOpen ? sizes.pane : 0) - 200} onChange={(props) => setSizes((old) => ({ ...old, props }))} onEnd={storeSizes} />
+                max={() => window.innerWidth - (propsOpen ? sizes.props : 0) - (paneOpen ? sizes.pane : 0) - 200} onChange={(slides) => setSizes((old) => ({ ...old, slides }))} onEnd={storeSizes} />
+            {propsOpen && (
+                <Resizer area="props" edge="left" value={sizes.props} min={200}
+                    max={() => window.innerWidth - sizes.slides - (paneOpen ? sizes.pane : 0) - 200} onChange={(props) => setSizes((old) => ({ ...old, props }))} onEnd={storeSizes} />
+            )}
             {paneOpen && deck && slideCount > 0 && (
                 <Resizer area="pane" edge="left" value={sizes.pane} min={200}
-                    max={() => window.innerWidth - sizes.slides - sizes.props - 200} onChange={(pane) => setSizes((old) => ({ ...old, pane }))} onEnd={storeSizes} />
+                    max={() => window.innerWidth - sizes.slides - (propsOpen ? sizes.props : 0) - 200} onChange={(pane) => setSizes((old) => ({ ...old, pane }))} onEnd={storeSizes} />
             )}
             {codeOpen && (
                 <Resizer area="code" edge="top" value={sizes.code} min={80}
@@ -1370,7 +1525,7 @@ export function App() {
 
 type BottomTab = 'code' | 'ai' | 'problems';
 
-// ---- 패널 크기. 다음에 열 때도 쓰도록 이 컴퓨터에 적어 둔다
+// 패널 크기. 다음에 열 때도 쓰도록 이 컴퓨터에 적어 둔다
 
 type Sizes = { slides: number; props: number; pane: number; code: number };
 const sizesKey = 'templide.panel-sizes';
@@ -1390,6 +1545,37 @@ function saveSizes(sizes: Sizes) {
     } catch {
         // 적지 못하면 이번 실행에서만 쓴다
     }
+}
+
+// 오른쪽 패널(속성)을 보이는지. 모든 탭이 함께 쓰고, 다음에 열 때도 쓰도록 이 컴퓨터에 적어 둔다
+
+const propsKey = 'templide.props-open';
+let propsOpenValue = (() => {
+    try {
+        return localStorage.getItem(propsKey) !== 'false';
+    } catch {
+        return true;
+    }
+})();
+const propsListeners = new Set<() => void>();
+
+function setPropsOpen(open: boolean) {
+    propsOpenValue = open;
+    try {
+        localStorage.setItem(propsKey, String(open));
+    } catch {
+        // 적지 못하면 이번 실행에서만 쓴다
+    }
+    propsListeners.forEach((listener) => listener());
+}
+
+function usePropsOpen(): boolean {
+    return useSyncExternalStore((listener) => {
+        propsListeners.add(listener);
+        return () => {
+            propsListeners.delete(listener);
+        };
+    }, () => propsOpenValue);
 }
 
 // 패널 경계의 손잡이. 패널과 같은 grid 칸에 겹쳐 그 가장자리(edge)에 둔다
@@ -1464,8 +1650,6 @@ function InsertMenu({ items, disabled, active }: { items: InsertItem[]; disabled
         </span>
     );
 }
-
-const presets: [string, number, number][] = [['16:9', 1280, 720], ['16:9 HD', 1920, 1080], ['4:3', 1024, 768], ['A4 가로', 1123, 794]];
 
 // 왼쪽 슬라이드 목록. 끌어서 순서를 바꾸고, 오른쪽 클릭 메뉴로 옮기기, 복제, 삭제를 한다
 type SlideAction = 'add' | 'duplicate' | 'delete' | 'up' | 'down';
@@ -1604,44 +1788,11 @@ function SlideList({ deck, count, page, ready, onPage, onAction, onMove }: {
     );
 }
 
-// 크기 입력 옆의 ▼. 많이 쓰는 슬라이드 크기를 고른다
-function PresetMenu({ width, height, onSize }: { width: number; height: number; onSize(width: number, height: number): void }) {
-    const [open, setOpen] = useState(false);
-    const anchor = useRef<HTMLSpanElement>(null);
-    useEffect(() => {
-        if (!open) {
-            return;
-        }
-        const down = (event: MouseEvent) => {
-            if (!anchor.current?.contains(event.target as Node)) {
-                setOpen(false);
-            }
-        };
-        window.addEventListener('mousedown', down);
-        return () => window.removeEventListener('mousedown', down);
-    }, [open]);
-    return (
-        <span className="menu-anchor" ref={anchor}>
-            <IconButton icon={ChevronDown} title="많이 쓰는 크기" active={open} onClick={() => setOpen(!open)} />
-            {open && (
-                <span className="menu list-menu preset-menu">
-                    {presets.map(([name, w, h]) => (
-                        <button key={name} className={w === width && h === height ? 'current' : ''} onClick={() => { setOpen(false); onSize(w, h); }}>
-                            {name} <span className="muted">{w} × {h}</span>
-                        </button>
-                    ))}
-                </span>
-            )}
-        </span>
-    );
-}
-
-// 캔버스 위 선택 칸. target이 여러 개면 고르고, 고른 target의 크기를 바꾼다. target이 없으면 없다고만 보여 준다
 // macOS는 창 버튼(신호등)을 시스템이 상단 바 왼쪽에 그린다 (tauri.macos.conf.json)
-const isMac = navigator.userAgent.includes('Mac');
+export const isMac = navigator.userAgent.includes('Mac');
 
 // 로고를 누르면 버전, templide의 라이선스, 오픈소스 라이선스 창을 여는 메뉴
-function AppMenu() {
+export function AppMenu() {
     const [open, setOpen] = useState(false);
     const [version, setVersion] = useState('');
     const anchor = useRef<HTMLSpanElement>(null);
@@ -1687,7 +1838,7 @@ function AppMenu() {
 }
 
 // 창 제목 줄이 없으므로 최소화, 최대화, 닫기 버튼을 상단 바 끝에 둔다. 닫기는 저장하지 않은 변경을 묻는 onCloseRequested를 거친다
-function WindowControls() {
+export function WindowControls() {
     const [maximized, setMaximized] = useState(false);
     useEffect(() => {
         const window = getCurrentWindow();
@@ -1709,41 +1860,17 @@ function WindowControls() {
     );
 }
 
-function SizeBar({ deck, target, onTarget, onSize }: { deck: DeckResult | null; target: string | null; onTarget(name: string): void; onSize(width: number, height: number): void }) {
-    const [width, setWidth] = useState('');
-    const [height, setHeight] = useState('');
-    useEffect(() => {
-        setWidth(deck ? String(deck.width) : '');
-        setHeight(deck ? String(deck.height) : '');
-    }, [deck?.width, deck?.height]);
+// 슬라이드 쇼 버튼 왼쪽의 target 고르기. 캔버스와 슬라이드 쇼는 고른 target의 크기와 설정을 쓴다. target이 없으면 없다고만 보여 준다
+function TargetPicker({ deck, target, onTarget }: { deck: DeckResult | null; target: string | null; onTarget(name: string): void }) {
     if (!deck) {
         return null;
     }
     if (deck.targets.length === 0) {
-        return <span className="sizebar"><span className="muted">target 없음</span><span className="size-text">{deck.width} × {deck.height}</span></span>;
+        return <span className="target-none muted" title={`target이 없어 ${deck.width} × ${deck.height}로 보여 줍니다`}>target 없음</span>;
     }
-    const commit = () => {
-        const w = Number(width);
-        const h = Number(height);
-        if (w > 0 && h > 0 && (w !== deck.width || h !== deck.height)) {
-            onSize(w, h);
-        }
-    };
     return (
-        <span className="sizebar">
-            {deck.targets.length > 1
-                ? (
-                    <select value={target ?? deck.target ?? ''} onChange={(event) => onTarget(event.target.value)}>
-                        {deck.targets.map((each) => <option key={each.name} value={each.name}>{each.name} ({each.type})</option>)}
-                    </select>
-                )
-                : null}
-            <span className="size-inputs">
-                <input className="size" value={width} title="슬라이드 너비(px)" onChange={(event) => setWidth(event.target.value)} onBlur={commit} onKeyDown={(event) => event.key === 'Enter' && commit()} />
-                <span className="muted">×</span>
-                <input className="size" value={height} title="슬라이드 높이(px)" onChange={(event) => setHeight(event.target.value)} onBlur={commit} onKeyDown={(event) => event.key === 'Enter' && commit()} />
-            </span>
-            <PresetMenu width={deck.width} height={deck.height} onSize={onSize} />
-        </span>
+        <select className="target-select" value={target ?? deck.target ?? ''} title={`미리 볼 target (${deck.width} × ${deck.height})`} onChange={(event) => onTarget(event.target.value)}>
+            {deck.targets.map((each) => <option key={each.name} value={each.name}>{each.name} ({each.type})</option>)}
+        </select>
     );
 }

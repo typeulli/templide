@@ -30,6 +30,17 @@ namespace templide::middleend {
         std::vector<std::string> cases;
     };
 
+    // asset 문 하나. 편집기가 그림을 넣을 묶음(default)을 찾고, 넣은 파일을 가리키는 식을 만들 때 쓴다
+    struct SymbolAsset {
+        std::string bundle;     // 묶음 파일의 경로 (UTF-8)
+        std::string written;    // asset 문에 적은 경로
+        bool is_default = false;
+        bool has_by = false;    // by { ... }가 있으면 적은 이름으로만 부른다
+        std::vector<std::string> namespaces;        // * as NAME
+        std::map<std::string, std::string> aliases; // 이름 as NAME: NAME -> 묶음 안 파일 이름
+        std::vector<std::string> entries;           // 묶음 안의 파일. 열 수 없으면 비어 있다
+    };
+
     struct Symbols {
         bool valid = false; // 문서에 구문 오류가 없어 이름을 모을 수 있었다
         std::map<std::string, std::vector<SymbolVar>> objects;
@@ -38,6 +49,8 @@ namespace templide::middleend {
         std::map<std::string, std::vector<std::string>> enums;
         std::map<std::string, SymbolMaster> masters;
         std::vector<std::string> themes;
+        std::vector<SymbolAsset> assets;
+        std::map<std::string, std::string> constants; // image, video, audio로 이름 붙인 값 -> 그 타입
         std::vector<SymbolVar> common_properties; // 모든 object에 붙는 속성
         std::vector<SymbolVar> text_properties;   // 글이 있는 object에 붙는 속성
         std::vector<SymbolVar> style_properties;  // style 선언과 style(...) 안의 속성
@@ -51,6 +64,7 @@ namespace templide::middleend {
     struct Result {
         std::optional<ir::Document> document; // 에러가 하나라도 있으면 비어 있다
         std::vector<Diagnostic> diagnostics;
+        std::vector<Diagnostic> warnings; // 컴파일은 되지만 알릴 것 (sRGB 밖의 색 등)
         // 읽은 파일의 경로와 내용. IR의 SourceRange와 Diagnostic이 이 경로를 쓴다
         std::vector<std::pair<std::string, std::string>> sources;
         Symbols symbols;

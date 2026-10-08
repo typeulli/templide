@@ -12,7 +12,8 @@
 // 코드 에디터의 이름 찾기: 마우스를 올린 이름의 정보, 정의로 이동, 참조 찾기, 같은 이름 강조, 이름 바꾸기, 개요.
 // 분석기가 읽은 파일들을 다시 파싱해 선언과 그 이름을 쓰는 곳을 모은다. 구문 오류가 있는 파일은 빠진다
 namespace templide::server {
-    enum class SymbolKind { TEMPLATE, OBJECT, STYLE, COLOR, ENUM, ENUM_MEMBER, MASTER, LAYOUT, THEME, TARGET, VAR, PARAMETER, LOOP, ALIAS, FILE };
+    // CONSTANT는 image, video, audio로 이름 붙인 값이다
+    enum class SymbolKind { TEMPLATE, OBJECT, STYLE, COLOR, ENUM, ENUM_MEMBER, MASTER, LAYOUT, THEME, TARGET, VAR, PARAMETER, LOOP, ALIAS, FILE, CONSTANT };
 
     struct NavSymbol {
         SymbolKind kind;

@@ -7,14 +7,18 @@ type Message = { id?: number; method?: string; params?: any; result?: any; error
 export class Lsp {
     private nextId = 1;
     private pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void }>();
-    private handlers = new Map<string, (params: any) => void>();
+    private handlers = new Map<string, Set<(params: any) => void>>();
 
     async start() {
         await listen<string>('lsp', (event) => this.receive(JSON.parse(event.payload)));
     }
 
-    onNotification(method: string, handler: (params: any) => void) {
-        this.handlers.set(method, handler);
+    // 탭마다 받으므로 여럿 둘 수 있다. 돌려준 함수를 부르면 그만 받는다
+    onNotification(method: string, handler: (params: any) => void): () => void {
+        const set = this.handlers.get(method) ?? new Set();
+        set.add(handler);
+        this.handlers.set(method, set);
+        return () => set.delete(handler);
     }
 
     request<T = any>(method: string, params: unknown): Promise<T> {
@@ -43,10 +47,13 @@ export class Lsp {
                 resolve(message.result);
             }
         } else if (message.method) {
-            this.handlers.get(message.method)?.(message.params);
+            this.handlers.get(message.method)?.forEach((handler) => handler(message.params));
         }
     }
 }
+
+// 모든 탭이 함께 쓰는 컴파일러 연결. 창(Shell)이 한 번 시작한다
+export const lsp = new Lsp();
 
 // Windows 경로 C:\a b\x.tlide -> file:///C:/a%20b/x.tlide
 export function pathToUri(path: string): string {
@@ -106,7 +113,7 @@ export type AnimationInfo = {
     implicit: boolean; // video, audio의 start가 만든 재생
 };
 
-export type ReviewInfo = { text: string; author: string; x: number; y: number; source: Origin };
+type ReviewInfo = { text: string; author: string; x: number; y: number; source: Origin };
 
 export type SlideInfo = {
     page: number;
@@ -122,7 +129,7 @@ export type SlideInfo = {
 };
 
 // 고른 target의 문서 속성
-export type DocumentInfo = { title?: string; author?: string; loop?: boolean; type?: string; path?: string; source?: Origin; properties?: Record<string, Origin> };
+type DocumentInfo = { title?: string; author?: string; loop?: boolean; type?: string; path?: string; source?: Origin; properties?: Record<string, Origin> };
 
 export type DeckResult = {
     error?: string;
@@ -143,6 +150,10 @@ export type SchemaVar = { name: string; type: string; default: string; required:
 
 // templide/schema. 마지막으로 분석에 성공한 문서의 이름들
 export type Schema = {
+    // asset 문들. bundle은 묶음 파일의 경로, written은 asset 문에 적은 경로다
+    assets: { bundle: string; written: string; default: boolean; hasBy: boolean; namespaces: string[]; aliases: Record<string, string>; entries: string[] }[];
+    constants: Record<string, string>; // image, video, audio로 이름 붙인 값 -> 그 타입
+    styles: Record<string, string[]>;  // style 이름 -> 매개변수 타입
     objects: Record<string, SchemaVar[]>;
     templates: Record<string, SchemaVar[]>;
     enums: Record<string, string[]>;

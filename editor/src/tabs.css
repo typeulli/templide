@@ -1,0 +1,88 @@
+/* 파일 탭 (Shell)과 .tasset 묶음 탭 (AssetView) */
+
+.shell { display: flex; flex-direction: column; height: 100%; }
+.shell-body { position: relative; flex: 1; min-height: 0; }
+.tab-page { position: absolute; inset: 0; display: none; }
+.tab-page.active { display: block; }
+
+/* 탭 줄. 창 제목 줄을 겸한다 */
+
+.tabbar { flex: none; display: flex; align-items: stretch; height: 38px; padding-left: 8px; background: var(--canvas); border-bottom: 1px solid var(--border); user-select: none; }
+.shell.mac .tabbar { padding-left: 84px; } /* 왼쪽은 신호등 버튼 자리 */
+.tabbar .brand { align-self: flex-end; display: flex; align-items: center; height: 32px; margin-right: 6px; }
+.tabbar .logo { width: 26px; height: 26px; }
+.tabs { display: flex; align-items: flex-end; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.tab {
+    display: flex; align-items: center; gap: 6px; flex: none; min-width: 90px; max-width: 240px; height: 32px; padding: 0 4px 0 10px;
+    border: 1px solid transparent; border-bottom: none; border-radius: 8px 8px 0 0; color: var(--muted); cursor: default;
+}
+.tab:hover { background: var(--hover); color: var(--text); }
+.tab.active { background: var(--panel); border-color: var(--border); color: var(--text); margin-bottom: -1px; height: 33px; }
+.tab-icon { flex: none; }
+.tab-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab .dirty { margin-right: 2px; }
+.tab-close { flex: none; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: none; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; visibility: hidden; }
+.tab:hover .tab-close, .tab.active .tab-close { visibility: visible; }
+.tab-close:hover { background: var(--border); color: var(--text); }
+/* 탭 끌기: 끄는 탭은 흐리게, 놓을 자리에 세로선 */
+.tabs.sorting .tab { cursor: grabbing; }
+.tab.dragging { opacity: 0.55; }
+.tab.drop-before { box-shadow: inset 2px 0 0 var(--accent); }
+.tab.drop-after { box-shadow: inset -2px 0 0 var(--accent); }
+
+/* .tasset 묶음 탭 */
+
+.asset { display: flex; flex-direction: column; height: 100%; }
+.asset-toolbar { flex: none; height: 48px; padding-right: 10px; }
+.asset-toolbar .file { max-width: 260px; }
+.asset-file-icon { flex: none; color: var(--muted); }
+.asset-summary { white-space: nowrap; }
+.asset-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 300px; }
+.asset-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); grid-auto-rows: min-content; gap: 12px;
+    padding: 16px; overflow: auto; align-content: start;
+}
+.asset-message { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; padding: 24px 4px; color: var(--muted); }
+.asset-message.error { color: var(--danger); }
+.asset-card {
+    display: flex; flex-direction: column; gap: 4px; padding: 8px; border: 1px solid var(--border); border-radius: 10px;
+    background: var(--panel); text-align: left; cursor: pointer;
+}
+.asset-card:hover { border-color: var(--border-strong); }
+.asset-card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.asset-thumb {
+    display: grid; place-items: center; aspect-ratio: 4 / 3; border-radius: 6px; overflow: hidden; color: var(--muted);
+    background: repeating-conic-gradient(#f4f4f6 0% 25%, #ffffff 0% 50%) 50% / 16px 16px;
+}
+.asset-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.asset-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.asset-size { color: var(--muted); font-size: 12px; }
+.asset-detail { display: flex; flex-direction: column; gap: 8px; padding: 16px; background: var(--panel); border-left: 1px solid var(--border); overflow: auto; }
+.asset-preview {
+    display: grid; place-items: center; min-height: 180px; border-radius: 8px; overflow: hidden;
+    background: repeating-conic-gradient(#f4f4f6 0% 25%, #ffffff 0% 50%) 50% / 16px 16px;
+}
+.asset-preview img, .asset-preview video { max-width: 100%; max-height: 360px; display: block; }
+.asset-preview audio { width: 100%; }
+.asset-detail-name { padding: 4px 6px; margin: 0 -6px; border: none; border-radius: 6px; background: transparent; text-align: left; font-weight: 600; font-size: 14px; word-break: break-all; cursor: text; }
+.asset-detail-name:hover { background: var(--hover); }
+.asset-rename { height: 30px; padding: 0 6px; border: 1px solid var(--accent); border-radius: 6px; outline: none; font-weight: 600; font-size: 14px; }
+.asset-detail-info { font-size: 12px; }
+.asset-toast { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); }
+
+/* 이름 바꾸기, 지우기 창. 쓰는 곳 목록 */
+.export.refactor { width: min(720px, calc(100vw - 32px)); max-height: min(600px, calc(100vh - 32px)); }
+.refactor-text { margin: 0 0 10px; color: var(--muted); line-height: 1.6; }
+.refactor-list { flex: 1; min-height: 0; overflow: hidden auto; padding-bottom: 12px; }
+.refactor-file + .refactor-file { margin-top: 10px; }
+.refactor-file-name { padding: 4px 0; font-weight: 600; }
+.refactor-row { display: flex; align-items: center; gap: 8px; box-sizing: border-box; width: 100%; padding: 5px 6px; border: none; border-radius: 6px; background: transparent; text-align: left; font: inherit; color: inherit; }
+.refactor-row:hover { background: var(--hover); }
+.refactor-row.link { cursor: pointer; }
+.refactor-line { flex: none; width: 52px; color: var(--muted); font-size: 12px; }
+.refactor-preview { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre; font-family: Consolas, "Malgun Gothic", monospace; font-size: 12px; }
+.refactor-old { text-decoration: line-through; color: var(--danger); background: #fdecec; }
+.refactor-new { color: var(--ok); background: #e6f6ee; margin-left: 2px; }
+.refactor-hit { background: #fff1d6; }
+.export-primary.danger { background: var(--danger); }
+.export-primary.danger:hover:not(:disabled) { background: #cf3a3f; }

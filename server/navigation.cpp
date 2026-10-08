@@ -58,7 +58,7 @@ namespace templide::server {
                 "slide", "put", "template", "style", "object", "var", "master", "case", "target", "if", "else", "for", "in", "enum",
                 "transition", "animate", "group", "as", "theme", "section", "review", "comment", "bullets", "numbers", "dashes",
                 "paragraphs", "true", "false", "color", "include", "delay", "order", "on_click", "with_previous", "after_previous",
-                "int", "float", "string", "text", "bool", "ref",
+                "int", "float", "string", "text", "bool", "ref", "asset", "by", "default", "image", "video", "audio", "font",
             };
             return words;
         }
@@ -75,6 +75,7 @@ namespace templide::server {
                 case SymbolKind::THEME: return "theme";
                 case SymbolKind::TARGET: return "target";
                 case SymbolKind::FILE: return "file";
+                case SymbolKind::CONSTANT: return "constant";
                 case SymbolKind::ALIAS: return "alias:" + std::to_string(symbol.block);
                 case SymbolKind::LOOP: return "loop:" + std::to_string(symbol.block);
                 default: return "member:" + std::to_string(symbol.owner);
@@ -112,11 +113,12 @@ namespace templide::server {
             std::map<std::string, int> themes;
             std::map<std::string, int> targets;
             std::map<std::string, int> files;
+            std::map<std::string, int> constants; // image, video, audio
             std::map<std::pair<std::string, std::size_t>, int> declared; // (경로, 이름의 위치) -> 기호
             std::map<int, std::map<std::string, int>> members; // 선언 -> 변수, 값, 매개변수, 레이아웃
             std::map<int, std::vector<int>> parameters;       // style, master -> 매개변수 차례대로
 
-            // ---- 위치
+            // 위치
 
             void open(const NavSource& next) {
                 source = &next;
@@ -176,7 +178,7 @@ namespace templide::server {
                 return trim(result);
             }
 
-            // ---- 기록
+            // 기록
 
             int add(SymbolKind kind, const std::string& name, const Token& token, std::string code, std::size_t declaration) {
                 NavSymbol symbol;
@@ -247,7 +249,7 @@ namespace templide::server {
                 return false;
             }
 
-            // ---- 1. 선언
+            // 1. 선언
 
             void declare_file(const ast::ASTFile* file) {
                 declare_all(file->body);
@@ -368,6 +370,13 @@ namespace templide::server {
                         targets.try_emplace(node->name, add(SymbolKind::TARGET, node->name, node->name_token, dedent(text_of(node->span)), offset(node->span)));
                         break;
                     }
+                    case ast::CONSTANT: {
+                        const auto* node = static_cast<const ast::ASTConstant*>(statement);
+                        const int id = add(SymbolKind::CONSTANT, node->name->name, node->name->token, trim(text_of(node->span)), offset(node->span));
+                        index.symbols[id].type = node->type_name->name;
+                        constants.try_emplace(node->name->name, id);
+                        break;
+                    }
                     default:
                         break;
                 }
@@ -384,7 +393,7 @@ namespace templide::server {
                 }
             }
 
-            // ---- 2. 이름을 쓰는 곳
+            // 2. 이름을 쓰는 곳
 
             void resolve_file(const ast::ASTFile* file, const std::vector<NavSource>& sources) {
                 for (const auto* statement : file->body) {
@@ -493,6 +502,11 @@ namespace templide::server {
                     case ast::SECTION:
                         expression(static_cast<const ast::ASTSection*>(statement)->name, Scope{}, "text");
                         break;
+                    case ast::CONSTANT: {
+                        const auto* node = static_cast<const ast::ASTConstant*>(statement);
+                        expression(node->expression, Scope{}, node->type_name->name);
+                        break;
+                    }
                     default:
                         break;
                 }
@@ -794,6 +808,10 @@ namespace templide::server {
                     use(node->token, style);
                     return;
                 }
+                if (const int constant = lookup(constants, text); constant >= 0) {
+                    use(node->token, constant);
+                    return;
+                }
                 for (const auto& [enum_name, id] : enums) {
                     if (const auto it = members[id].find(text); it != members[id].end()) {
                         use(node->token, it->second);
@@ -898,6 +916,11 @@ namespace templide::server {
                         }
                         break;
                     }
+                    case ast::COLOR_SPACE:
+                        for (const auto* component : static_cast<const ast::ASTColorSpace*>(node)->arguments) {
+                            expression(component, scope, "");
+                        }
+                        break;
                     case ast::DIMENSION:
                         expression(static_cast<const ast::ASTDimension*>(node)->value, scope, "");
                         break;
@@ -906,7 +929,7 @@ namespace templide::server {
                 }
             }
 
-            // ---- 개요
+            // 개요
 
             OutlineItem item(const std::string& name, const std::string& detail, int kind, const ast::ASTNode* node, std::string_view name_view) const {
                 OutlineItem result;
@@ -993,6 +1016,16 @@ namespace templide::server {
                             out.push_back(item(node->name, "target", PACKAGE, node, node->name_token.value));
                             break;
                         }
+                        case ast::CONSTANT: {
+                            const auto* node = static_cast<const ast::ASTConstant*>(statement);
+                            out.push_back(item(node->name->name, node->type_name->name, CONSTANT, node, node->name->token.value));
+                            break;
+                        }
+                        case ast::ASSET: {
+                            const auto* node = static_cast<const ast::ASTAsset*>(statement);
+                            out.push_back(item("\"" + node->path + "\"", node->is_default ? "asset (default)" : "asset", FILE_KIND, node, node->path_token.value));
+                            break;
+                        }
                         case ast::SECTION: {
                             const auto* node = static_cast<const ast::ASTSection*>(statement);
                             std::string label = trim(std::string(node->name->span));
@@ -1073,6 +1106,7 @@ namespace templide::server {
                 case SymbolKind::LOOP: return "for 반복 변수";
                 case SymbolKind::ALIAS: return "개체 이름 (as)";
                 case SymbolKind::FILE: return "include한 파일";
+                case SymbolKind::CONSTANT: return symbol.type == "video" ? "비디오 파일 이름" : symbol.type == "audio" ? "오디오 파일 이름" : "그림 파일 이름";
             }
             return "";
         }

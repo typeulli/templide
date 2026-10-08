@@ -8,7 +8,13 @@
       {
         "ext": ["tlide"],
         "name": "templide",
-        "description": "templide 슬라이드",
+        "description": "Templide Slide",
+        "role": "Editor"
+      },
+      {
+        "ext": ["tasset"],
+        "name": "templide-asset",
+        "description": "Templide Asset",
         "role": "Editor"
       }
     ],

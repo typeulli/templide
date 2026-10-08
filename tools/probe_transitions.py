@@ -72,7 +72,7 @@ def compile_deck(exe, work, name, transitions, target):
     return work / f'{name}.{target}'
 
 
-# ---- PowerPoint
+# PowerPoint
 
 EXPORT = r'''
 $app = New-Object -ComObject PowerPoint.Application
@@ -130,7 +130,7 @@ def export_video(exe, work, name, transitions):
     return video
 
 
-# ---- Chrome
+# Chrome
 
 # 시간을 멈추고 requestAnimationFrame을 모아 두었다가 원하는 시각으로 부른다
 HOOK = '''<script>
@@ -252,7 +252,7 @@ def html_page(exe, work):
     return page
 
 
-# ---- 비교
+# 비교
 
 def difference(a, b):
     return float(np.abs(a.astype(np.int16) - b.astype(np.int16)).mean())

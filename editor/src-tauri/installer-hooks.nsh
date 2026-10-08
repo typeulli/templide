@@ -12,11 +12,26 @@
 !define MULTIUSER_INNERTEXT_INSTALLMODE_ALLUSERS "이 컴퓨터의 모든 사용자용으로 설치"
 !define MULTIUSER_INNERTEXT_INSTALLMODE_CURRENTUSER "나만 쓰도록 설치"
 
-; 탐색기의 '새로 만들기' 메뉴에 .tlide를 넣는다. 메뉴 이름은 파일 연결(tauri.bundle.conf.json)의 설명인 'templide 슬라이드'이고,
+; pptx 종류의 파일(EXT는 .pptx 같은 확장자)에 붙이는 '불러오기' 메뉴 하나
+!macro TEMPLIDE_IMPORT_MENU EXT
+  ${If} $LANGUAGE == 1042
+    WriteRegStr SHELL_CONTEXT "Software\Classes\SystemFileAssociations\${EXT}\shell\templide_import" "" "templide 불러오기"
+  ${Else}
+    WriteRegStr SHELL_CONTEXT "Software\Classes\SystemFileAssociations\${EXT}\shell\templide_import" "" "Import with templide"
+  ${EndIf}
+  WriteRegStr SHELL_CONTEXT "Software\Classes\SystemFileAssociations\${EXT}\shell\templide_import" "Icon" "$INSTDIR\${MAINBINARYNAME}.exe,0"
+  WriteRegStr SHELL_CONTEXT "Software\Classes\SystemFileAssociations\${EXT}\shell\templide_import\command" "" '"$INSTDIR\${MAINBINARYNAME}.exe" --import "%1"'
+!macroend
+
+; 탐색기의 '새로 만들기' 메뉴에 .tlide를 넣는다. 메뉴 이름은 파일 연결(tauri.bundle.conf.json)의 설명인 'Templide Slide'이고,
 ; 새 파일은 templates/new.tlide(build.py가 설치 폴더에 넣는다)를 복사해 만든다. 파일 연결 다음에 실행된다
 ;
 ; .tlide 파일의 오른쪽 클릭 메뉴에 '내보내기'를 넣는다. 누르면 편집기 대신 target을 골라 만드는 창만 연다 (templide-editor --export).
 ; 파일 연결의 templide 키 아래에 두므로, 프로그램을 지울 때 tauri가 그 키와 함께 지운다
+;
+; .pptx, .pptm, .ppsx, .potx 파일의 오른쪽 클릭 메뉴에 '불러오기'를 넣는다. 누르면 pptx를 골라 .tlide로 바꾸는 창만 연다 (templide-editor --import).
+; SystemFileAssociations\<확장자> 아래의 메뉴는 그 파일을 여는 프로그램과 상관없이 그 확장자의 모든 파일에 붙으므로 PowerPoint의 키는 건드리지 않는다.
+; tauri의 templide 키 밖이라 프로그램을 지울 때 직접 지운다
 !macro NSIS_HOOK_POSTINSTALL
   WriteRegStr SHELL_CONTEXT "Software\Classes\.tlide\ShellNew" "FileName" "$INSTDIR\templates\new.tlide"
   ${If} $LANGUAGE == 1042
@@ -26,10 +41,18 @@
   ${EndIf}
   WriteRegStr SHELL_CONTEXT "Software\Classes\templide\shell\export" "Icon" "$INSTDIR\${MAINBINARYNAME}.exe,0"
   WriteRegStr SHELL_CONTEXT "Software\Classes\templide\shell\export\command" "" '"$INSTDIR\${MAINBINARYNAME}.exe" --export "%1"'
+  !insertmacro TEMPLIDE_IMPORT_MENU ".pptx"
+  !insertmacro TEMPLIDE_IMPORT_MENU ".pptm"
+  !insertmacro TEMPLIDE_IMPORT_MENU ".ppsx"
+  !insertmacro TEMPLIDE_IMPORT_MENU ".potx"
   System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
 !macroend
 
-; 프로그램을 지워도 tauri는 .tlide 키를 남기므로 '새로 만들기' 항목은 직접 지운다
+; 프로그램을 지워도 tauri는 .tlide 키를 남기므로 '새로 만들기' 항목은 직접 지운다. pptx 파일들의 '불러오기' 메뉴도 지운다
 !macro NSIS_HOOK_PREUNINSTALL
   DeleteRegKey SHELL_CONTEXT "Software\Classes\.tlide\ShellNew"
+  DeleteRegKey SHELL_CONTEXT "Software\Classes\SystemFileAssociations\.pptx\shell\templide_import"
+  DeleteRegKey SHELL_CONTEXT "Software\Classes\SystemFileAssociations\.pptm\shell\templide_import"
+  DeleteRegKey SHELL_CONTEXT "Software\Classes\SystemFileAssociations\.ppsx\shell\templide_import"
+  DeleteRegKey SHELL_CONTEXT "Software\Classes\SystemFileAssociations\.potx\shell\templide_import"
 !macroend

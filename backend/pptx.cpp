@@ -23,6 +23,117 @@
 #include <utility>
 
 namespace templide::backend::pptx {
+    // pattern(...)의 종류 -> PowerPoint의 무늬 이름과 앞색이 차지하는 비율(흐린 배경에서 두 색을 섞을 때 쓴다)
+    const std::map<std::string, std::pair<std::string, double>>& pattern_presets() {
+        static const std::map<std::string, std::pair<std::string, double>> table = {
+            {"percent_5", {"pct5", 0.05}}, {"percent_10", {"pct10", 0.1}}, {"percent_20", {"pct20", 0.2}}, {"percent_25", {"pct25", 0.25}},
+            {"percent_30", {"pct30", 0.3}}, {"percent_40", {"pct40", 0.4}}, {"percent_50", {"pct50", 0.5}}, {"percent_60", {"pct60", 0.6}},
+            {"percent_70", {"pct70", 0.7}}, {"percent_75", {"pct75", 0.75}}, {"percent_80", {"pct80", 0.8}}, {"percent_90", {"pct90", 0.9}},
+            {"horizontal", {"horz", 0.25}}, {"vertical", {"vert", 0.25}}, {"light_horizontal", {"ltHorz", 0.25}}, {"light_vertical", {"ltVert", 0.25}},
+            {"dark_horizontal", {"dkHorz", 0.5}}, {"dark_vertical", {"dkVert", 0.5}}, {"narrow_horizontal", {"narHorz", 0.5}}, {"narrow_vertical", {"narVert", 0.5}},
+            {"dashed_horizontal", {"dashHorz", 0.125}}, {"dashed_vertical", {"dashVert", 0.125}}, {"cross", {"cross", 0.25}},
+            {"downward_diagonal", {"dnDiag", 0.25}}, {"upward_diagonal", {"upDiag", 0.25}}, {"light_downward_diagonal", {"ltDnDiag", 0.25}},
+            {"light_upward_diagonal", {"ltUpDiag", 0.25}}, {"dark_downward_diagonal", {"dkDnDiag", 0.5}}, {"dark_upward_diagonal", {"dkUpDiag", 0.5}},
+            {"wide_downward_diagonal", {"wdDnDiag", 0.375}}, {"wide_upward_diagonal", {"wdUpDiag", 0.375}}, {"dashed_downward_diagonal", {"dashDnDiag", 0.125}},
+            {"dashed_upward_diagonal", {"dashUpDiag", 0.125}}, {"diagonal_cross", {"diagCross", 0.25}}, {"small_checker", {"smCheck", 0.5}},
+            {"large_checker", {"lgCheck", 0.5}}, {"small_grid", {"smGrid", 0.25}}, {"large_grid", {"lgGrid", 0.125}}, {"dotted_grid", {"dotGrid", 0.125}},
+            {"small_confetti", {"smConfetti", 0.25}}, {"large_confetti", {"lgConfetti", 0.25}}, {"horizontal_brick", {"horzBrick", 0.25}},
+            {"diagonal_brick", {"diagBrick", 0.25}}, {"solid_diamond", {"solidDmnd", 0.5}}, {"outlined_diamond", {"openDmnd", 0.25}},
+            {"dotted_diamond", {"dotDmnd", 0.125}}, {"plaid", {"plaid", 0.5}}, {"sphere", {"sphere", 0.5}}, {"weave", {"weave", 0.5}},
+            {"divot", {"divot", 0.25}}, {"shingle", {"shingle", 0.25}}, {"wave", {"wave", 0.25}}, {"trellis", {"trellis", 0.5}}, {"zigzag", {"zigZag", 0.25}},
+        };
+        return table;
+    }
+
+    // "종류.옵션" -> 전환 요소. PowerPoint에 각 효과를 적용해 저장한 결과를 옮긴 것이다
+    const std::map<std::string, TransitionXml>& transition_table() {
+        static const std::map<std::string, TransitionXml> table = [] {
+            std::map<std::string, TransitionXml> result;
+            using Options = std::vector<std::pair<std::string, std::string>>; // (옵션, 속성)
+            const auto add = [&](const std::string& kind, const std::string& ns, const std::string& tag, const Options& options) {
+                for (const auto& [option, attributes] : options) {
+                    result[kind + "." + option] = {ns, "<" + ns + ":" + tag + attributes + "/>"};
+                }
+            };
+            const auto directions = [](const std::string& extra, bool corners) {
+                Options options = {{"left", extra}, {"up", " dir=\"u\"" + extra}, {"right", " dir=\"r\"" + extra}, {"down", " dir=\"d\"" + extra}};
+                if (corners) {
+                    for (const auto& [option, dir] : std::vector<std::pair<std::string, std::string>>{{"left_up", "lu"}, {"right_up", "ru"}, {"left_down", "ld"}, {"right_down", "rd"}}) {
+                        options.emplace_back(option, " dir=\"" + dir + "\"" + extra);
+                    }
+                }
+                return options;
+            };
+            const Options none = {{"", ""}};
+            const Options orientations = {{"horizontal", ""}, {"vertical", " dir=\"vert\""}};
+            const Options left_right = {{"left", " dir=\"l\""}, {"right", " dir=\"r\""}};
+            const Options inverted_right = {{"left", ""}, {"right", " invX=\"1\""}};
+            const Options inverted_left = {{"right", ""}, {"left", " invX=\"1\""}};
+            const Options black = {{"smoothly", ""}, {"through_black", " thruBlk=\"1\""}};
+
+            add("cut", "p", "cut", black);
+            add("fade", "p", "fade", black);
+            add("random", "p", "random", none);
+            add("blinds", "p", "blinds", orientations);
+            add("checkerboard", "p", "checker", {{"across", ""}, {"down", " dir=\"vert\""}});
+            add("cover", "p", "cover", directions("", true));
+            add("uncover", "p", "pull", directions("", true));
+            add("dissolve", "p", "dissolve", none);
+            add("randomBars", "p", "randomBar", orientations);
+            add("strips", "p", "strips", {{"left_up", ""}, {"right_up", " dir=\"ru\""}, {"left_down", " dir=\"ld\""}, {"right_down", " dir=\"rd\""}});
+            add("wipe", "p", "wipe", directions("", false));
+            add("push", "p", "push", directions("", false));
+            add("box", "p", "zoom", {{"out", ""}, {"in", " dir=\"in\""}});
+            add("box", "p14", "prism", directions(" isInverted=\"1\"", false));
+            add("split", "p", "split", {{"horizontal_out", ""}, {"horizontal_in", " dir=\"in\""}, {"vertical_out", " orient=\"vert\""}, {"vertical_in", " orient=\"vert\" dir=\"in\""}});
+            add("circle", "p", "circle", {{"out", ""}});
+            add("diamond", "p", "diamond", {{"out", ""}});
+            add("plus", "p", "plus", {{"out", ""}});
+            add("comb", "p", "comb", orientations);
+            add("newsflash", "p", "newsflash", none);
+            add("wedge", "p", "wedge", none);
+            add("wheel", "p", "wheel", {{"spokes4", ""}, {"spokes1", " spokes=\"1\""}, {"spokes2", " spokes=\"2\""}, {"spokes3", " spokes=\"3\""}, {"spokes8", " spokes=\"8\""}});
+            add("wheelReverse", "p14", "wheelReverse", {{"spokes1", " spokes=\"1\""}});
+            add("vortex", "p14", "vortex", directions("", false));
+            add("ripple", "p14", "ripple", {{"center", ""}, {"left_up", " dir=\"lu\""}, {"right_up", " dir=\"ru\""}, {"left_down", " dir=\"ld\""}, {"right_down", " dir=\"rd\""}});
+            // glitter는 옵션 이름과 dir 값이 반대다
+            add("glitter", "p14", "glitter", {
+                {"diamond_right", ""}, {"diamond_left", " dir=\"r\""}, {"diamond_up", " dir=\"d\""}, {"diamond_down", " dir=\"u\""},
+                {"hexagon_right", " pattern=\"hexagon\""}, {"hexagon_left", " dir=\"r\" pattern=\"hexagon\""},
+                {"hexagon_up", " dir=\"d\" pattern=\"hexagon\""}, {"hexagon_down", " dir=\"u\" pattern=\"hexagon\""},
+            });
+            add("gallery", "p14", "gallery", left_right);
+            add("conveyor", "p14", "conveyor", left_right);
+            add("doors", "p14", "doors", orientations);
+            add("window", "p14", "window", orientations);
+            add("warp", "p14", "warp", {{"out", ""}, {"in", " dir=\"in\""}});
+            add("flyThrough", "p14", "flythrough", {{"in", ""}, {"out", " dir=\"out\""}, {"in_bounce", " hasBounce=\"1\""}, {"out_bounce", " dir=\"out\" hasBounce=\"1\""}});
+            add("reveal", "p14", "reveal", {{"smooth_left", ""}, {"smooth_right", " dir=\"r\""}, {"black_left", " thruBlk=\"1\""}, {"black_right", " thruBlk=\"1\" dir=\"r\""}});
+            add("honeycomb", "p14", "honeycomb", none);
+            add("ferrisWheel", "p14", "ferris", left_right);
+            add("switch", "p14", "switch", left_right);
+            add("flip", "p14", "flip", left_right);
+            add("flashbulb", "p14", "flash", none);
+            add("shred", "p14", "shred", {{"strips_in", ""}, {"strips_out", " dir=\"out\""}, {"rectangle_in", " pattern=\"rectangle\""}, {"rectangle_out", " pattern=\"rectangle\" dir=\"out\""}});
+            add("cube", "p14", "prism", directions("", false));
+            add("rotate", "p14", "prism", directions(" isContent=\"1\"", false));
+            add("orbit", "p14", "prism", directions(" isContent=\"1\" isInverted=\"1\"", false));
+            add("pan", "p14", "pan", directions("", false));
+            for (const std::string preset : {"fallOver", "drape", "peelOff", "pageCurlSingle", "pageCurlDouble"}) {
+                add(preset, "p15", "prstTrans", {{"left", " prst=\"" + preset + "\""}, {"right", " prst=\"" + preset + "\" invX=\"1\""}});
+            }
+            for (const std::string preset : {"wind", "airplane", "origami"}) {
+                add(preset, "p15", "prstTrans", {{"right", " prst=\"" + preset + "\""}, {"left", " prst=\"" + preset + "\" invX=\"1\""}});
+            }
+            for (const std::string preset : {"curtains", "prestige", "fracture", "crush"}) {
+                add(preset, "p15", "prstTrans", {{"", " prst=\"" + preset + "\""}});
+            }
+            add("morph", "p159", "morph", {{"by_object", " option=\"byObject\""}, {"by_word", " option=\"byWord\""}, {"by_char", " option=\"byChar\""}});
+            return result;
+        }();
+        return table;
+    }
+
     namespace {
         using namespace templide::geometry;
 
@@ -135,122 +246,6 @@ namespace templide::backend::pptx {
 
         // radius를 받는 도형. 첫 조정값이 둥근 모서리다
         const std::set<std::string> rounded_kinds = {"roundRect", "round1Rect", "round2SameRect", "round2DiagRect", "snipRoundRect"};
-
-        // pattern(...)의 종류 -> PowerPoint의 무늬 이름과 앞색이 차지하는 비율(흐린 배경에서 두 색을 섞을 때 쓴다)
-        const std::map<std::string, std::pair<std::string, double>>& pattern_presets() {
-            static const std::map<std::string, std::pair<std::string, double>> table = {
-                {"percent_5", {"pct5", 0.05}}, {"percent_10", {"pct10", 0.1}}, {"percent_20", {"pct20", 0.2}}, {"percent_25", {"pct25", 0.25}},
-                {"percent_30", {"pct30", 0.3}}, {"percent_40", {"pct40", 0.4}}, {"percent_50", {"pct50", 0.5}}, {"percent_60", {"pct60", 0.6}},
-                {"percent_70", {"pct70", 0.7}}, {"percent_75", {"pct75", 0.75}}, {"percent_80", {"pct80", 0.8}}, {"percent_90", {"pct90", 0.9}},
-                {"horizontal", {"horz", 0.25}}, {"vertical", {"vert", 0.25}}, {"light_horizontal", {"ltHorz", 0.25}}, {"light_vertical", {"ltVert", 0.25}},
-                {"dark_horizontal", {"dkHorz", 0.5}}, {"dark_vertical", {"dkVert", 0.5}}, {"narrow_horizontal", {"narHorz", 0.5}}, {"narrow_vertical", {"narVert", 0.5}},
-                {"dashed_horizontal", {"dashHorz", 0.125}}, {"dashed_vertical", {"dashVert", 0.125}}, {"cross", {"cross", 0.25}},
-                {"downward_diagonal", {"dnDiag", 0.25}}, {"upward_diagonal", {"upDiag", 0.25}}, {"light_downward_diagonal", {"ltDnDiag", 0.25}},
-                {"light_upward_diagonal", {"ltUpDiag", 0.25}}, {"dark_downward_diagonal", {"dkDnDiag", 0.5}}, {"dark_upward_diagonal", {"dkUpDiag", 0.5}},
-                {"wide_downward_diagonal", {"wdDnDiag", 0.375}}, {"wide_upward_diagonal", {"wdUpDiag", 0.375}}, {"dashed_downward_diagonal", {"dashDnDiag", 0.125}},
-                {"dashed_upward_diagonal", {"dashUpDiag", 0.125}}, {"diagonal_cross", {"diagCross", 0.25}}, {"small_checker", {"smCheck", 0.5}},
-                {"large_checker", {"lgCheck", 0.5}}, {"small_grid", {"smGrid", 0.25}}, {"large_grid", {"lgGrid", 0.125}}, {"dotted_grid", {"dotGrid", 0.125}},
-                {"small_confetti", {"smConfetti", 0.25}}, {"large_confetti", {"lgConfetti", 0.25}}, {"horizontal_brick", {"horzBrick", 0.25}},
-                {"diagonal_brick", {"diagBrick", 0.25}}, {"solid_diamond", {"solidDmnd", 0.5}}, {"outlined_diamond", {"openDmnd", 0.25}},
-                {"dotted_diamond", {"dotDmnd", 0.125}}, {"plaid", {"plaid", 0.5}}, {"sphere", {"sphere", 0.5}}, {"weave", {"weave", 0.5}},
-                {"divot", {"divot", 0.25}}, {"shingle", {"shingle", 0.25}}, {"wave", {"wave", 0.25}}, {"trellis", {"trellis", 0.5}}, {"zigzag", {"zigZag", 0.25}},
-            };
-            return table;
-        }
-
-        struct TransitionXml {
-            std::string ns; // p, p14, p15, p159
-            std::string element;
-        };
-
-        // "종류.옵션" -> 전환 요소. PowerPoint에 각 효과를 적용해 저장한 결과를 옮긴 것이다
-        const std::map<std::string, TransitionXml>& transition_table() {
-            static const std::map<std::string, TransitionXml> table = [] {
-                std::map<std::string, TransitionXml> result;
-                using Options = std::vector<std::pair<std::string, std::string>>; // (옵션, 속성)
-                const auto add = [&](const std::string& kind, const std::string& ns, const std::string& tag, const Options& options) {
-                    for (const auto& [option, attributes] : options) {
-                        result[kind + "." + option] = {ns, "<" + ns + ":" + tag + attributes + "/>"};
-                    }
-                };
-                const auto directions = [](const std::string& extra, bool corners) {
-                    Options options = {{"left", extra}, {"up", " dir=\"u\"" + extra}, {"right", " dir=\"r\"" + extra}, {"down", " dir=\"d\"" + extra}};
-                    if (corners) {
-                        for (const auto& [option, dir] : std::vector<std::pair<std::string, std::string>>{{"left_up", "lu"}, {"right_up", "ru"}, {"left_down", "ld"}, {"right_down", "rd"}}) {
-                            options.emplace_back(option, " dir=\"" + dir + "\"" + extra);
-                        }
-                    }
-                    return options;
-                };
-                const Options none = {{"", ""}};
-                const Options orientations = {{"horizontal", ""}, {"vertical", " dir=\"vert\""}};
-                const Options left_right = {{"left", " dir=\"l\""}, {"right", " dir=\"r\""}};
-                const Options inverted_right = {{"left", ""}, {"right", " invX=\"1\""}};
-                const Options inverted_left = {{"right", ""}, {"left", " invX=\"1\""}};
-                const Options black = {{"smoothly", ""}, {"through_black", " thruBlk=\"1\""}};
-
-                add("cut", "p", "cut", black);
-                add("fade", "p", "fade", black);
-                add("random", "p", "random", none);
-                add("blinds", "p", "blinds", orientations);
-                add("checkerboard", "p", "checker", {{"across", ""}, {"down", " dir=\"vert\""}});
-                add("cover", "p", "cover", directions("", true));
-                add("uncover", "p", "pull", directions("", true));
-                add("dissolve", "p", "dissolve", none);
-                add("randomBars", "p", "randomBar", orientations);
-                add("strips", "p", "strips", {{"left_up", ""}, {"right_up", " dir=\"ru\""}, {"left_down", " dir=\"ld\""}, {"right_down", " dir=\"rd\""}});
-                add("wipe", "p", "wipe", directions("", false));
-                add("push", "p", "push", directions("", false));
-                add("box", "p", "zoom", {{"out", ""}, {"in", " dir=\"in\""}});
-                add("box", "p14", "prism", directions(" isInverted=\"1\"", false));
-                add("split", "p", "split", {{"horizontal_out", ""}, {"horizontal_in", " dir=\"in\""}, {"vertical_out", " orient=\"vert\""}, {"vertical_in", " orient=\"vert\" dir=\"in\""}});
-                add("circle", "p", "circle", {{"out", ""}});
-                add("diamond", "p", "diamond", {{"out", ""}});
-                add("plus", "p", "plus", {{"out", ""}});
-                add("comb", "p", "comb", orientations);
-                add("newsflash", "p", "newsflash", none);
-                add("wedge", "p", "wedge", none);
-                add("wheel", "p", "wheel", {{"spokes4", ""}, {"spokes1", " spokes=\"1\""}, {"spokes2", " spokes=\"2\""}, {"spokes3", " spokes=\"3\""}, {"spokes8", " spokes=\"8\""}});
-                add("wheelReverse", "p14", "wheelReverse", {{"spokes1", " spokes=\"1\""}});
-                add("vortex", "p14", "vortex", directions("", false));
-                add("ripple", "p14", "ripple", {{"center", ""}, {"left_up", " dir=\"lu\""}, {"right_up", " dir=\"ru\""}, {"left_down", " dir=\"ld\""}, {"right_down", " dir=\"rd\""}});
-                // glitter는 옵션 이름과 dir 값이 반대다
-                add("glitter", "p14", "glitter", {
-                    {"diamond_right", ""}, {"diamond_left", " dir=\"r\""}, {"diamond_up", " dir=\"d\""}, {"diamond_down", " dir=\"u\""},
-                    {"hexagon_right", " pattern=\"hexagon\""}, {"hexagon_left", " dir=\"r\" pattern=\"hexagon\""},
-                    {"hexagon_up", " dir=\"d\" pattern=\"hexagon\""}, {"hexagon_down", " dir=\"u\" pattern=\"hexagon\""},
-                });
-                add("gallery", "p14", "gallery", left_right);
-                add("conveyor", "p14", "conveyor", left_right);
-                add("doors", "p14", "doors", orientations);
-                add("window", "p14", "window", orientations);
-                add("warp", "p14", "warp", {{"out", ""}, {"in", " dir=\"in\""}});
-                add("flyThrough", "p14", "flythrough", {{"in", ""}, {"out", " dir=\"out\""}, {"in_bounce", " hasBounce=\"1\""}, {"out_bounce", " dir=\"out\" hasBounce=\"1\""}});
-                add("reveal", "p14", "reveal", {{"smooth_left", ""}, {"smooth_right", " dir=\"r\""}, {"black_left", " thruBlk=\"1\""}, {"black_right", " thruBlk=\"1\" dir=\"r\""}});
-                add("honeycomb", "p14", "honeycomb", none);
-                add("ferrisWheel", "p14", "ferris", left_right);
-                add("switch", "p14", "switch", left_right);
-                add("flip", "p14", "flip", left_right);
-                add("flashbulb", "p14", "flash", none);
-                add("shred", "p14", "shred", {{"strips_in", ""}, {"strips_out", " dir=\"out\""}, {"rectangle_in", " pattern=\"rectangle\""}, {"rectangle_out", " pattern=\"rectangle\" dir=\"out\""}});
-                add("cube", "p14", "prism", directions("", false));
-                add("rotate", "p14", "prism", directions(" isContent=\"1\"", false));
-                add("orbit", "p14", "prism", directions(" isContent=\"1\" isInverted=\"1\"", false));
-                add("pan", "p14", "pan", directions("", false));
-                for (const std::string preset : {"fallOver", "drape", "peelOff", "pageCurlSingle", "pageCurlDouble"}) {
-                    add(preset, "p15", "prstTrans", {{"left", " prst=\"" + preset + "\""}, {"right", " prst=\"" + preset + "\" invX=\"1\""}});
-                }
-                for (const std::string preset : {"wind", "airplane", "origami"}) {
-                    add(preset, "p15", "prstTrans", {{"right", " prst=\"" + preset + "\""}, {"left", " prst=\"" + preset + "\" invX=\"1\""}});
-                }
-                for (const std::string preset : {"curtains", "prestige", "fracture", "crush"}) {
-                    add(preset, "p15", "prstTrans", {{"", " prst=\"" + preset + "\""}});
-                }
-                add("morph", "p159", "morph", {{"by_object", " option=\"byObject\""}, {"by_word", " option=\"byWord\""}, {"by_char", " option=\"byChar\""}});
-                return result;
-            }();
-            return table;
-        }
 
         std::string escape(const std::string& text) {
             std::string result;
@@ -1126,11 +1121,12 @@ namespace templide::backend::pptx {
             // fit과 crop_*을 srcRect와 그림 틀로 바꾼다. cover는 넘치는 쪽을 가운데 기준으로 자르고, contain은 틀을 줄인다
             std::string picture_xml(int id, const ir::Element& element, const Common& common, const std::string& where) {
                 const auto rect = element_rect(element, where);
-                const auto* path = std::get_if<std::string>(find_property(element, "path"));
-                if (path == nullptr) {
-                    error(where + ": 'path' must be a string");
+                const auto* image = std::get_if<ir::Image>(find_property(element, "data"));
+                if (image == nullptr) {
+                    error(where + ": 'data' must be a picture");
                     return "";
                 }
+                const std::string* path = &image->path;
                 std::array<double, 4> crop = {0, 0, 0, 0}; // 왼쪽, 위, 오른쪽, 아래
                 const std::array<const char*, 4> crop_names = {"crop_left", "crop_top", "crop_right", "crop_bottom"};
                 for (std::size_t i = 0; i < crop.size(); ++i) {
@@ -1168,7 +1164,7 @@ namespace templide::backend::pptx {
             std::string media_xml(int id, const ir::Element& element, const Common& common, const std::string& where) {
                 const bool video = element.object == "video";
                 const auto rect = element_rect(element, where);
-                const auto* path = std::get_if<std::string>(find_property(element, "path"));
+                const auto* path = std::get_if<std::string>(find_property(element, "data"));
                 if (!rect || path == nullptr) {
                     return "";
                 }
@@ -1178,8 +1174,8 @@ namespace templide::backend::pptx {
                     return "";
                 }
                 std::string poster;
-                if (const auto* file = std::get_if<std::string>(find_property(element, "poster")); file != nullptr && !file->empty()) {
-                    if (const auto image = add_media(*file, where + ", poster")) {
+                if (const auto* file = std::get_if<ir::Image>(find_property(element, "poster")); file != nullptr && !file->path.empty()) {
+                    if (const auto image = add_media(file->path, where + ", poster")) {
                         poster = *image;
                     }
                 }

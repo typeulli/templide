@@ -28,9 +28,10 @@ object text_box {
 /* stretch는 상자에 맞게 늘리고, cover는 비율을 지키며 상자를 채우고 넘치는 쪽을 자르고, contain은 비율을 지키며 상자 안에 다 보이게 한다 */
 enum image_fit { stretch, cover, contain }
 
-/* crop_*은 그림에서 잘라 낼 부분으로 %는 그림 크기에 대한 비율이다. kind로 그림을 도형 모양으로 자른다 */
+/* data는 그림 파일로 file("경로"), asset("이름"), image로 이름 붙인 값, 문자열 경로를 쓴다.
+   crop_*은 그림에서 잘라 낼 부분으로 %는 그림 크기에 대한 비율이다. kind로 그림을 도형 모양으로 자른다 */
 object image {
-    var string path;
+    var image data;
     var int x;
     var int y;
     var int width;
@@ -154,12 +155,12 @@ enum media_start { click_sequence, auto, when_clicked }
 /* 비디오(mp4, webm). poster는 재생하기 전에 보이는 그림이고, 없으면 회색 판에 재생 단추를 그린다.
    trim_*은 앞뒤에서 잘라 낼 길이, fade_*는 소리가 커지고 작아지는 길이다 */
 object video {
-    var string path;
+    var video data;
     var int x;
     var int y;
     var int width;
     var int height;
-    var string poster = "";
+    var image poster = "";
     var media_start start = click_sequence;
     var bool fullscreen = false;
     var bool loop = false;
@@ -174,7 +175,7 @@ object video {
 
 /* 오디오(mp3, wav, m4a). 슬라이드에는 스피커 아이콘으로 보인다. across_slides면 다음 슬라이드로 넘어가도 계속 재생한다 */
 object audio {
-    var string path;
+    var audio data;
     var int x;
     var int y;
     var int width = 48;

@@ -211,9 +211,53 @@ namespace templide::server {
             add(completion, "hex(...)", FUNCTION, "16진수 색", "hex(${1:000000})", true, "0");
             add(completion, "rgb(...)", FUNCTION, "빨강, 초록, 파랑 (0~255)", "rgb(${1:0}, ${2:0}, ${3:0})", true, "0");
             add(completion, "rgba(...)", FUNCTION, "투명도가 있는 색", "rgba(${1:0}, ${2:0}, ${3:0}, ${4:1})", true, "0");
+            add(completion, "hsl(...)", FUNCTION, "색상, 채도, 밝기 (투명도는 넷째 값)", "hsl(${1:160deg}, ${2:40%}, ${3:60%})", true, "0");
+            add(completion, "hwb(...)", FUNCTION, "색상, 흰색, 검은색", "hwb(${1:160deg}, ${2:30%}, ${3:20%})", true, "0");
+            add(completion, "lab(...)", FUNCTION, "CIE Lab (밝기 0~100, a, b)", "lab(${1:70}, ${2:-30}, ${3:10})", true, "0");
+            add(completion, "lch(...)", FUNCTION, "CIE LCh (밝기, 채도, 색상)", "lch(${1:70}, ${2:30}, ${3:160deg})", true, "0");
+            add(completion, "oklab(...)", FUNCTION, "Oklab (밝기 0~100%, a, b)", "oklab(${1:70%}, ${2:-0.1}, ${3:0.03})", true, "0");
+            add(completion, "oklch(...)", FUNCTION, "Oklch (밝기, 채도, 색상)", "oklch(${1:70%}, ${2:0.12}, ${3:160deg})", true, "0");
             for (const auto& name : symbols.theme_colors) {
                 add(completion, "theme." + name, COLOR, "테마 색", "theme." + name, false, "1");
             }
+        }
+
+        // 그림, 비디오, 오디오 자리. type은 image, video, audio이고 그 파일 형식에 맞는 묶음 안 파일과 이름 붙인 값을 보인다
+        void add_files(Completion& completion, const middleend::Symbols& symbols, const std::string& type) {
+            static const std::map<std::string, std::vector<std::string>> extensions = {
+                {"image", {".png", ".jpg", ".jpeg", ".gif", ".bmp"}}, {"video", {".mp4", ".webm"}}, {"audio", {".mp3", ".wav", ".m4a"}},
+            };
+            const auto fits = [&](const std::string& entry) {
+                std::string lower = entry;
+                std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                const auto& list = extensions.at(type);
+                return std::any_of(list.begin(), list.end(), [&](const std::string& extension) { return lower.ends_with(extension); });
+            };
+            for (const auto& [name, constant_type] : symbols.constants) {
+                if (constant_type == type) {
+                    add(completion, name, VARIABLE, type, name, false, "0");
+                }
+            }
+            for (const auto& asset : symbols.assets) {
+                for (const auto& entry : asset.entries) {
+                    if (!fits(entry)) {
+                        continue;
+                    }
+                    if (!asset.has_by) {
+                        add(completion, "asset(\"" + entry + "\")", FILE, asset.written, "asset(\"" + entry + "\")", false, "1");
+                    }
+                    for (const auto& space : asset.namespaces) {
+                        add(completion, "asset(\"" + space + "." + entry + "\")", FILE, asset.written, "asset(\"" + space + "." + entry + "\")", false, "1");
+                    }
+                    for (const auto& [alias, file] : asset.aliases) {
+                        if (file == entry) {
+                            add(completion, "asset(\"" + alias + "\")", FILE, asset.written, "asset(\"" + alias + "\")", false, "1");
+                        }
+                    }
+                }
+            }
+            add(completion, "file(...)", FUNCTION, "디스크의 파일 (x.tasset/이름이면 묶음 안의 파일)", "file(\"${1}\")", true, "2");
+            add(completion, "asset(...)", FUNCTION, "asset으로 불러온 묶음의 파일", "asset(\"${1}\")", true, "2");
         }
 
         // 속성 값 자리
@@ -240,6 +284,13 @@ namespace templide::server {
                 add(completion, "linear(...)", FUNCTION, "선형 그라데이션 (각도, 색, 색, ...)", "linear(${1:90}, ${2:hex(FFFFFF)}, ${3:hex(000000)})", true, "0");
                 add(completion, "radial(...)", FUNCTION, "원형 그라데이션", "radial(${1:hex(FFFFFF)}, ${2:hex(000000)})", true, "0");
                 add(completion, "image(...)", FUNCTION, "그림", "image(\"${1}\")", true, "0");
+                add_files(completion, symbols, "image");
+            } else if (type == "image" || type == "video" || type == "audio") {
+                add_files(completion, symbols, type);
+            } else if (type == "font") {
+                add(completion, "font(...)", FUNCTION, "폰트", "font(\"${1:맑은 고딕}\")", true, "0");
+                add(completion, "theme.heading_font", VARIABLE, "테마의 제목 폰트", "theme.heading_font", false, "1");
+                add(completion, "theme.body_font", VARIABLE, "테마의 본문 폰트", "theme.body_font", false, "1");
             } else if (type == "text") {
                 add(completion, "style(...)", FUNCTION, "이 글자에만 쓰는 서식", "(style(${1:font-weight = bold}) \"${2}\")", true, "0");
                 for (const char* list : {"bullets", "numbers", "dashes", "paragraphs"}) {
@@ -279,7 +330,7 @@ namespace templide::server {
                     add(completion, "run(...)", FUNCTION, "JS 함수 실행 (html, web)", "run(\"${1:onClick}\"$2)", true);
                     add(completion, "program(...)", FUNCTION, "프로그램 실행 (pptx)", "program(\"${1:app.exe}\")", true);
                     add(completion, "macro(...)", FUNCTION, "매크로 실행 (pptx)", "macro(\"${1:Module1.Macro1}\")", true);
-                    add(completion, "file(...)", FUNCTION, "파일 열기", "file(\"${1:report.pdf}\")", true);
+                    add(completion, "action_file(...)", FUNCTION, "파일 열기", "action_file(\"${1:report.pdf}\")", true);
                 }
             }
         }
@@ -300,6 +351,10 @@ namespace templide::server {
                 keyword("theme", "theme", "theme ${1:name} {\n\t$0\n}");
                 keyword("section", "구역", "section \"${1}\";");
                 keyword("#include", "파일 불러오기", "#include <${1:std/stddef}>");
+                keyword("asset", "그림, 미디어 묶음(.tasset) 불러오기", "asset \"${1:slides.tasset}\";");
+                keyword("image", "그림 파일에 이름 붙이기", "image ${1:name} = ${2:asset(\"${3}\")};");
+                keyword("video", "비디오 파일에 이름 붙이기", "video ${1:name} = ${2:asset(\"${3}\")};");
+                keyword("audio", "오디오 파일에 이름 붙이기", "audio ${1:name} = ${2:asset(\"${3}\")};");
                 return;
             }
             if (kind == "slide" || kind == "case" || kind == "group" || kind == "template") {
@@ -470,7 +525,7 @@ namespace templide::server {
                 }
             }
         } else if (std::regex_match(prefix, var_type)) {
-            for (const char* type : {"int", "float", "string", "text", "color", "bool", "ref"}) {
+            for (const char* type : {"int", "float", "string", "text", "color", "bool", "ref", "image", "video", "audio", "font"}) {
                 add(completion, type, KEYWORD, "타입", "", false, "0");
             }
             for (const auto& [enumeration, members] : symbols.enums) {

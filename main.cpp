@@ -267,6 +267,14 @@ namespace {
             case ast::COLOR_HEX:
                 print_line(depth, "ColorHex " + static_cast<const ast::ASTString*>(static_cast<const ast::ASTColorHex*>(node)->hex)->value);
                 break;
+            case ast::COLOR_SPACE: {
+                const auto* color = static_cast<const ast::ASTColorSpace*>(node);
+                print_line(depth, "Color " + color->space);
+                for (const auto* argument : color->arguments) {
+                    print(argument, depth + 1);
+                }
+                break;
+            }
             case ast::ASSIGN: {
                 const auto* assign = static_cast<const ast::ASTAssign*>(node);
                 print_line(depth, "Assign " + assign->name->name);
@@ -681,12 +689,18 @@ int main(int argc, char* argv[]) {
     }
 
     const auto result = templide::middleend::analyze(path, templide::middleend::default_packages_dir(argv[0]));
-    for (const auto& diagnostic : result.diagnostics) {
+    const auto report = [](const templide::middleend::Diagnostic& diagnostic, const char* kind) {
         std::cerr << diagnostic.path;
         if (diagnostic.line > 0) {
             std::cerr << ':' << diagnostic.line << ':' << diagnostic.column;
         }
-        std::cerr << ": error: " << diagnostic.message << '\n';
+        std::cerr << ": " << kind << ": " << diagnostic.message << '\n';
+    };
+    for (const auto& diagnostic : result.diagnostics) {
+        report(diagnostic, "error");
+    }
+    for (const auto& diagnostic : result.warnings) {
+        report(diagnostic, "warning");
     }
     if (!result.document) {
         return 1;

@@ -5,8 +5,9 @@ import {
     Strikethrough, Type as TypeIcon, Underline, Ellipsis, type LucideIcon,
 } from 'lucide-react';
 import type { DeckResult } from './lsp';
+import { FontList, fontCode } from './FontPicker';
 
-// ---- 아이콘 버튼
+// 아이콘 버튼
 
 export function IconButton({ icon: Icon, title, onClick, disabled, active, keepFocus, children, danger }: {
     icon: LucideIcon; title: string; onClick?(): void; disabled?: boolean; active?: boolean; keepFocus?: boolean; children?: ReactNode; danger?: boolean;
@@ -20,7 +21,7 @@ export function IconButton({ icon: Icon, title, onClick, disabled, active, keepF
     );
 }
 
-// ---- 썸네일. 숨긴 슬라이드는 흐리게, 전환이나 애니메이션이 있으면 표시한다
+// 썸네일. 숨긴 슬라이드는 흐리게, 전환이나 애니메이션이 있으면 표시한다
 
 export const Thumbnail = memo(function Thumbnail({ deck, index, current, onClick }: { deck: DeckResult; index: number; current: boolean; onClick(): void }) {
     const frame = useRef<HTMLDivElement>(null);
@@ -52,16 +53,15 @@ export const Thumbnail = memo(function Thumbnail({ deck, index, current, onClick
     );
 });
 
-// ---- 서식 막대. 버튼을 눌러도 고치는 중인 글자에서 포커스가 빠지지 않게 mousedown을 막는다
+// 서식 막대. 버튼을 눌러도 고치는 중인 글자에서 포커스가 빠지지 않게 mousedown을 막는다
 
-export type StyleProperty = { name: string; enum?: string; color?: string; number?: number; unit?: string; unset?: boolean; string?: string };
+export type StyleProperty = { name: string; enum?: string; color?: string; number?: number; unit?: string; unset?: boolean; string?: string; code?: string };
 // 켜고 끄는 서식. key는 덱 JSON의 run에서 그 서식이 켜졌는지 보는 이름, off는 끌 때 넣는 값
 export type Toggle = { key: 'b' | 'i' | 'u' | 'st'; off: StyleProperty };
 
 const swatches = ['#1F1F1F', '#FFFFFF', '#E74C3C', '#E67E22', '#F1C40F', '#2ECC71', '#1ABC9C', '#3498DB', '#9B59B6', '#7F8C8D'];
 const highlights = ['#FFFF00', '#00FF00', '#00FFFF', '#FF00FF', '#FFC000', '#FF0000', '#0000FF', '#D9D9D9'];
 const sizes = [10, 12, 14, 16, 18, 20, 24, 28, 32, 40, 48, 60, 72];
-const fonts = ['맑은 고딕', 'Pretendard', '나눔고딕', '나눔명조', '바탕', '굴림', '돋움', 'Arial', 'Calibri', 'Segoe UI', 'Times New Roman', 'Georgia', 'Consolas'];
 const lineHeights = [1, 1.15, 1.5, 2, 2.5, 3];
 const spacings: [number, string][] = [[-2, '좁게'], [0, '보통'], [2, '넓게'], [5, '아주 넓게']];
 
@@ -69,7 +69,6 @@ type Menu = 'color' | 'size' | 'font' | 'align' | 'more' | null;
 
 export function FormatBar({ enabled, onStyle, onClear }: { enabled: boolean; onStyle(properties: StyleProperty[], toggle?: Toggle): void; onClear(): void }) {
     const [menu, setMenu] = useState<Menu>(null);
-    const [font, setFont] = useState('');
     const apply = (properties: StyleProperty[], toggle?: Toggle) => {
         setMenu(null);
         onStyle(properties, toggle);
@@ -118,12 +117,8 @@ export function FormatBar({ enabled, onStyle, onClear }: { enabled: boolean; onS
             <span className="menu-anchor">
                 <IconButton icon={TypeIcon} title="글꼴" disabled={!enabled} keepFocus active={menu === 'font'} onClick={() => toggleMenu('font')} />
                 {menu === 'font' && (
-                    <span className="menu list-menu">
-                        {fonts.map((name) => <button key={name} style={{ fontFamily: name }} onClick={() => apply([{ name: 'font-family', string: name }])}>{name}</button>)}
-                        <span className="menu-input">
-                            <input placeholder="다른 글꼴 이름" value={font} onChange={(event) => setFont(event.target.value)}
-                                onKeyDown={(event) => event.key === 'Enter' && font.trim() && apply([{ name: 'font-family', string: font.trim() }])} />
-                        </span>
+                    <span className="menu font-menu">
+                        <FontList onPick={(name) => apply([{ name: 'font-family', code: fontCode(name) }])} />
                     </span>
                 )}
             </span>

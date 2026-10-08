@@ -20,7 +20,7 @@ style page_subtitle(color ink) {
     font-size = 16pt;
 }
 style code {
-    font-family = "Consolas";
+    font-family = font("Consolas");
 }
 style feature {
     font-size = 16pt;
@@ -57,7 +57,7 @@ template page_header {
     }
 }
 
-/* ---- 표지 */
+/* 표지 */
 
 slide {
     background = image("styles_bg.png");
@@ -87,7 +87,7 @@ slide {
     transition fade 0.5s;
 }
 
-/* ---- 플랫 */
+/* 플랫 */
 
 slide {
     background = hex(FFF);
@@ -116,7 +116,7 @@ slide {
     transition fade 0.5s;
 }
 
-/* ---- 머티리얼 */
+/* 머티리얼 */
 
 slide {
     background = hex(FEF7FF);
@@ -145,7 +145,7 @@ slide {
     transition fade 0.5s;
 }
 
-/* ---- 스큐어모피즘 */
+/* 스큐어모피즘 */
 
 slide {
     background = linear(90, hex(E6E6E6), hex(C8C8C8));
@@ -174,7 +174,7 @@ slide {
     transition fade 0.5s;
 }
 
-/* ---- 뉴모피즘 */
+/* 뉴모피즘 */
 
 slide {
     background = hex(E0E5EC);
@@ -203,7 +203,7 @@ slide {
     transition fade 0.5s;
 }
 
-/* ---- 글래스모피즘 */
+/* 글래스모피즘 */
 
 slide {
     background = image("styles_bg.png");
@@ -232,7 +232,7 @@ slide {
     transition fade 0.5s;
 }
 
-/* ---- 클레이모피즘 */
+/* 클레이모피즘 */
 
 slide {
     background = hex(F3F0FF);
@@ -261,7 +261,7 @@ slide {
     transition fade 0.5s;
 }
 
-/* ---- 네오 브루탈리즘 */
+/* 네오 브루탈리즘 */
 
 slide {
     background = hex(FFF8E7);

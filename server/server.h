@@ -13,7 +13,7 @@
 //   slides는 slide마다 블록의 출처, 재생 차례대로인 애니메이션, 전환, 속성(background 등), 발표자 메모, 검토 메모이고,
 //   document는 고른 target의 title, author, loop와 그 출처다.
 //   출처는 {kind: literal | block | locked, uri, range, unit, name, reason, integer, statement}이다. statement면 대입을 지울 수 있다.
-// templide/schema {uri} -> object, template, enum, 공통 속성, 전환, 애니메이션 목록 (마지막으로 분석에 성공한 문서의 것)
+// templide/schema {uri} -> object, template, enum, 공통 속성, 전환, 애니메이션 목록, asset 문과 이름 붙인 그림/미디어 (마지막으로 분석에 성공한 문서의 것)
 // templide/edit {uri, target?, edits: [...]}
 //   -> {edits: [{uri, range, newText}]} 또는 {error}. 편집기는 받은 수정을 문서에 적용한다
 //   {op: "set", id, name, length | number | string | color | enum | bool}  속성 하나를 바꾼다. length는 px
@@ -42,8 +42,22 @@
 //   {op: "animation", page, action: update, index, spec}               index번째(재생 차례) 애니메이션을 바꾼다
 //   {op: "animation", page, action: delete, index}                     지운다 (video, audio의 재생이면 start를 when_clicked로)
 //   {op: "animation", page, action: move, index, to}                   재생 차례를 옮기고 slide의 모든 애니메이션에 order 1..N을 붙인다
+//   {op: "declare", text}                                              파일 위쪽(#include, asset, image/video/audio 선언 다음)에 문장들을 넣는다. text는 줄마다 '\n'으로 끝난다
 // templide/build {uri, target?} -> {path, errors}  고른 target의 파일을 저장하지 않은 내용으로 만든다
 // templide/targets {uri} -> {targets: [{name, type, path}]} 또는 {error}  내보낼 수 있는 target 목록. path는 만들 파일의 경로
+// templide/asset_add {bundle, source | base64, name?} -> {name} 또는 {error}  묶음(.tasset)에 파일을 넣는다 (없으면 만든다). name은 묶음 안의 이름
+// templide/colors {uri} -> {colors: [{range, color: {r, g, b, a}, space, editable}]}  문서에 적은 색(값을 수로 적은 색 함수, theme.<색>).
+//                                                  space는 적은 함수(hex, rgb, hsl, ... , theme)이고 테마 색은 editable이 false다
+// templide/color_presentations {color, space} -> {labels}  색 선택기가 적을 글자들 (space의 것이 처음)
+// templide/asset_list {bundle} -> {entries: [{name, size}]} 또는 {error}  묶음 안의 파일과 크기(바이트)
+// templide/asset_extract {bundle, entry} -> {path} 또는 {error}  묶음 안의 파일을 임시 폴더에 푼 경로 (미리 보기)
+// templide/asset_remove {bundle, entry} -> {} 또는 {error}  묶음 안의 파일을 지운다
+// templide/asset_rename {bundle, entry, to} -> {} 또는 {error}  묶음 안의 파일 이름을 바꾼다
+// templide/asset_uses {uri, bundle, entry, to?} -> {uses: [{range, preview, newText?}]}  열린 문서에서 그 파일을 가리키는 곳
+//                                                  (asset("..."), by { ... }, "x.tasset/..." 경로). preview는 그 줄, newText는 to로 바꿀 때 range에 넣을 글자
+// templide/reload (알림)                          열린 문서를 모두 다시 컴파일한다 (묶음이 바뀌었을 때)
+// templide/pptx_tree {path} -> {tree, slideWidth, slideHeight} 또는 {error}  불러오기 창이 보여 줄 pptx의 목록 (importer/pptx_import.h)
+// templide/pptx_import {path, selection, output} -> {tlide, tasset?, warnings, errors} 또는 {error}  고른 노드를 .tlide로 바꾼다
 // textDocument/completion                          자동 완성 (server/completion.h)
 // textDocument/hover, definition, references, documentHighlight, prepareRename, rename, documentSymbol
 //                                                  이름 찾기 (server/navigation.h). 이름 바꾸기는 편집 중인 파일 안의 이름만 된다

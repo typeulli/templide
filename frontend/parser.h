@@ -39,6 +39,8 @@ namespace templide::parser {
             SECTION,
             ANIMATE,
             REVIEW,
+            ASSET,
+            CONSTANT,
 
             IF,
             ELSE_IF,
@@ -50,6 +52,7 @@ namespace templide::parser {
             COLOR_RGB,
             COLOR_RGBA,
             COLOR_HEX,
+            COLOR_SPACE,
 
             ASSIGN,
 
@@ -197,6 +200,13 @@ namespace templide::parser {
             ASTNode* hex;
             ASTColorHex(Token token, ASTNode* hex) : ASTNode(COLOR_HEX, token), hex(hex) { type = COLOR_HEX; }
         };
+        // hsl(h, s, l[, a]), hwb, lab, lch, oklab, oklch. hsla는 hsl과 같다. 값의 단위와 범위는 분석기가 본다
+        struct ASTColorSpace : ASTNode {
+            std::string space; // hsl, hwb, lab, lch, oklab, oklch
+            std::vector<ASTNode*> arguments;
+            ASTColorSpace(Token token, std::string space, std::vector<ASTNode*> arguments)
+                : ASTNode(COLOR_SPACE, token), space(std::move(space)), arguments(std::move(arguments)) {}
+        };
 
         struct ASTAssign : ASTNode {
             ASTName* name;
@@ -270,6 +280,31 @@ namespace templide::parser {
         struct ASTReview : ASTNode {
             std::vector<ASTNode*> body;
             ASTReview(Token token) : ASTNode(REVIEW, token) {}
+        };
+        // asset의 by { ... } 안의 항목 하나. * as NAME은 모든 파일을 NAME.파일이름으로, 이름 as NAME은 그 파일 하나를 NAME으로 부른다
+        struct ASTAssetItem {
+            Token token{};           // '*' 또는 고른 파일 이름
+            bool all = false;        // * as NAME
+            std::string name;        // 고른 파일의 이름 (확장자를 빼도 된다). all이면 비어 있다
+            ASTName* alias = nullptr;
+        };
+        // asset "x.tasset" [by { ... }] [default]; 묶음 파일을 불러온다. 경로는 이 문장을 적은 파일의 폴더 기준이다.
+        // by가 없으면 모든 파일을 파일 이름으로 부르고, default면 편집기가 넣는 그림과 미디어가 이 묶음에 들어간다
+        struct ASTAsset : ASTNode {
+            std::string path;
+            Token path_token{};
+            bool has_by = false;
+            std::vector<ASTAssetItem> items;
+            bool is_default = false;
+            ASTAsset(Token token) : ASTNode(ASSET, token) {}
+        };
+        // image NAME = 값; (video, audio도 같다) 그림, 비디오, 오디오 파일에 붙인 이름. 값은 file(...), asset(...), 문자열 경로 등이다
+        struct ASTConstant : ASTNode {
+            ASTName* type_name;
+            ASTName* name;
+            ASTNode* expression;
+            ASTConstant(Token token, ASTName* type_name, ASTName* name, ASTNode* expression)
+                : ASTNode(CONSTANT, token), type_name(type_name), name(name), expression(expression) {}
         };
 
         struct ASTIf : ASTNode {
@@ -590,6 +625,10 @@ namespace templide::parser {
                     }
                     if (token.value == "hex") {
                         return parse_hex(token);
+                    }
+                    if (token.value == "hsl" || token.value == "hsla" || token.value == "hwb" || token.value == "lab" || token.value == "lch"
+                        || token.value == "oklab" || token.value == "oklch") {
+                        return new ast::ASTColorSpace(token, token.value == "hsla" ? "hsl" : string(token.value), parse_arguments());
                     }
                     if (token.value == "style") {
                         return parse_inline_style(token);
@@ -1103,6 +1142,63 @@ namespace templide::parser {
             return node;
         }
 
+        // asset "경로" [by { * as NAME, 이름 as NAME, "파일 이름" as NAME }] [default]; 항목 사이는 ','나 ';'로 나눈다
+        ast::ASTAsset* parse_asset(Token token) {
+            auto *node = new ast::ASTAsset(token);
+            Token path = expect(TokenType::STRING, "a quoted path such as \"slides.tasset\" after 'asset'");
+            node->path = unescape(path, path.value.substr(1, path.value.size() - 2));
+            node->path_token = path;
+            if (is_keyword(peek(), "default")) {
+                next();
+                node->is_default = true;
+            }
+            if (is_keyword(peek(), "by")) {
+                next();
+                node->has_by = true;
+                expect(TokenType::LBRACE, "'{' after 'by'");
+                while (!accept(TokenType::RBRACE)) {
+                    if (accept(TokenType::COMMA) || accept(TokenType::SEMICOLON)) {
+                        continue;
+                    }
+                    ast::ASTAssetItem item;
+                    item.token = next();
+                    if (item.token.type == TokenType::STAR) {
+                        item.all = true;
+                    } else if (item.token.type == TokenType::IDENTIFIER) {
+                        item.name = string(item.token.value);
+                    } else if (item.token.type == TokenType::STRING) {
+                        item.name = unescape(item.token, item.token.value.substr(1, item.token.value.size() - 2));
+                    } else {
+                        fail(item.token, "Expected '*', a file name or '}', but got " + describe(item.token));
+                    }
+                    Token as = next();
+                    if (!is_keyword(as, "as")) {
+                        fail(as, "Expected 'as' after " + describe(item.token) + ", but got " + describe(as));
+                    }
+                    item.alias = new ast::ASTName(expect(TokenType::IDENTIFIER, "name after 'as'"));
+                    node->items.push_back(item);
+                }
+            }
+            if (is_keyword(peek(), "default")) {
+                Token keyword = next();
+                if (node->is_default) {
+                    fail(keyword, "Duplicate 'default'");
+                }
+                node->is_default = true;
+            }
+            expect(TokenType::SEMICOLON, "';' after asset");
+            return node;
+        }
+
+        // image NAME = 값; video NAME = 값; audio NAME = 값;
+        ast::ASTConstant* parse_constant(Token token) {
+            Token name = expect(TokenType::IDENTIFIER, "name after '" + string(token.value) + "'");
+            expect(TokenType::ASSIGN, "'=' after the name");
+            auto *expression = parse_expression();
+            expect(TokenType::SEMICOLON, "';' after expression");
+            return new ast::ASTConstant(token, new ast::ASTName(token), new ast::ASTName(name), expression);
+        }
+
         // review { text = ...; ... }
         ast::ASTReview* parse_review(Token token) {
             auto *node = new ast::ASTReview(token);
@@ -1147,6 +1243,8 @@ namespace templide::parser {
             if (is_keyword(token, "target")) { return parse_named_block<ast::ASTTarget>(token, &Parser::parse_property_statement); }
             if (is_keyword(token, "theme")) { return parse_named_block<ast::ASTTheme>(token, &Parser::parse_property_statement); }
             if (is_keyword(token, "section")) { return parse_section(token); }
+            if (is_keyword(token, "asset")) { return parse_asset(token); }
+            if (is_keyword(token, "image") || is_keyword(token, "video") || is_keyword(token, "audio")) { return parse_constant(token); }
             if (is_keyword(token, "if")) { return parse_if(token, &Parser::parse_file_statement); }
             fail_unexpected(token);
         }

@@ -35,7 +35,7 @@ def formula(text):
     return [parts[0]] + [number_or_name(p) for p in parts[1:]]
 
 
-# ---- 도형
+# 도형
 
 def shapes():
     if not SHAPES_CACHE.exists():
@@ -89,7 +89,7 @@ def shapes():
     return result
 
 
-# ---- 애니메이션
+# 애니메이션
 
 def timing(ctn, node):
     """cTn의 시간 속성을 node에 넣는다. 시간은 ms, 비율은 0 ~ 1"""

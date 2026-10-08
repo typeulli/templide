@@ -67,9 +67,10 @@ fn handle(app: &AppHandle, mcp: &Mcp, mut request: tiny_http::Request) {
     let authorized = request.headers().iter().any(|header| {
         header.field.equiv("Authorization") && header.value.as_str() == format!("Bearer {}", mcp.token)
     });
-    if request.url() != "/mcp" {
+    // /mcp/<탭>이면 그 탭의 문서에서, /mcp면 보이는 탭의 문서에서 도구를 실행한다
+    let Some(session) = request.url().strip_prefix("/mcp").filter(|rest| rest.is_empty() || rest.starts_with('/')).map(|rest| rest.trim_start_matches('/').to_string()) else {
         return respond(request, 404, None);
-    }
+    };
     if !authorized {
         return respond(request, 401, None);
     }
@@ -96,7 +97,7 @@ fn handle(app: &AppHandle, mcp: &Mcp, mut request: tiny_http::Request) {
         })),
         "ping" => Ok(json!({})),
         "tools/list" => Ok(json!({ "tools": mcp.tools.lock().map(|tools| tools.clone()).unwrap_or(json!([])) })),
-        "tools/call" => Ok(call(app, mcp, params)),
+        "tools/call" => Ok(call(app, mcp, &session, params)),
         method => Err(json!({ "code": -32601, "message": format!("unknown method {method}") })),
     };
     let body = match result {
@@ -107,7 +108,7 @@ fn handle(app: &AppHandle, mcp: &Mcp, mut request: tiny_http::Request) {
 }
 
 // 화면에 도구 실행을 맡기고 답을 기다린다
-fn call(app: &AppHandle, mcp: &Mcp, params: Value) -> Value {
+fn call(app: &AppHandle, mcp: &Mcp, session: &str, params: Value) -> Value {
     let failed = |message: &str| json!({ "content": [{ "type": "text", "text": message }], "isError": true });
     let call = mcp.next.fetch_add(1, Ordering::Relaxed);
     let (sender, receiver) = channel();
@@ -116,6 +117,7 @@ fn call(app: &AppHandle, mcp: &Mcp, params: Value) -> Value {
     }
     let sent = app.emit("mcp-call", json!({
         "call": call,
+        "session": session,
         "name": params.get("name").cloned().unwrap_or(Value::Null),
         "arguments": params.get("arguments").cloned().unwrap_or(json!({})),
     }));

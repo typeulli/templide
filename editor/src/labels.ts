@@ -7,7 +7,7 @@ export const objectNames: Record<string, string> = {
 
 export const propertyNames: Record<string, string> = {
     x: 'X', y: 'Y', width: '너비', height: '높이', x1: 'X1', y1: 'Y1', x2: 'X2', y2: 'Y2', rotation: '회전',
-    kind: '모양', anchor: '세로 맞춤', text: '글자', path: '파일', fit: '맞추기', poster: '표지 그림', blur: '흐림',
+    kind: '모양', anchor: '세로 맞춤', text: '글자', data: '파일', path: '경로', fit: '맞추기', poster: '표지 그림', blur: '흐림',
     crop_left: '왼쪽 자르기', crop_top: '위 자르기', crop_right: '오른쪽 자르기', crop_bottom: '아래 자르기',
     start_arrow: '시작 화살표', end_arrow: '끝 화살표', from: '시작 개체', to: '끝 개체', from_side: '시작 쪽', to_side: '끝 쪽', role: '역할',
     fill: '채우기', opacity: '불투명도', line_color: '선 색', line_width: '선 두께', line_dash: '선 종류', line_cap: '선 끝', line_join: '선 연결',

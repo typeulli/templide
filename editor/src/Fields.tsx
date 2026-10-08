@@ -1,14 +1,16 @@
 // 속성 패널의 입력 칸. 값은 서버의 편집 요청에 그대로 펼쳐 넣는 객체({length}, {number, unit}, {enum}, {bool}, {color}, {string}, {code})로 보낸다
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Lock, RotateCcw, FolderOpen, Plus, X } from 'lucide-react';
+import { ChevronDown, Lock, RotateCcw, FolderOpen, Plus, X } from 'lucide-react';
+import { FontPopup, cssFont, fontCode } from './FontPicker';
 import type { ActionValue, LinkValue, Origin, PaintValue, Value } from './lsp';
 import { enumNames, label } from './labels';
 import { lockOf } from './SlideView';
 
-export type SetValue = { length?: number; number?: number; unit?: string; enum?: string; bool?: boolean; color?: string; string?: string; code?: string };
+// declare는 값과 함께 파일 위쪽에 넣을 선언이다 (그림을 묶음에 넣고 붙인 이름 등)
+export type SetValue = { length?: number; number?: number; unit?: string; enum?: string; bool?: boolean; color?: string; string?: string; code?: string; declare?: string };
 
 // 칸 하나가 공통으로 받는 것. origin이 없으면(적지 않은 값) 기본값이다
-export type FieldProps = {
+type FieldProps = {
     name: string;
     label?: string;
     value: Value | undefined;
@@ -21,10 +23,10 @@ export function lockReason(origin: Origin | undefined): string | null {
     return origin ? lockOf(origin) : '코드에 적힌 값이 없음';
 }
 
-// ---- 색과 식
+// 색과 식
 
 // #RRGGBB(AA)를 코드로. 불투명하면 hex(...), 아니면 rgba(...)
-export function colorCode(color: string): string {
+function colorCode(color: string): string {
     const digits = color.replace('#', '');
     if (digits.length === 6 || digits.slice(6).toUpperCase() === 'FF') {
         return `hex(${digits.slice(0, 6).toUpperCase()})`;
@@ -44,7 +46,7 @@ export const themeColors: [string, string][] = [
 ];
 const swatches = ['#1F1F1F', '#7F8C8D', '#FFFFFF', '#E74C3C', '#E67E22', '#F1C40F', '#2ECC71', '#1ABC9C', '#3498DB', '#9B59B6'];
 
-// ---- 틀
+// 틀
 
 export function Row({ label: text, lock, origin, onUnset, children, wide }: { label: string; lock?: string | null; origin?: Origin; onUnset?(): void; children: ReactNode; wide?: boolean }) {
     const resettable = !!onUnset && !!origin?.statement && !lock;
@@ -59,19 +61,19 @@ export function Row({ label: text, lock, origin, onUnset, children, wide }: { la
     );
 }
 
-// ---- 수
+// 수
 
 // 단위: px(길이), deg(각도), ratio(0~1을 %로 보여 줌), percent(%), seconds(ms를 초로 보여 줌), int, number
 export type Measure = 'px' | 'deg' | 'ratio' | 'percent' | 'seconds' | 'int' | 'number';
 
 const suffix: Record<Measure, string> = { px: 'px', deg: '°', ratio: '%', percent: '%', seconds: '초', int: '', number: '' };
 
-export function toDisplay(measure: Measure, value: number): number {
+function toDisplay(measure: Measure, value: number): number {
     const shown = measure === 'ratio' ? value * 100 : measure === 'seconds' ? value / 1000 : value;
     return Math.round(shown * 1000) / 1000;
 }
 
-export function fromDisplay(measure: Measure, shown: number): SetValue {
+function fromDisplay(measure: Measure, shown: number): SetValue {
     switch (measure) {
         case 'px': return { length: shown };
         case 'deg': return { number: shown };
@@ -114,7 +116,7 @@ export function NumberField({ name, label: text, value, origin, onSet, onUnset, 
     );
 }
 
-// ---- 고르기
+// 고르기
 
 export function EnumField({ name, label: text, value, origin, onSet, onUnset, options, names }: FieldProps & { options: string[]; names?: Record<string, string> }) {
     const lock = lockReason(origin);
@@ -162,18 +164,43 @@ export function TextField({ name, label: text, value, origin, onSet, onUnset, mu
     );
 }
 
-// 파일 경로. 고르기 버튼은 pick이 문서 폴더로 복사한 뒤 적을 상대 경로를 돌려준다
-export function FileField({ name, label: text, value, origin, onSet, onUnset, pick, extra }: FieldProps & { pick(): Promise<string | null>; extra?: ReactNode }) {
+// 폰트. 값은 글꼴 이름(테마 폰트는 +mj, +mn)이고, 고르면 font("이름")으로 적는다
+export function FontField({ name, label: text, value, origin, onSet, onUnset }: FieldProps) {
     const lock = lockReason(origin);
-    const shown = typeof value === 'string' && value ? value : '없음';
+    const family = typeof value === 'string' ? value : '';
+    const shown = family === '+mj' ? '테마 제목 폰트' : family === '+mn' ? '테마 본문 폰트' : family || '기본';
+    const [popup, setPopup] = useState<{ x: number; y: number } | null>(null);
+    return (
+        <Row label={text ?? name} lock={lock} origin={origin} onUnset={onUnset}>
+            <button className="font-field" disabled={!!lock} title={shown} onClick={(event) => {
+                const box = event.currentTarget.getBoundingClientRect();
+                setPopup({ x: box.left, y: box.bottom + 4 });
+            }}>
+                <span className="font-field-name" style={family && !family.startsWith('+') ? { fontFamily: cssFont(family) } : undefined}>{shown}</span>
+                <ChevronDown size={13} />
+            </button>
+            {popup && <FontPopup x={popup.x} y={popup.y} current={family} onClose={() => setPopup(null)} onPick={(picked) => {
+                setPopup(null);
+                onSet({ code: fontCode(picked) });
+            }} />}
+        </Row>
+    );
+}
+
+// 파일 경로. 고르기 버튼은 pick이 문서 폴더로 복사한 뒤 적을 상대 경로를 돌려준다
+// 그림, 비디오, 오디오 파일. 값은 경로 문자열이나 {image: 경로}이고, pick은 고른 파일을 가리키는 값을 준다
+export function FileField({ name, label: text, value, origin, onSet, onUnset, pick, extra }: FieldProps & { pick(): Promise<SetValue | null>; extra?: ReactNode }) {
+    const lock = lockReason(origin);
+    const path = typeof value === 'string' ? value : value && typeof value === 'object' && 'image' in value ? String((value as { image: string }).image) : '';
+    const shown = path || '없음';
     return (
         <Row label={text ?? name} lock={lock} origin={origin} onUnset={onUnset}>
             <span className="file-field">
                 <span className="file-name" title={shown}>{shown}</span>
                 <button className="mini-button" disabled={!!lock} title="파일 고르기" onClick={async () => {
-                    const file = await pick();
-                    if (file) {
-                        onSet({ string: file });
+                    const picked = await pick();
+                    if (picked) {
+                        onSet(picked);
                     }
                 }}><FolderOpen size={13} /></button>
                 {extra}
@@ -182,7 +209,7 @@ export function FileField({ name, label: text, value, origin, onSet, onUnset, pi
     );
 }
 
-// ---- 색
+// 색
 
 function useOutside(open: boolean, close: () => void) {
     const ref = useRef<HTMLSpanElement>(null);
@@ -202,7 +229,7 @@ function useOutside(open: boolean, close: () => void) {
 }
 
 // 색 하나를 고르는 칸. 고르면 #RRGGBB(AA) 또는 테마 색의 코드(theme.accent1)를 돌려준다
-export function ColorPicker({ value, disabled, onPick, onClear, allowTheme = true }: { value: string | null; disabled?: boolean; onPick(color: { color?: string; code?: string }): void; onClear?(): void; allowTheme?: boolean }) {
+function ColorPicker({ value, disabled, onPick, onClear, allowTheme = true }: { value: string | null; disabled?: boolean; onPick(color: { color?: string; code?: string }): void; onClear?(): void; allowTheme?: boolean }) {
     const [open, setOpen] = useState(false);
     const ref = useOutside(open, () => setOpen(false));
     const hex = value ? value.slice(0, 7).toUpperCase() : null;
@@ -251,7 +278,7 @@ export function ColorField({ name, label: text, value, origin, onSet, onUnset }:
     );
 }
 
-// ---- 채우기 (색, 그라데이션, 무늬, 그림)
+// 채우기 (색, 그라데이션, 무늬, 그림)
 
 type Paint = { mode: 'none' | 'solid' | 'gradient' | 'pattern' | 'image'; color: string; radial: boolean; angle: number; colors: string[]; pattern: string; foreground: string; background: string; image: string };
 
@@ -275,7 +302,7 @@ function paintOf(value: Value | undefined): Paint {
     return paint;
 }
 
-export function paintCode(paint: Paint): string | null {
+function paintCode(paint: Paint): string | null {
     switch (paint.mode) {
         case 'solid': return colorCode(paint.color);
         case 'gradient': return paint.radial ? `radial(${paint.colors.map(colorCode).join(', ')})` : `linear(${Math.round(paint.angle)}, ${paint.colors.map(colorCode).join(', ')})`;
@@ -285,7 +312,7 @@ export function paintCode(paint: Paint): string | null {
     }
 }
 
-export function PaintField({ name, label: text, value, origin, onSet, onUnset, patterns, pickImage }: FieldProps & { patterns: string[]; pickImage(): Promise<string | null> }) {
+export function PaintField({ name, label: text, value, origin, onSet, onUnset, patterns, pickImage }: FieldProps & { patterns: string[]; pickImage(): Promise<SetValue | null> }) {
     const lock = lockReason(origin);
     const paint = paintOf(value);
     const write = async (next: Paint) => {
@@ -294,11 +321,11 @@ export function PaintField({ name, label: text, value, origin, onSet, onUnset, p
             return;
         }
         if (next.mode === 'image' && !next.image) {
-            const file = await pickImage();
-            if (!file) {
-                return;
+            const picked = await pickImage();
+            if (picked) {
+                onSet(picked);
             }
-            next = { ...next, image: file };
+            return;
         }
         const code = paintCode(next);
         if (code) {
@@ -362,9 +389,9 @@ export function PaintField({ name, label: text, value, origin, onSet, onUnset, p
                     <span className="file-field">
                         <span className="file-name" title={paint.image}>{paint.image || '없음'}</span>
                         <button className="mini-button" title="그림 고르기" onClick={async () => {
-                            const file = await pickImage();
-                            if (file) {
-                                write({ ...paint, image: file });
+                            const picked = await pickImage();
+                            if (picked) {
+                                onSet(picked);
                             }
                         }}><FolderOpen size={13} /></button>
                     </span>
@@ -374,7 +401,7 @@ export function PaintField({ name, label: text, value, origin, onSet, onUnset, p
     );
 }
 
-// ---- 링크와 실행 설정
+// 링크와 실행 설정
 
 const jumps: [string, string][] = [
     ['next_slide', '다음 슬라이드'], ['previous_slide', '이전 슬라이드'], ['first_slide', '첫 슬라이드'], ['last_slide', '마지막 슬라이드'],
@@ -409,13 +436,13 @@ function actionCode(draft: ActionDraft): string | null {
         case 'slide': return `slide(${Math.max(1, Math.round(draft.slide))})`;
         case 'run': return draft.text ? `run(${[quote(draft.text), ...(draft.args.trim() ? [draft.args.trim()] : [])].join(', ')})` : null;
         case 'program':
-        case 'macro':
-        case 'file': return draft.text ? `${draft.kind}(${quote(draft.text)})` : null;
+        case 'macro': return draft.text ? `${draft.kind}(${quote(draft.text)})` : null;
+        case 'file': return draft.text ? `action_file(${quote(draft.text)})` : null;
         default: return null;
     }
 }
 
-// link는 링크만, action과 hover_action은 실행 설정(run, program, macro, file)도 받는다
+// link는 링크만, action과 hover_action은 실행 설정(run, program, macro, action_file)도 받는다
 export function ActionField({ name, label: text, value, origin, onSet, onUnset, linkOnly }: FieldProps & { linkOnly?: boolean }) {
     const lock = lockReason(origin);
     const current = draftOf(value);
@@ -470,7 +497,7 @@ export function ActionField({ name, label: text, value, origin, onSet, onUnset, 
     );
 }
 
-// ---- 이름 붙은 개체 (연결선의 from, to)
+// 이름 붙은 개체 (연결선의 from, to)
 
 export function RefField({ name, label: text, value, origin, onSet, onUnset, names }: FieldProps & { names: string[] }) {
     const lock = lockReason(origin);

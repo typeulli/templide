@@ -28,7 +28,11 @@ namespace templide::backend {
     std::filesystem::path utf8_path(const std::string& text);
     std::string display(const std::filesystem::path& path);
 
+    // 파일 내용. 'x.tasset/이름'처럼 묶음(.tasset) 안의 파일을 가리키면 묶음에서 읽는다
     std::optional<std::string> read_file(const std::filesystem::path& file);
+
+    // 디스크에 있는 파일의 경로. 묶음 안의 파일이면 임시 폴더에 풀어 그 경로를 준다. 없으면 nullopt
+    std::optional<std::filesystem::path> disk_file(const std::filesystem::path& file);
 
     // 비디오, 오디오 파일의 재생 길이(ms). name의 확장자로 형식을 본다 (mp4, m4a, wav, mp3). 알 수 없으면 0
     long long media_duration(const std::string& bytes, const std::string& name);

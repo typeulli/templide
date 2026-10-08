@@ -39,8 +39,9 @@ const agents: Agent[] = [
 
 type Status = 'idle' | 'running' | 'exited' | 'failed';
 
-// visible은 AI 탭이 보이는지. 탭을 바꿔도 세션과 터미널은 그대로 둔다
-export function AgentPanel({ visible, folder }: { visible: boolean; folder: string | null }) {
+// visible은 AI 탭이 보이는지. 탭을 바꿔도 세션과 터미널은 그대로 둔다.
+// session은 이 패널이 있는 파일 탭. 에이전트는 MCP 주소 /mcp/<session>으로 그 탭의 문서만 고친다
+export function AgentPanel({ visible, folder, session }: { visible: boolean; folder: string | null; session: string }) {
     const [agentId, setAgentId] = useState(agents[0].id);
     const [status, setStatus] = useState<Status>('idle');
     const [message, setMessage] = useState<string | null>(null);
@@ -51,6 +52,7 @@ export function AgentPanel({ visible, folder }: { visible: boolean; folder: stri
     const run = useRef(0);                         // 그 실행의 번호. 이전 실행의 출력과 끝 알림은 버린다
     const early = useRef<{ run: number; data: string }[]>([]); // 번호를 받기 전에 온 출력
     const agent = agents.find((each) => each.id === agentId)!;
+    const sessionId = `${session}/${agent.id}`; // 편집기(Rust)의 세션 이름. 파일 탭마다 따로 실행한다
 
     useEffect(() => {
         const term = new Terminal({
@@ -135,11 +137,13 @@ export function AgentPanel({ visible, folder }: { visible: boolean; folder: stri
         try {
             run.current = 0;
             early.current = [];
-            running.current = agent.id;
-            const config = await invoke<string>('mcp_config');
-            const server = JSON.parse(config).mcpServers.templide;
+            running.current = sessionId;
+            const parsed = JSON.parse(await invoke<string>('mcp_config'));
+            const server = parsed.mcpServers.templide;
+            server.url += `/${encodeURIComponent(session)}`;
+            const config = JSON.stringify(parsed);
             const { args, env } = agent.launch({ config, url: server.url, token: server.headers.Authorization.replace(/^Bearer /, '') });
-            run.current = await invoke<number>('agent_start', { id: agent.id, program: agent.program, search: agent.search ?? [], args, env: env ?? {}, cwd: folder, cols: term.cols, rows: term.rows });
+            run.current = await invoke<number>('agent_start', { id: sessionId, program: agent.program, search: agent.search ?? [], args, env: env ?? {}, cwd: folder, cols: term.cols, rows: term.rows });
             early.current.filter((each) => each.run === run.current).forEach((each) => term.write(each.data));
             early.current = [];
             setStatus('running');
@@ -149,7 +153,7 @@ export function AgentPanel({ visible, folder }: { visible: boolean; folder: stri
             setStatus('failed');
             setMessage(`${agent.label}을(를) 실행하지 못했습니다. 설치되어 있는지 확인해 주세요. (${error})`);
         }
-    }, [agent, folder]);
+    }, [agent, folder, session, sessionId]);
 
     const stop = useCallback(() => {
         if (running.current) {

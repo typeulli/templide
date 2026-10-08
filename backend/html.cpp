@@ -975,13 +975,14 @@ namespace templide::backend::html {
                     error(where + ": unsupported " + kind + " format '" + extension + "' (" + supported + ")");
                     return std::nullopt;
                 }
-                // 편집기는 비디오와 오디오를 덱에 넣지 않고 파일 경로를 받아 직접 읽는다
+                // 편집기는 비디오와 오디오를 덱에 넣지 않고 파일 경로를 받아 직접 읽는다. 묶음 안의 파일은 임시 폴더에 푼 것을 읽는다
                 if (editor_ && (kind == "video" || kind == "audio")) {
-                    if (!std::filesystem::exists(file)) {
+                    const auto disk = disk_file(file);
+                    if (!disk) {
                         error(where + ": cannot open " + kind + " file " + display(file));
                         return std::nullopt;
                     }
-                    const std::string address = "file:" + display(std::filesystem::absolute(file));
+                    const std::string address = "file:" + display(std::filesystem::absolute(*disk));
                     media_.emplace(key, address);
                     return address;
                 }
@@ -1179,10 +1180,11 @@ namespace templide::backend::html {
             // 그림. fit과 crop_*은 pptx와 같이 틀과 자르기 비율로 바꾼다
             Json image_json(Object& result, const ir::Element& element, const std::string& where) {
                 const auto rect = element_rect(element, where);
-                const auto* path = std::get_if<std::string>(find_property(element, "path"));
-                if (path == nullptr) {
+                const auto* image = std::get_if<ir::Image>(find_property(element, "data"));
+                if (image == nullptr) {
                     return Json();
                 }
+                const std::string* path = &image->path;
                 std::array<double, 4> crop = {0, 0, 0, 0};
                 const std::array<const char*, 4> crop_names = {"crop_left", "crop_top", "crop_right", "crop_bottom"};
                 for (std::size_t i = 0; i < crop.size(); ++i) {
@@ -1216,7 +1218,7 @@ namespace templide::backend::html {
             Json media_json(Object& result, const ir::Element& element, const std::string& where) {
                 const bool video = element.object == "video";
                 const auto rect = element_rect(element, where);
-                const auto* path = std::get_if<std::string>(find_property(element, "path"));
+                const auto* path = std::get_if<std::string>(find_property(element, "data"));
                 if (!rect || path == nullptr) {
                     return Json();
                 }
@@ -1225,8 +1227,8 @@ namespace templide::backend::html {
                     return Json();
                 }
                 Json poster;
-                if (const auto* file = std::get_if<std::string>(find_property(element, "poster")); file != nullptr && !file->empty()) {
-                    if (const auto image = add_media(*file, where + ", poster", "image")) {
+                if (const auto* file = std::get_if<ir::Image>(find_property(element, "poster")); file != nullptr && !file->path.empty()) {
+                    if (const auto image = add_media(file->path, where + ", poster", "image")) {
                         poster = Json(*image);
                     }
                 }

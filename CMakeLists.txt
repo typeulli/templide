@@ -37,6 +37,10 @@ add_executable(templide main.cpp
         middleend/library.cpp
         middleend/geometry.h
         middleend/geometry.cpp
+        middleend/tasset.h
+        middleend/tasset.cpp
+        middleend/color.h
+        middleend/color.cpp
         backend/backend.h
         backend/backend.cpp
         backend/pptx.h
@@ -47,6 +51,15 @@ add_executable(templide main.cpp
         backend/pptx_animations.cpp
         backend/raster.h
         backend/raster.cpp
+        importer/xml.h
+        importer/xml.cpp
+        importer/pptx_import.h
+        importer/pptx_model.h
+        importer/pptx_model.cpp
+        importer/pptx_tree.cpp
+        importer/pptx_drawing.h
+        importer/pptx_drawing.cpp
+        importer/pptx_convert.cpp
         server/edits.h
         server/edits.cpp
         server/completion.h

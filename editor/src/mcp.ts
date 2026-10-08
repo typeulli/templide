@@ -214,13 +214,13 @@ async function run(access: () => EditorAccess, name: string, args: any): Promise
     }
 }
 
-// 도구 목록을 서버에 알리고 호출을 받는다
-export async function serveMcp(access: () => EditorAccess) {
+// 도구 목록을 서버에 알리고 호출을 받는다. session은 에이전트를 실행한 탭이다 (비었으면 보이는 탭)
+export async function serveMcp(access: (session: string) => EditorAccess) {
     await invoke('mcp_set_tools', { tools });
-    await listen<{ call: number; name: string; arguments: any }>('mcp-call', async ({ payload }) => {
+    await listen<{ call: number; session?: string; name: string; arguments: any }>('mcp-call', async ({ payload }) => {
         let result: Result;
         try {
-            result = await run(access, payload.name, payload.arguments ?? {});
+            result = await run(() => access(payload.session ?? ''), payload.name, payload.arguments ?? {});
         } catch (error) {
             result = fail(String(error));
         }

@@ -5,6 +5,11 @@
 #include "../backend/backend.h"
 #include "../backend/html.h"
 #include "../middleend/analyzer.h"
+#include "../middleend/tasset.h"
+#include "../middleend/color.h"
+#include "../importer/pptx_import.h"
+#include "../frontend/lexor.h"
+#include "../frontend/parser.h"
 
 #include "json.hpp"
 
@@ -33,7 +38,7 @@ namespace templide::server {
         constexpr double default_slide_width = 1280; // backend들의 기본 크기 (16:9)
         constexpr double default_slide_height = 720;
 
-        // ---- 경로와 URI
+        // 경로와 URI
 
         std::string percent_decode(const std::string& text) {
             std::string result;
@@ -95,7 +100,7 @@ namespace templide::server {
             return key;
         }
 
-        // ---- 위치. LSP는 0부터 세는 줄과 UTF-16 단위의 칸을 쓴다
+        // 위치. LSP는 0부터 세는 줄과 UTF-16 단위의 칸을 쓴다
 
         struct SourceText {
             std::string text;
@@ -210,7 +215,7 @@ namespace templide::server {
             throw std::runtime_error("A value needs length, number, string, color, enum, bool or code");
         }
 
-        // ---- 애니메이션 문장
+        // 애니메이션 문장
 
         // ms를 s 단위 리터럴로 (0.5s)
         std::string seconds_code(double milliseconds) {
@@ -360,6 +365,27 @@ namespace templide::server {
             return result;
         }
 
+        // 편집기가 보낸 base64 (data URL의 쉼표 뒤)
+        std::string decode_base64(const std::string& text) {
+            static const std::string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+            std::string result;
+            int bits = 0;
+            int buffer = 0;
+            for (const char c : text) {
+                const auto index = alphabet.find(c);
+                if (index == std::string::npos) {
+                    continue; // '='와 줄바꿈
+                }
+                buffer = (buffer << 6) | static_cast<int>(index);
+                bits += 6;
+                if (bits >= 8) {
+                    bits -= 8;
+                    result += static_cast<char>((buffer >> bits) & 0xFF);
+                }
+            }
+            return result;
+        }
+
         // 속성 패널에 보여 줄 지금 값. 길이는 px로 풀고(%는 슬라이드 크기로), 시간은 ms, 그 밖의 수는 단위를 뗀 값이다.
         // 그라데이션, 무늬, 그림, 링크, 실행 설정은 {gradient}, {pattern}, {image}, {link}, {action} 객체다
         json value_json(const std::string& name, const ir::Value& value, SlideSize size) {
@@ -461,7 +487,7 @@ namespace templide::server {
             bool shutdown_ = false;
             bool exit_ = false;
 
-            // ---- 메시지
+            // 메시지
 
             static std::optional<std::string> read_message() {
                 std::size_t length = 0;
@@ -586,6 +612,28 @@ namespace templide::server {
                         reply(id, edit(params));
                     } else if (method == "templide/schema") {
                         reply(id, schema(params));
+                    } else if (method == "templide/asset_add") {
+                        reply(id, asset_add(params));
+                    } else if (method == "templide/colors") {
+                        reply(id, colors(params));
+                    } else if (method == "templide/color_presentations") {
+                        reply(id, color_presentations(params));
+                    } else if (method == "templide/asset_list") {
+                        reply(id, asset_list(params));
+                    } else if (method == "templide/asset_extract") {
+                        reply(id, asset_extract(params));
+                    } else if (method == "templide/asset_remove") {
+                        reply(id, asset_change(params, false));
+                    } else if (method == "templide/asset_rename") {
+                        reply(id, asset_change(params, true));
+                    } else if (method == "templide/asset_uses") {
+                        reply(id, asset_uses(params));
+                    } else if (method == "templide/reload") {
+                        compile_all();
+                    } else if (method == "templide/pptx_tree") {
+                        reply(id, importer::tree(backend::utf8_path(params.at("path").get<std::string>())));
+                    } else if (method == "templide/pptx_import") {
+                        reply(id, pptx_import(params));
                     } else if (request) {
                         reply_error(id, -32601, "Unknown method: " + method);
                     }
@@ -598,7 +646,7 @@ namespace templide::server {
                 }
             }
 
-            // ---- 컴파일과 오류
+            // 컴파일과 오류
 
             // 열린 문서마다 그 문서를 main으로 컴파일한다. 열린 다른 문서는 저장하지 않은 내용을 쓴다
             void compile_all() {
@@ -681,13 +729,16 @@ namespace templide::server {
 
             void publish(const std::string& key, const Compiled& compiled) {
                 std::map<std::string, json> by_uri;
-                for (const auto& diagnostic : compiled.result.diagnostics) {
-                    by_uri[uri_of(diagnostic.path)].push_back({
-                        {"range", diagnostic_range(compiled, diagnostic)},
-                        {"severity", 1},
-                        {"source", "templide"},
-                        {"message", diagnostic.message},
-                    });
+                // 오류는 severity 1, 컴파일은 되지만 알릴 것(sRGB 밖의 색 등)은 2
+                for (const auto& [list, severity] : {std::pair{&compiled.result.diagnostics, 1}, std::pair{&compiled.result.warnings, 2}}) {
+                    for (const auto& diagnostic : *list) {
+                        by_uri[uri_of(diagnostic.path)].push_back({
+                            {"range", diagnostic_range(compiled, diagnostic)},
+                            {"severity", severity},
+                            {"source", "templide"},
+                            {"message", diagnostic.message},
+                        });
+                    }
                 }
                 by_uri.try_emplace(documents_.at(key).uri, json::array());
                 // 이번에 오류가 없어진 파일도 빈 목록을 보내 지운다
@@ -703,7 +754,7 @@ namespace templide::server {
                 }
             }
 
-            // ---- 덱과 편집
+            // 덱과 편집
 
             const Compiled& compiled_for(const json& params) const {
                 const auto it = compiled_.find(file_key(uri_to_path(params.at("uri").get<std::string>())));
@@ -873,7 +924,13 @@ namespace templide::server {
                 for (const auto& [name, master] : symbols.masters) {
                     masters[name] = {{"parameters", master.parameters}, {"cases", master.cases}};
                 }
+                json assets = json::array();
+                for (const auto& asset : symbols.assets) {
+                    assets.push_back({{"bundle", asset.bundle}, {"written", asset.written}, {"default", asset.is_default}, {"hasBy", asset.has_by},
+                                      {"namespaces", asset.namespaces}, {"aliases", asset.aliases}, {"entries", asset.entries}});
+                }
                 return {
+                    {"assets", assets}, {"constants", symbols.constants}, {"styles", symbols.styles},
                     {"objects", objects}, {"templates", templates}, {"enums", symbols.enums}, {"masters", masters}, {"themes", symbols.themes},
                     {"commonProperties", vars(symbols.common_properties)}, {"textProperties", vars(symbols.text_properties)},
                     {"styleProperties", vars(symbols.style_properties)}, {"slideProperties", vars(symbols.slide_properties)},
@@ -993,6 +1050,410 @@ namespace templide::server {
                 return backend::display((path.is_absolute() ? path : base / path).lexically_normal());
             }
 
+            // 그림, 비디오, 오디오 파일을 묶음(.tasset)에 넣는다. 묶음이 없으면 만든다. 파일은 source(경로)나 base64(내용)로 받는다
+            static json asset_add(const json& params) {
+                const std::filesystem::path bundle = backend::utf8_path(params.at("bundle").get<std::string>());
+                std::string bytes;
+                std::string name = params.value("name", "");
+                if (params.contains("source")) {
+                    const std::filesystem::path source = backend::utf8_path(params.at("source").get<std::string>());
+                    const auto content = backend::read_file(source);
+                    if (!content) {
+                        return {{"error", "cannot open " + backend::display(source)}};
+                    }
+                    bytes = *content;
+                    if (name.empty()) {
+                        name = backend::display(source.filename());
+                    }
+                } else {
+                    bytes = decode_base64(params.at("base64").get<std::string>());
+                }
+                std::string error;
+                const auto added = tasset::add(bundle, name.empty() ? "file" : name, bytes, error);
+                if (!added) {
+                    return {{"error", error}};
+                }
+                return {{"name", *added}};
+            }
+
+            // 문서에 적은 색: hex(...), rgb(...), rgba(...), hsl(...) 등 값을 모두 수로 적은 색 함수와 theme.<색>.
+            // 편집기는 색 앞에 상자를 그리고, editable이면 눌러 색 선택기로 고친다. 색은 pptx에 들어가는 sRGB 값이다 (범위 밖이면 맞춘 값).
+            // 테마 색은 첫 slide가 쓰는 master의 테마(없으면 기본 테마)의 색이고 고칠 수 없다
+            json colors(const json& params) const {
+                const auto document = documents_.find(file_key(uri_to_path(params.at("uri").get<std::string>())));
+                if (document == documents_.end()) {
+                    return {{"colors", json::array()}};
+                }
+                const std::string& text = document->second.text;
+                const SourceText source = index_source(text);
+                std::vector<lexor::Token> tokens;
+                lexor::Lexor lexer(text);
+                for (lexor::Token token = lexer.next(); token.type != lexor::TokenType::END_OF_FILE; token = lexer.next()) {
+                    tokens.push_back(token);
+                }
+                const auto offset = [&](const lexor::Token& token) { return static_cast<std::size_t>(token.value.data() - text.data()); };
+                const auto adjacent = [&](const lexor::Token& a, const lexor::Token& b) { return offset(a) + a.value.size() == offset(b); };
+                const auto range = [&](std::size_t begin, std::size_t end) { return json{{"start", position(source, begin)}, {"end", position(source, end)}}; };
+                const auto rgba = [](int r, int g, int b, double a) { return json{{"r", r}, {"g", g}, {"b", b}, {"a", a}}; };
+                // 테마 색
+                const ir::Theme* theme = nullptr;
+                if (const auto compiled = compiled_.find(document->first); compiled != compiled_.end() && compiled->second.result.document) {
+                    const ir::Document& ir = *compiled->second.result.document;
+                    if (!ir.slides.empty() && ir.slides.front().layout && ir.slides.front().layout->master < ir.masters.size()) {
+                        const auto& master = ir.masters[ir.slides.front().layout->master];
+                        theme = master.theme ? &*master.theme : nullptr;
+                    }
+                    for (std::size_t i = 0; theme == nullptr && i < ir.masters.size(); ++i) {
+                        theme = ir.masters[i].theme ? &*ir.masters[i].theme : nullptr;
+                    }
+                }
+                static const std::map<std::string, std::string> schemes = {
+                    {"dark1", "dk1"}, {"light1", "lt1"}, {"dark2", "dk2"}, {"light2", "lt2"}, {"accent1", "accent1"}, {"accent2", "accent2"},
+                    {"accent3", "accent3"}, {"accent4", "accent4"}, {"accent5", "accent5"}, {"accent6", "accent6"}, {"hyperlink", "hlink"}, {"followed_hyperlink", "folHlink"},
+                };
+                static const std::set<std::string> spaces = {"hsl", "hsla", "hwb", "lab", "lch", "oklab", "oklch"};
+                json result = json::array();
+                for (std::size_t i = 0; i < tokens.size(); ++i) {
+                    const lexor::Token& name = tokens[i];
+                    if (name.type != lexor::TokenType::IDENTIFIER) {
+                        continue;
+                    }
+                    if (name.value == "theme" && i + 2 < tokens.size() && tokens[i + 1].type == lexor::TokenType::DOT && tokens[i + 2].type == lexor::TokenType::IDENTIFIER) {
+                        if (const auto scheme = schemes.find(std::string(tokens[i + 2].value)); scheme != schemes.end()) {
+                            ir::Color color = ir::default_theme_color(scheme->second);
+                            if (theme != nullptr) {
+                                if (const auto found = theme->colors.find(scheme->second); found != theme->colors.end()) {
+                                    color = found->second;
+                                }
+                            }
+                            result.push_back({{"range", range(offset(name), offset(tokens[i + 2]) + tokens[i + 2].value.size())},
+                                              {"color", rgba(color.r, color.g, color.b, color.a)}, {"space", "theme"}, {"editable", false}});
+                        }
+                        continue;
+                    }
+                    const std::string function(name.value);
+                    if ((function != "hex" && function != "rgb" && function != "rgba" && !spaces.contains(function))
+                        || i + 1 >= tokens.size() || tokens[i + 1].type != lexor::TokenType::LPAREN || !adjacent(name, tokens[i + 1])) {
+                        continue;
+                    }
+                    // 닫는 괄호까지. 값마다 [-]수[단위]만 있어야 한다
+                    std::size_t j = i + 2;
+                    std::vector<color::Component> components;
+                    std::string digits;
+                    bool literal = true;
+                    while (j < tokens.size() && tokens[j].type != lexor::TokenType::RPAREN && literal) {
+                        if (function == "hex") {
+                            if (tokens[j].type != lexor::TokenType::NUMBER && tokens[j].type != lexor::TokenType::IDENTIFIER) {
+                                literal = false;
+                                break;
+                            }
+                            digits += tokens[j].value;
+                            ++j;
+                            continue;
+                        }
+                        double sign = 1;
+                        if (tokens[j].type == lexor::TokenType::MINUS && j + 1 < tokens.size() && adjacent(tokens[j], tokens[j + 1])) {
+                            sign = -1;
+                            ++j;
+                        }
+                        if (tokens[j].type != lexor::TokenType::NUMBER) {
+                            literal = false;
+                            break;
+                        }
+                        color::Component component{sign * std::stod(std::string(tokens[j].value)), ""};
+                        if (j + 1 < tokens.size() && adjacent(tokens[j], tokens[j + 1])
+                            && (tokens[j + 1].type == lexor::TokenType::PERCENT || tokens[j + 1].type == lexor::TokenType::IDENTIFIER)) {
+                            component.unit = std::string(tokens[j + 1].value);
+                            ++j;
+                        }
+                        components.push_back(component);
+                        ++j;
+                        if (j < tokens.size() && tokens[j].type == lexor::TokenType::COMMA) {
+                            ++j;
+                        } else if (j < tokens.size() && tokens[j].type != lexor::TokenType::RPAREN) {
+                            literal = false;
+                        }
+                    }
+                    if (!literal || j >= tokens.size()) {
+                        continue;
+                    }
+                    std::optional<json> color;
+                    if (function == "hex") {
+                        if (std::all_of(digits.begin(), digits.end(), [](char c) { return std::isxdigit(static_cast<unsigned char>(c)); })
+                            && (digits.size() == 3 || digits.size() == 4 || digits.size() == 6 || digits.size() == 8)) {
+                            std::string full = digits;
+                            if (digits.size() <= 4) {
+                                full.clear();
+                                for (const char c : digits) {
+                                    full += std::string(2, c);
+                                }
+                            }
+                            const auto part = [&](std::size_t at) { return std::stoi(full.substr(at, 2), nullptr, 16); };
+                            color = rgba(part(0), part(2), part(4), full.size() == 8 ? part(6) / 255.0 : 1.0);
+                        }
+                    } else if (function == "rgb" || function == "rgba") {
+                        const std::size_t count = function == "rgb" ? 3 : 4;
+                        const bool valid = components.size() == count && std::all_of(components.begin(), components.begin() + 3, [](const color::Component& c) {
+                            return c.unit.empty() && c.value >= 0 && c.value <= 255 && c.value == std::floor(c.value);
+                        }) && (count == 3 || (components[3].unit.empty() && components[3].value >= 0 && components[3].value <= 1));
+                        if (valid) {
+                            color = rgba(static_cast<int>(components[0].value), static_cast<int>(components[1].value), static_cast<int>(components[2].value),
+                                         count == 4 ? components[3].value : 1.0);
+                        }
+                    } else {
+                        const std::string space = function == "hsla" ? "hsl" : function;
+                        std::size_t index = 0;
+                        std::string message;
+                        if (const auto parsed = color::parse(space, components, index, message)) {
+                            const color::Rgb rgb = color::gamut_map(color::to_srgb(space, parsed->values));
+                            const auto byte = [](double c) { return static_cast<int>(std::lround(std::clamp(c, 0.0, 1.0) * 255)); };
+                            color = rgba(byte(rgb.r), byte(rgb.g), byte(rgb.b), parsed->alpha);
+                        }
+                    }
+                    if (color) {
+                        const std::string space = function == "rgba" ? "rgb" : function == "hsla" ? "hsl" : function;
+                        result.push_back({{"range", range(offset(name), offset(tokens[j]) + 1)}, {"color", *color}, {"space", space}, {"editable", true}});
+                    }
+                    i = j;
+                }
+                return {{"colors", result}};
+            }
+
+            // 색 선택기가 적을 글자들. space(지금 적은 함수)의 것이 처음이고, 나머지는 hex, rgb, hsl, hwb, lab, lch, oklab, oklch 순이다
+            static json color_presentations(const json& params) {
+                const json& color = params.at("color");
+                const int r = color.at("r").get<int>();
+                const int g = color.at("g").get<int>();
+                const int b = color.at("b").get<int>();
+                const double a = color.value("a", 1.0);
+                const std::string first = params.value("space", "hex");
+                json labels = json::array();
+                for (const char* space : {"hex", "rgb", "hsl", "hwb", "lab", "lch", "oklab", "oklch"}) {
+                    const std::string label = color::format(space, r, g, b, a);
+                    if (space == first) {
+                        labels.insert(labels.begin(), label);
+                    } else {
+                        labels.push_back(label);
+                    }
+                }
+                return {{"labels", labels}};
+            }
+
+            // 묶음(.tasset) 안의 파일 이름과 크기
+            static json asset_list(const json& params) {
+                const std::filesystem::path bundle = backend::utf8_path(params.at("bundle").get<std::string>());
+                std::string error;
+                const auto entries = tasset::entries(bundle, error);
+                if (!entries) {
+                    return {{"error", error}};
+                }
+                json result = json::array();
+                for (const auto& entry : *entries) {
+                    result.push_back({{"name", entry.name}, {"size", entry.size}});
+                }
+                return {{"entries", result}};
+            }
+
+            // 묶음 안의 파일을 임시 폴더에 풀어 그 경로를 준다. 편집기가 미리 보기에 쓴다
+            static json asset_extract(const json& params) {
+                const auto path = tasset::extract(backend::utf8_path(params.at("bundle").get<std::string>()), params.at("entry").get<std::string>());
+                if (!path) {
+                    return {{"error", "cannot read " + params.at("entry").get<std::string>()}};
+                }
+                return {{"path", backend::display(*path)}};
+            }
+
+            // 묶음 안의 파일을 지우거나(rename이 false) 이름을 바꾼다
+            static json asset_change(const json& params, bool rename) {
+                const std::filesystem::path bundle = backend::utf8_path(params.at("bundle").get<std::string>());
+                const std::string entry = params.at("entry").get<std::string>();
+                std::string error;
+                const bool done = rename ? tasset::rename(bundle, entry, params.at("to").get<std::string>(), error) : tasset::remove(bundle, entry, error);
+                if (!done) {
+                    return {{"error", error}};
+                }
+                return json::object();
+            }
+
+            // 열린 문서에서 묶음(bundle) 안의 파일(entry)을 가리키는 곳: asset("이름"), asset 문의 by { 이름 as ... },
+            // "x.tasset/이름" 경로(file(...), image(...), 문자열). to가 있으면 그 이름으로 바꾼 글자(newText)도 준다.
+            // by { 이름 as 별명 }으로 붙인 asset("별명")은 by 쪽만 바꾸면 되므로 to가 있으면 빼고 준다
+            json asset_uses(const json& params) const {
+                const auto document = documents_.find(file_key(uri_to_path(params.at("uri").get<std::string>())));
+                if (document == documents_.end()) {
+                    return {{"uses", json::array()}};
+                }
+                const std::string bundle = file_key(backend::utf8_path(params.at("bundle").get<std::string>()));
+                const std::string entry = params.at("entry").get<std::string>();
+                const bool renaming = params.contains("to");
+                const std::string to = renaming ? params.at("to").get<std::string>() : "";
+                const auto stem = [](const std::string& name) {
+                    const std::size_t slash = name.find_last_of('/');
+                    const std::size_t dot = name.find_last_of('.');
+                    return dot != std::string::npos && (slash == std::string::npos || dot > slash + 1) ? name.substr(0, dot) : name;
+                };
+                const auto quoted = [](const std::string& value) {
+                    std::string result = "\"";
+                    for (const char c : value) {
+                        if (c == '"' || c == '\\') {
+                            result += '\\';
+                        }
+                        result += c;
+                    }
+                    return result + "\"";
+                };
+                const auto lowered = [](std::string value) {
+                    std::transform(value.begin(), value.end(), value.begin(), [](char c) { return static_cast<char>(std::tolower(static_cast<unsigned char>(c))); });
+                    std::replace(value.begin(), value.end(), '\\', '/');
+                    return value;
+                };
+                // asset("...")에 적을 수 있는 이름 -> 바꾼 이름 (별명이면 그대로)
+                std::map<std::string, std::string> names;
+                if (const auto symbols = symbols_.find(document->first); symbols != symbols_.end()) {
+                    for (const auto& asset : symbols->second.assets) {
+                        if (file_key(backend::utf8_path(asset.bundle)) != bundle || std::find(asset.entries.begin(), asset.entries.end(), entry) == asset.entries.end()) {
+                            continue;
+                        }
+                        const auto add = [&](const std::string& head) {
+                            names[head + entry] = head + to;
+                            names[head + stem(entry)] = head + stem(to);
+                        };
+                        if (!asset.has_by) {
+                            add("");
+                        }
+                        for (const auto& space : asset.namespaces) {
+                            add(space + ".");
+                        }
+                        for (const auto& [alias, target] : asset.aliases) {
+                            if (target == entry && !renaming) {
+                                names[alias] = alias;
+                            }
+                        }
+                    }
+                }
+                const std::string& text = document->second.text;
+                const std::filesystem::path folder = document->second.path.parent_path();
+                const SourceText source = index_source(text);
+                std::vector<lexor::Token> tokens;
+                lexor::Lexor lexer(text);
+                for (lexor::Token token = lexer.next(); token.type != lexor::TokenType::END_OF_FILE; token = lexer.next()) {
+                    tokens.push_back(token);
+                }
+                const auto is = [&](std::size_t i, lexor::TokenType type, std::string_view value = {}) {
+                    return i < tokens.size() && tokens[i].type == type && (value.empty() || tokens[i].value == value);
+                };
+                const auto content = [](const lexor::Token& token) { return std::string(token.value.substr(1, token.value.size() - 2)); };
+                json uses = json::array();
+                const auto use = [&](const lexor::Token& token, const std::string& replacement) {
+                    const std::size_t begin = static_cast<std::size_t>(token.value.data() - text.data());
+                    const json start = position(source, begin);
+                    const std::size_t line = start.at("line").get<std::size_t>();
+                    const std::size_t line_end = line + 1 < source.line_starts.size() ? source.line_starts[line + 1] - 1 : text.size();
+                    std::string preview = text.substr(source.line_starts[line], line_end - source.line_starts[line]);
+                    if (!preview.empty() && preview.back() == '\r') {
+                        preview.pop_back();
+                    }
+                    json item = {{"range", {{"start", start}, {"end", position(source, begin + token.value.size())}}}, {"preview", preview}};
+                    if (renaming) {
+                        item["newText"] = replacement;
+                    }
+                    uses.push_back(item);
+                };
+                std::set<std::size_t> done;
+                for (std::size_t i = 0; i < tokens.size(); ++i) {
+                    if (is(i, lexor::TokenType::IDENTIFIER, "asset") && is(i + 1, lexor::TokenType::LPAREN) && is(i + 2, lexor::TokenType::STRING) && is(i + 3, lexor::TokenType::RPAREN)) {
+                        // asset("이름")
+                        done.insert(i + 2);
+                        if (const auto found = names.find(content(tokens[i + 2])); found != names.end()) {
+                            use(tokens[i + 2], quoted(found->second));
+                        }
+                    } else if (is(i, lexor::TokenType::IDENTIFIER, "asset") && is(i + 1, lexor::TokenType::STRING) && is(i + 2, lexor::TokenType::IDENTIFIER, "by") && is(i + 3, lexor::TokenType::LBRACE)) {
+                        // asset "x.tasset" by { 이름 as 별명, ... }
+                        done.insert(i + 1);
+                        const bool same = file_key((folder / backend::utf8_path(content(tokens[i + 1]))).lexically_normal()) == bundle;
+                        for (std::size_t j = i + 4; j < tokens.size() && !is(j, lexor::TokenType::RBRACE); ++j) {
+                            if (!(is(j, lexor::TokenType::IDENTIFIER) || is(j, lexor::TokenType::STRING)) || !is(j + 1, lexor::TokenType::IDENTIFIER, "as")) {
+                                continue;
+                            }
+                            done.insert(j);
+                            const bool string = tokens[j].type == lexor::TokenType::STRING;
+                            const std::string written = string ? content(tokens[j]) : std::string(tokens[j].value);
+                            if (same && (written == entry || written == stem(entry))) {
+                                const std::string next = written == entry ? to : stem(to);
+                                const bool identifier = !next.empty() && !std::isdigit(static_cast<unsigned char>(next[0]))
+                                    && std::all_of(next.begin(), next.end(), [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; });
+                                use(tokens[j], !string && identifier ? next : quoted(next));
+                            }
+                            ++j; // as
+                        }
+                    }
+                    if (!is(i, lexor::TokenType::STRING) || done.contains(i)) {
+                        continue;
+                    }
+                    // "x.tasset/이름" 경로. 경로는 이 문서의 폴더 기준이다
+                    const std::string value = content(tokens[i]);
+                    const std::size_t at = lowered(value).find(".tasset/");
+                    if (at == std::string::npos) {
+                        continue;
+                    }
+                    const std::string prefix = value.substr(0, at + 7);
+                    std::string rest = value.substr(at + 8);
+                    std::replace(rest.begin(), rest.end(), '\\', '/');
+                    if (rest == entry && file_key((folder / backend::utf8_path(prefix)).lexically_normal()) == bundle) {
+                        use(tokens[i], quoted(prefix + "/" + to));
+                    }
+                }
+                return {{"uses", uses}};
+            }
+
+            // pptx를 .tlide로 바꾼다. selection은 불러오기 창에서 고른 노드 id들이다
+            json pptx_import(const json& params) const {
+                std::set<std::string> selection;
+                for (const auto& id : params.at("selection")) {
+                    selection.insert(id.get<std::string>());
+                }
+                const auto result = importer::convert(backend::utf8_path(params.at("path").get<std::string>()), selection,
+                                                      backend::utf8_path(params.at("output").get<std::string>()), packages_dir_);
+                if (!result.error.empty()) {
+                    return {{"error", result.error}};
+                }
+                json reply = {{"tlide", backend::display(result.tlide)}, {"warnings", result.warnings}, {"errors", result.errors}};
+                if (!result.tasset.empty()) {
+                    reply["tasset"] = backend::display(result.tasset);
+                }
+                return reply;
+            }
+
+            // 파일 맨 위의 선언(image, video, audio, asset)을 넣을 곳. #include, asset, 이름 붙인 값 중 마지막 것의 다음 줄이고, 없으면 파일의 처음이다
+            static EditResult declare(const Compiled& compiled, const json& params, const std::string& statements) {
+                const std::string main = main_source(compiled, params);
+                const auto found = compiled.texts.find(main);
+                if (found == compiled.texts.end()) {
+                    return {{}, "The document is not open"};
+                }
+                const std::string& text = found->second;
+                lexor::Lexor lexer(text);
+                parser::Parser file_parser(main, lexer);
+                const parser::ast::ASTFile* file = file_parser.parse();
+                if (file == nullptr) {
+                    return {{}, "The document has errors"};
+                }
+                std::optional<std::size_t> after;
+                for (const auto* statement : file->body) {
+                    if (statement->type == parser::ast::INCLUDE || statement->type == parser::ast::ASSET || statement->type == parser::ast::CONSTANT) {
+                        after = static_cast<std::size_t>(statement->span.data() - text.data()) + statement->span.size();
+                    }
+                }
+                if (!after) {
+                    return {{TextEdit{main, 0, 0, statements + "\n"}}, ""};
+                }
+                const std::size_t newline = text.find('\n', *after);
+                if (newline == std::string::npos) {
+                    return {{TextEdit{main, text.size(), text.size(), "\n" + statements}}, ""};
+                }
+                return {{TextEdit{main, newline + 1, newline + 1, statements}}, ""};
+            }
+
             // 편집 요청의 문서가 분석기에 들어간 경로. slide가 없을 때 새 slide를 이 파일에 넣는다
             static std::string main_source(const Compiled& compiled, const json& params) {
                 const std::string key = file_key(uri_to_path(params.at("uri").get<std::string>()));
@@ -1041,7 +1502,7 @@ namespace templide::server {
                 return {{"isIncomplete", false}, {"items", items}};
             }
 
-            // ---- 이름 찾기
+            // 이름 찾기
 
             // 요청의 문서를 읽은 컴파일 결과와 그 안의 경로. 열린 문서가 아니면(include한 파일) 그 파일을 읽은 컴파일에서 찾는다
             struct Located {
@@ -1488,7 +1949,11 @@ namespace templide::server {
                     return {{"error", "There is no target; add one such as target out { path = \"out.pptx\"; type = pptx; }"}};
                 }
                 const std::filesystem::path base = uri_to_path(params.at("uri").get<std::string>()).parent_path();
+                // 분석기의 경고(sRGB 밖의 색 등)도 "파일:줄:칸: warning: 내용"으로 함께 알린다
                 std::vector<std::string> warnings;
+                for (const auto& warning : compiled.result.warnings) {
+                    warnings.push_back(warning.path + ":" + std::to_string(warning.line) + ":" + std::to_string(warning.column) + ": warning: " + warning.message);
+                }
                 const auto errors = backend::write_target(document, *target, base, libs_dir_, warnings);
                 const std::filesystem::path output = (base / backend::utf8_path(target->path)).lexically_normal();
                 return {{"path", backend::display(output)}, {"type", target->type}, {"errors", errors}, {"warnings", warnings}};
@@ -1672,6 +2137,8 @@ namespace templide::server {
                             throw std::runtime_error("No slide " + std::to_string(page));
                         }
                         result = animation_edit(editor, document.slides[page - 1], op, symbols_for(params));
+                    } else if (kind == "declare") {
+                        result = declare(compiled, params, op.at("text").get<std::string>());
                     } else {
                         throw std::runtime_error("Unknown edit: " + kind);
                     }

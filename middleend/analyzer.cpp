@@ -1,10 +1,14 @@
 #include "analyzer.h"
 #include "geometry.h"
+#include "tasset.h"
+#include "color.h"
 
 #include "../frontend/lexor.h"
 #include "../frontend/parser.h"
 
 #include <algorithm>
+#include <array>
+#include <cstdio>
 #include <cmath>
 #include <ctime>
 #include <deque>
@@ -35,8 +39,9 @@ namespace templide::middleend {
         struct Type {
             // Fill과 Background는 색, 그라데이션, 무늬, 그림을 받는 속성 타입이다.
             // Link는 url 문자열, slide(번호), slide_jump 값을 받고, Ref는 put ... as로 붙인 개체 이름이다.
-            // Action은 Link가 받는 값과 run(...), program(...), macro(...), file(...)을 받는다
-            enum class Kind { Any, Error, Bool, Int, Float, String, Text, Color, Enum, Gradient, Image, Fill, Background, Pattern, Link, SlideRef, Ref, Action };
+            // Action은 Link가 받는 값과 run(...), program(...), macro(...), action_file(...)을 받는다.
+            // Image, Video, Audio는 그림, 비디오, 오디오 파일이고 File(file(...), asset(...))이나 문자열 경로를 받는다
+            enum class Kind { Any, Error, Bool, Int, Float, String, Text, Color, Enum, Gradient, Image, Fill, Background, Pattern, Link, SlideRef, Ref, Action, Video, Audio, File, Font };
             Kind kind = Kind::Any;
             const EnumInfo* enumeration = nullptr;
         };
@@ -56,8 +61,11 @@ namespace templide::middleend {
             }
             const bool paint = from.kind == Kind::Color || from.kind == Kind::Gradient || from.kind == Kind::Pattern || from.kind == Kind::Image;
             const bool link = from.kind == Kind::String || from.kind == Kind::SlideRef || (from.kind == Kind::Enum && from.enumeration->name == "slide_jump");
+            // 문자열 경로는 이름 없는 file("경로")로 본다
+            const bool media = to.kind == Kind::Image || to.kind == Kind::Video || to.kind == Kind::Audio;
             return (from.kind == Kind::String && to.kind == Kind::Text) || (from.kind == Kind::Int && to.kind == Kind::Float)
-                || (paint && (to.kind == Kind::Fill || to.kind == Kind::Background)) || (link && (to.kind == Kind::Link || to.kind == Kind::Action));
+                || (paint && (to.kind == Kind::Fill || to.kind == Kind::Background)) || (link && (to.kind == Kind::Link || to.kind == Kind::Action))
+                || ((from.kind == Kind::String || from.kind == Kind::File) && media) || (from.kind == Kind::File && (to.kind == Kind::Fill || to.kind == Kind::Background));
         }
 
         bool comparable(const Type& a, const Type& b) {
@@ -88,6 +96,10 @@ namespace templide::middleend {
                 case Kind::SlideRef: return "slide";
                 case Kind::Ref: return "object name";
                 case Kind::Action: return "action";
+                case Kind::Video: return "video";
+                case Kind::Audio: return "audio";
+                case Kind::File: return "file";
+                case Kind::Font: return "font";
             }
             return "unknown";
         }
@@ -143,7 +155,6 @@ namespace templide::middleend {
         struct LayoutInfo {
             const ast::ASTMaster* master;
             const ast::ASTMasterCase* layout;
-            const ast::ASTNode* expression;
             std::vector<ast::ASTNode*> arguments; // master의 매개변수에 넘기는 값
         };
 
@@ -742,7 +753,7 @@ namespace templide::middleend {
             if (action.kind == "link") {
                 return format_link(action.link);
             }
-            std::string result = action.kind + "(\"" + action.target + "\"";
+            std::string result = (action.kind == "file" ? "action_file" : action.kind) + "(\"" + action.target + "\"";
             for (const auto& argument : action.arguments) {
                 if (const auto* flag = std::get_if<bool>(&argument)) {
                     result += *flag ? ", true" : ", false";
@@ -899,7 +910,7 @@ namespace templide::middleend {
                     {"color", Type{Kind::Color}, [](ir::TextStyle& style, const ir::Value& value) { style.color = std::get<ir::Color>(value); }},
                     {"font-weight", enum_type("font_weight"), [](ir::TextStyle& style, const ir::Value& value) { style.font_weight = std::get<ir::EnumValue>(value); }},
                     {"line-height", Type{Kind::Float}, [](ir::TextStyle& style, const ir::Value& value) { style.line_height = std::get<ir::Number>(value); }},
-                    {"font-family", Type{Kind::String}, [](ir::TextStyle& style, const ir::Value& value) { style.font_family = std::get<std::string>(value); }},
+                    {"font-family", Type{Kind::Font}, [](ir::TextStyle& style, const ir::Value& value) { style.font_family = std::get<std::string>(value); }},
                     {"font-size", Type{Kind::Float}, [](ir::TextStyle& style, const ir::Value& value) { style.font_size = std::get<ir::Number>(value); }},
                     {"text-align", enum_type("text_align"), [](ir::TextStyle& style, const ir::Value& value) { style.text_align = std::get<ir::EnumValue>(value); }},
                     {"font-style", enum_type("font_style"), [](ir::TextStyle& style, const ir::Value& value) { style.font_style = std::get<ir::EnumValue>(value); }},
@@ -956,8 +967,8 @@ namespace templide::middleend {
                     // PowerPoint의 실행 설정. 누를 때와 마우스를 올릴 때 하는 일, 함께 낼 소리(wav), 강조
                     {"action", Type{Kind::Action}, nullptr, true},
                     {"hover_action", Type{Kind::Action}, nullptr, true},
-                    {"action_sound", Type{Kind::String}, nullptr, true},
-                    {"hover_sound", Type{Kind::String}, nullptr, true},
+                    {"action_sound", Type{Kind::Audio}, nullptr, true},
+                    {"hover_sound", Type{Kind::Audio}, nullptr, true},
                     {"action_highlight", Type{Kind::Bool}, nullptr, true},
                     {"hover_highlight", Type{Kind::Bool}, nullptr, true},
                 };
@@ -981,6 +992,8 @@ namespace templide::middleend {
 
             Result run(const std::filesystem::path& path) {
                 Result result = analyze_file(path);
+                sort_diagnostics(warnings_);
+                result.warnings = std::move(warnings_);
                 for (const auto& source : sources_) {
                     result.sources.emplace_back(source.path, source.text);
                 }
@@ -1030,6 +1043,31 @@ namespace templide::middleend {
                 for (const auto& [name, theme] : themes_) {
                     symbols_.themes.push_back(name);
                 }
+                for (const auto& [name, constant] : constants_) {
+                    symbols_.constants[name] = constant->type_name->name;
+                }
+                for (const auto* node : assets_) {
+                    SymbolAsset info;
+                    info.bundle = utf8(bundle_of(node));
+                    info.written = node->path;
+                    info.is_default = node->is_default;
+                    info.has_by = node->has_by;
+                    std::string message;
+                    const auto entries = tasset::list(bundle_of(node), message);
+                    info.entries = entries.value_or(std::vector<std::string>{});
+                    for (const auto& item : node->items) {
+                        if (item.all) {
+                            info.namespaces.push_back(item.alias->name);
+                            continue;
+                        }
+                        for (const auto& entry : info.entries) {
+                            if (entry == item.name || without_extension(entry) == item.name) {
+                                info.aliases[item.alias->name] = entry;
+                            }
+                        }
+                    }
+                    symbols_.assets.push_back(std::move(info));
+                }
                 symbols_.common_properties = vars_of(common_properties_);
                 symbols_.text_properties = vars_of(text_properties_);
                 for (const auto& property : properties_) {
@@ -1066,6 +1104,7 @@ namespace templide::middleend {
 
             Result analyze_file(const std::filesystem::path& path) {
                 main_path_ = path.string();
+                main_folder_ = path.parent_path();
                 load(path, nullptr);
                 if (diagnostics_.empty()) {
                     collect();
@@ -1087,17 +1126,20 @@ namespace templide::middleend {
                 std::string path;
                 std::string text;
                 bool package = false; // packages_dir 안의 파일. 편집기에서 고칠 수 없다
+                std::filesystem::path file;
             };
 
             std::filesystem::path packages_dir_;
             std::map<std::filesystem::path, std::string> overlays_; // file_key -> 내용
             std::string main_path_;
+            std::filesystem::path main_folder_; // 그림, 미디어 경로의 기준
             // Token의 string_view가 가리키므로 원소의 주소가 바뀌면 안 된다
             std::deque<Source> sources_;
             std::set<std::filesystem::path> loaded_;
             std::vector<const ast::ASTNode*> statements_;
 
             std::vector<Diagnostic> diagnostics_;
+            std::vector<Diagnostic> warnings_; // 컴파일은 되지만 알릴 것 (sRGB 밖의 색 등)
             Symbols symbols_;
             std::set<std::tuple<std::string, std::size_t, std::size_t, std::string>> reported_;
 
@@ -1116,6 +1158,13 @@ namespace templide::middleend {
             std::vector<const ast::ASTSlide*> slides_;
             std::vector<const ast::ASTTarget*> targets_;
             std::map<std::string, const ast::ASTTheme*> themes_;
+            // image, video, audio로 이름 붙인 값. evaluating_은 지금 계산하는 것들이다 (자기 자신을 가리키는지 찾는다)
+            std::map<std::string, const ast::ASTConstant*> constants_;
+            std::set<const ast::ASTConstant*> evaluating_;
+            // asset("이름")이 가리키는 파일들. 경로는 'x.tasset/파일'이고 main 폴더 기준이다. 둘 이상이면 이름이 겹친 것이다
+            std::map<std::string, std::vector<std::string>> asset_names_;
+            std::vector<const ast::ASTAsset*> assets_;
+            const ast::ASTAsset* default_asset_ = nullptr;
             // slide마다 그 앞의 가장 가까운 section 문장
             std::map<const ast::ASTSlide*, const ast::ASTSection*> slide_sections_;
             const ast::ASTSection* current_section_ = nullptr;
@@ -1154,7 +1203,7 @@ namespace templide::middleend {
             };
             ElementScope scope_;
 
-            // ---- 파일 읽기와 에러
+            // 파일 읽기와 에러
 
             // 같은 파일을 가리키는 경로를 하나로 맞춘 것
             static std::filesystem::path file_key(const std::filesystem::path& path) {
@@ -1187,7 +1236,7 @@ namespace templide::middleend {
                     text = buffer.str();
                 }
                 const std::filesystem::path relative = key.lexically_relative(file_key(packages_dir_));
-                sources_.push_back({path.string(), std::move(text), !relative.empty() && *relative.begin() != ".."});
+                sources_.push_back({path.string(), std::move(text), !relative.empty() && *relative.begin() != "..", path});
                 const Source& source = sources_.back();
 
                 lexor::Lexor lexer(source.text);
@@ -1211,7 +1260,7 @@ namespace templide::middleend {
                 }
             }
 
-            // ---- 편집기를 위한 출처
+            // 편집기를 위한 출처
 
             const Source* source_of(const char* position) const {
                 const std::less<const char*> less;
@@ -1268,6 +1317,7 @@ namespace templide::middleend {
                     case ast::COLOR_HEX:
                     case ast::COLOR_RGB:
                     case ast::COLOR_RGBA:
+                    case ast::COLOR_SPACE:
                     case ast::NAME:
                         return true;
                     case ast::MEMBER: {
@@ -1280,8 +1330,8 @@ namespace templide::middleend {
                         return std::all_of(items.begin(), items.end(), [](const ast::ASTNode* item) { return item->type == ast::STRING || item->type == ast::LIST && is_literal(item); });
                     }
                     case ast::CALL: {
-                        // 리터럴만 넘긴 linear(...), pattern(...), image(...), slide(...), run(...) 같은 값. 편집기는 식 전체를 바꾼다
-                        static const std::set<std::string> values = {"linear", "radial", "pattern", "image", "slide", "run", "program", "macro", "file"};
+                        // 리터럴만 넘긴 linear(...), pattern(...), image(...), file(...), slide(...), run(...), font(...) 같은 값. 편집기는 식 전체를 바꾼다
+                        static const std::set<std::string> values = {"linear", "radial", "pattern", "image", "file", "asset", "slide", "run", "program", "macro", "action_file", "font"};
                         const auto* call = static_cast<const ast::ASTCall*>(expr);
                         return values.contains(call->name->name) && std::all_of(call->arguments.begin(), call->arguments.end(), [](const ast::ASTNode* argument) {
                             return is_literal(argument);
@@ -1366,8 +1416,16 @@ namespace templide::middleend {
                 }
             }
 
-            // 파일을 읽은 순서, 그 안에서는 위치 순서로 정렬해서 돌려준다
-            Result fail() {
+            // template을 여러 번 펼쳐도 같은 자리의 같은 경고는 한 번만 남긴다
+            void warning(const Token& token, const std::string& message) {
+                Diagnostic diagnostic{path_of(token), token.line, token.column, message};
+                if (reported_.insert({diagnostic.path, diagnostic.line, diagnostic.column, "warning: " + diagnostic.message}).second) {
+                    warnings_.push_back(std::move(diagnostic));
+                }
+            }
+
+            // 파일을 읽은 순서, 그 안에서는 위치 순서로
+            void sort_diagnostics(std::vector<Diagnostic>& list) const {
                 std::map<std::string, std::size_t> order;
                 for (std::size_t i = 0; i < sources_.size(); ++i) {
                     order.emplace(sources_[i].path, i);
@@ -1376,11 +1434,16 @@ namespace templide::middleend {
                     const auto it = order.find(diagnostic.path);
                     return std::tuple{it == order.end() ? 0 : it->second, diagnostic.line, diagnostic.column};
                 };
-                std::stable_sort(diagnostics_.begin(), diagnostics_.end(), [&](const Diagnostic& a, const Diagnostic& b) { return rank(a) < rank(b); });
+                std::stable_sort(list.begin(), list.end(), [&](const Diagnostic& a, const Diagnostic& b) { return rank(a) < rank(b); });
+            }
+
+            // 파일을 읽은 순서, 그 안에서는 위치 순서로 정렬해서 돌려준다
+            Result fail() {
+                sort_diagnostics(diagnostics_);
                 return {std::nullopt, std::move(diagnostics_)};
             }
 
-            // ---- 선언 수집
+            // 선언 수집
 
             void add_builtin_enum(const std::string& name, std::vector<std::string> members) {
                 builtin_names_.insert(name);
@@ -1463,6 +1526,16 @@ namespace templide::middleend {
                             }
                             break;
                         }
+                        case ast::CONSTANT: {
+                            const auto* constant = static_cast<const ast::ASTConstant*>(statement);
+                            if (declare(constant->name->name, constant->name->token)) {
+                                constants_[constant->name->name] = constant;
+                            }
+                            break;
+                        }
+                        case ast::ASSET:
+                            collect_asset(static_cast<const ast::ASTAsset*>(statement));
+                            break;
                         case ast::IF:
                             error(statement->token, "'if' is not supported at the top level yet");
                             break;
@@ -1470,6 +1543,111 @@ namespace templide::middleend {
                             break;
                     }
                 }
+            }
+
+            static std::string utf8(const std::filesystem::path& path) {
+                const std::u8string text = path.generic_u8string();
+                return std::string(text.begin(), text.end());
+            }
+
+            static std::filesystem::path from_utf8(const std::string& text) {
+                return std::filesystem::path(std::u8string(text.begin(), text.end()));
+            }
+
+            // 묶음 안 파일 이름에서 확장자를 뺀 것. images/logo.png -> images/logo
+            static std::string without_extension(const std::string& name) {
+                const std::size_t slash = name.find_last_of('/');
+                const std::size_t dot = name.find_last_of('.');
+                return dot != std::string::npos && (slash == std::string::npos || dot > slash + 1) ? name.substr(0, dot) : name;
+            }
+
+            // asset 문이 불러오는 묶음의 경로. 그 문장을 적은 파일의 폴더 기준이다
+            std::filesystem::path bundle_of(const ast::ASTAsset* node) const {
+                const Source* source = source_of(node->span.data());
+                const std::filesystem::path folder = source != nullptr ? source->file.parent_path() : main_folder_;
+                return (folder / from_utf8(node->path)).lexically_normal();
+            }
+
+            // asset "경로" [by { ... }] [default]; 묶음의 파일 이름을 읽어 asset("이름")으로 찾을 수 있게 한다
+            void collect_asset(const ast::ASTAsset* node) {
+                assets_.push_back(node);
+                const std::filesystem::path bundle = bundle_of(node);
+                if (node->is_default) {
+                    if (default_asset_ != nullptr) {
+                        error(node->token, "Only one asset can be the default; '" + default_asset_->path + "' is already the default");
+                    } else {
+                        default_asset_ = node;
+                    }
+                }
+                std::string message;
+                const auto entries = tasset::list(bundle, message);
+                if (!entries) {
+                    error(node->path_token, "Cannot open the asset bundle '" + node->path + "' (" + message + ")");
+                    return;
+                }
+                // 파일을 가리키는 경로는 main 폴더 기준으로 적는다. 다른 드라이브면 절대 경로다
+                const std::filesystem::path relative = bundle.lexically_relative(main_folder_.lexically_normal());
+                const std::string prefix = utf8(relative.empty() ? bundle : relative) + "/";
+                const auto add_name = [&](const std::string& name, const std::string& entry) {
+                    auto& paths = asset_names_[name];
+                    if (std::find(paths.begin(), paths.end(), prefix + entry) == paths.end()) {
+                        paths.push_back(prefix + entry);
+                    }
+                };
+                const auto add_entry = [&](const std::string& head, const std::string& entry) {
+                    add_name(head + entry, entry);
+                    add_name(head + without_extension(entry), entry);
+                };
+                if (!node->has_by) {
+                    for (const auto& entry : *entries) {
+                        add_entry("", entry);
+                    }
+                }
+                std::set<std::string> aliases;
+                for (const auto& item : node->items) {
+                    if (!aliases.insert(item.alias->name).second) {
+                        error(item.alias->token, "Duplicate name '" + item.alias->name + "' in this asset");
+                        continue;
+                    }
+                    if (item.all) {
+                        for (const auto& entry : *entries) {
+                            add_entry(item.alias->name + ".", entry);
+                        }
+                        continue;
+                    }
+                    std::vector<std::string> matches;
+                    for (const auto& entry : *entries) {
+                        if (entry == item.name || without_extension(entry) == item.name) {
+                            matches.push_back(entry);
+                        }
+                    }
+                    if (matches.empty()) {
+                        error(item.token, "'" + node->path + "' has no file named '" + item.name + "'");
+                    } else if (matches.size() > 1) {
+                        error(item.token, "'" + item.name + "' matches more than one file in '" + node->path + "' (" + join(matches) + "); write the full file name");
+                    } else {
+                        add_name(item.alias->name, matches.front());
+                    }
+                }
+            }
+
+            // asset("이름")이 가리키는 파일의 경로. 없거나 둘 이상이면 at에 에러를 남긴다
+            std::optional<std::string> resolve_asset(const std::string& name, const Token& at) {
+                const auto it = asset_names_.find(name);
+                if (it == asset_names_.end()) {
+                    error(at, assets_.empty() ? "No asset bundle is loaded; add 'asset \"file.tasset\";' first" : "No asset named '" + name + "'");
+                    return std::nullopt;
+                }
+                if (it->second.size() > 1) {
+                    error(at, "'" + name + "' is ambiguous (" + join(it->second) + "); write the full file name or name it with 'asset ... by { ... }'");
+                    return std::nullopt;
+                }
+                return it->second.front();
+            }
+
+            static Type constant_type(const ast::ASTConstant* node) {
+                const std::string& type = node->type_name->name;
+                return Type{type == "video" ? Kind::Video : type == "audio" ? Kind::Audio : Kind::Image};
             }
 
             void collect_enum(const ast::ASTEnum* node) {
@@ -1487,7 +1665,7 @@ namespace templide::middleend {
                 enums_.emplace(node->name, std::move(info));
             }
 
-            // ---- 이름과 타입 검사
+            // 이름과 타입 검사
 
             Type resolve_type(const ast::ASTName* name) {
                 const std::string& type = name->name;
@@ -1498,6 +1676,10 @@ namespace templide::middleend {
                 if (type == "color") { return Type{Kind::Color}; }
                 if (type == "bool") { return Type{Kind::Bool}; }
                 if (type == "ref") { return Type{Kind::Ref}; }
+                if (type == "image") { return Type{Kind::Image}; }
+                if (type == "video") { return Type{Kind::Video}; }
+                if (type == "audio") { return Type{Kind::Audio}; }
+                if (type == "font") { return Type{Kind::Font}; }
                 if (const auto it = enums_.find(type); it != enums_.end()) {
                     return Type{Kind::Enum, &it->second};
                 }
@@ -1595,12 +1777,15 @@ namespace templide::middleend {
                         case ast::SECTION:
                             check_as(static_cast<const ast::ASTSection*>(statement)->name, Scope{}, Type{Kind::String});
                             break;
+                        case ast::CONSTANT: {
+                            const auto* constant = static_cast<const ast::ASTConstant*>(statement);
+                            check_as(constant->expression, Scope{}, constant_type(constant));
+                            break;
+                        }
                         default:
                             break;
                     }
                 }
-                // slide의 layout을 모두 안 뒤에 검사한다
-                check_slide_masters();
                 for (const auto* target : targets_) {
                     check_target(target);
                 }
@@ -1764,6 +1949,12 @@ namespace templide::middleend {
                     const auto* assign = static_cast<const ast::ASTAssign*>(statement);
                     const std::string& name = assign->name->name;
                     const VarInfo* var = find_var(*vars, name);
+                    if (var == nullptr && name == "path" && objects_.contains(put->name) && find_var(*vars, "data") != nullptr) {
+                        error(assign->name->token, "'" + put->name + "' has no property 'path'; give the file with data, such as data = file(\"picture.png\")");
+                        check(assign->expression, scope, Type{});
+                        assigned.insert("data"); // data가 없다는 에러를 또 내지 않는다
+                        continue;
+                    }
                     if (var == nullptr) {
                         error(assign->name->token, "'" + put->name + "' has no property '" + name + "'");
                         check(assign->expression, scope, Type{});
@@ -1882,7 +2073,7 @@ namespace templide::middleend {
             static const PropertyTypes& slide_properties() {
                 static const PropertyTypes properties = {
                     {"background", Type{Kind::Background}}, {"title", Type{Kind::Text}}, {"subtitle", Type{Kind::Text}}, {"body", Type{Kind::Text}},
-                    {"hidden", Type{Kind::Bool}}, {"advance_after", Type{Kind::Float}}, {"transition_sound", Type{Kind::String}},
+                    {"hidden", Type{Kind::Bool}}, {"advance_after", Type{Kind::Float}}, {"transition_sound", Type{Kind::Audio}},
                 };
                 return properties;
             }
@@ -1903,8 +2094,8 @@ namespace templide::middleend {
                     for (const auto& [name, scheme] : theme_colors()) {
                         result.emplace_back(name, Type{Kind::Color});
                     }
-                    result.emplace_back("heading_font", Type{Kind::String});
-                    result.emplace_back("body_font", Type{Kind::String});
+                    result.emplace_back("heading_font", Type{Kind::Font});
+                    result.emplace_back("body_font", Type{Kind::Font});
                     return result;
                 }();
                 return properties;
@@ -2061,7 +2252,7 @@ namespace templide::middleend {
                 for (const auto* statement : master->second->body) {
                     const auto* layout = static_cast<const ast::ASTMasterCase*>(statement);
                     if (layout->name == member->member->name) {
-                        return LayoutInfo{master->second, layout, expr, arguments};
+                        return LayoutInfo{master->second, layout, arguments};
                     }
                 }
                 error(member->member->token, "Master '" + master_name + "' has no layout '" + member->member->name + "'");
@@ -2107,26 +2298,11 @@ namespace templide::middleend {
                 }
             }
 
-            // 모든 slide가 같은 master를 써야 한다. 매개변수 값은 달라도 된다
-            void check_slide_masters() {
-                const ast::ASTMaster* master = nullptr;
-                for (const auto* slide : slides_) {
-                    const auto it = slide_layouts_.find(slide);
-                    if (it == slide_layouts_.end()) {
-                        continue;
-                    }
-                    const LayoutInfo& layout = it->second;
-                    if (master == nullptr) {
-                        master = layout.master;
-                    } else if (layout.master != master) {
-                        error(location(layout.expression), "Every slide must use the same master, but this slide uses '" + layout.master->name + "' and an earlier slide uses '" + master->name + "'");
-                    }
-                }
-            }
-
             void check_as(const ast::ASTNode* expr, const Scope& scope, const Type& expected) {
                 const Type actual = check(expr, scope, expected);
-                if (!assignable(actual, expected)) {
+                if (expected.kind == Kind::Font && actual.kind == Kind::String) {
+                    error(location(expr), "Write a font as font(\"...\"), such as font(\"Arial\")");
+                } else if (!assignable(actual, expected)) {
                     error(location(expr), "Expected " + type_name(expected) + ", but got " + type_name(actual));
                 }
             }
@@ -2198,6 +2374,16 @@ namespace templide::middleend {
                         check_as(color->a, scope, Type{Kind::Float});
                         return Type{Kind::Color};
                     }
+                    case ast::COLOR_SPACE: {
+                        const auto* color = static_cast<const ast::ASTColorSpace*>(expr);
+                        if (color->arguments.size() != 3 && color->arguments.size() != 4) {
+                            error(expr->token, color->space + " needs three values and an optional alpha, such as " + color::example(color->space));
+                        }
+                        for (const auto* component : color->arguments) {
+                            check_as(component, scope, Type{Kind::Float});
+                        }
+                        return Type{Kind::Color};
+                    }
                     case ast::COLOR_HEX: {
                         const auto& digits = static_cast<const ast::ASTString*>(static_cast<const ast::ASTColorHex*>(expr)->hex)->value;
                         if (digits.size() != 3 && digits.size() != 4 && digits.size() != 6 && digits.size() != 8) {
@@ -2212,6 +2398,20 @@ namespace templide::middleend {
                         }
                         if (call->name->name == "image") {
                             return check_image(call, scope);
+                        }
+                        if (call->name->name == "file" || call->name->name == "asset") {
+                            return check_source(call, scope, expected);
+                        }
+                        if (call->name->name == "font") {
+                            if (call->arguments.size() != 1) {
+                                error(call->token, "font needs one font name, such as font(\"Arial\")");
+                                for (const auto* argument : call->arguments) {
+                                    check(argument, scope, Type{});
+                                }
+                                return Type{Kind::Error};
+                            }
+                            check_as(call->arguments[0], scope, Type{Kind::String});
+                            return Type{Kind::Font};
                         }
                         if (call->name->name == "radial") {
                             return check_gradient(call, scope, 0);
@@ -2307,6 +2507,28 @@ namespace templide::middleend {
                 return Type{call->arguments.size() != 1 ? Kind::Error : Kind::Image};
             }
 
+            // file("경로")는 디스크의 파일(경로가 'x.tasset/이름'이면 그 묶음 안의 파일), asset("이름")은 asset 문으로 불러온 묶음의 파일
+            Type check_source(const ast::ASTCall* call, const Scope& scope, const Type& expected) {
+                const std::string& name = call->name->name;
+                if (name == "file" && (expected.kind == Kind::Action || expected.kind == Kind::Link)) {
+                    error(call->token, "To open a file when clicked, write action_file(\"...\"); file(...) gives a picture, video or audio file");
+                    return Type{Kind::Error};
+                }
+                if (call->arguments.size() != 1) {
+                    error(call->token, name == "file" ? "file needs one path, such as file(\"logo.png\") or file(\"slides.tasset/logo.png\")"
+                                                      : "asset needs one file name, such as asset(\"logo\")");
+                    for (const auto* argument : call->arguments) {
+                        check(argument, scope, Type{});
+                    }
+                    return Type{Kind::Error};
+                }
+                check_as(call->arguments[0], scope, Type{Kind::String});
+                if (name == "asset" && call->arguments[0]->type == ast::STRING) {
+                    resolve_asset(static_cast<const ast::ASTString*>(call->arguments[0])->value, call->arguments[0]->token);
+                }
+                return Type{Kind::File};
+            }
+
             Type check_name(const ast::ASTName* node, const Scope& scope, const Type& expected) {
                 if (const VarInfo* var = scope.find(node->name)) {
                     return var->type;
@@ -2328,6 +2550,9 @@ namespace templide::middleend {
                     error(node->token, "'" + node->name + "' is not a value of '" + expected.enumeration->name + "'");
                     return Type{Kind::Error};
                 }
+                if (const auto constant = constants_.find(node->name); constant != constants_.end()) {
+                    return constant_type(constant->second);
+                }
                 if (styles_.contains(node->name)) {
                     error(node->token, "Style '" + node->name + "' can only be used inside text");
                     return Type{Kind::Error};
@@ -2337,10 +2562,10 @@ namespace templide::middleend {
             }
 
             static bool is_action_call(const std::string& name) {
-                return name == "run" || name == "program" || name == "macro" || name == "file";
+                return name == "run" || name == "program" || name == "macro" || name == "action_file";
             }
 
-            // run("함수", 인자...), program("경로"), macro("이름"), file("경로")
+            // run("함수", 인자...), program("경로"), macro("이름"), action_file("경로")
             Type check_action_call(const ast::ASTCall* call, const Scope& scope, const Type& expected) {
                 const std::string& name = call->name->name;
                 bool valid = true;
@@ -2351,7 +2576,7 @@ namespace templide::middleend {
                 if (call->arguments.empty() || (name != "run" && call->arguments.size() != 1)) {
                     static const std::map<std::string, std::string> examples = {
                         {"run", "run(\"onClick\", @slide.number)"}, {"program", "program(\"tools/app.exe\")"},
-                        {"macro", "macro(\"Module1.Hello\")"}, {"file", "file(\"docs/report.pdf\")"},
+                        {"macro", "macro(\"Module1.Hello\")"}, {"action_file", "action_file(\"docs/report.pdf\")"},
                     };
                     error(call->token, name + " needs " + (name == "run" ? "a function name and optional arguments" : "one string") + ", such as " + examples.at(name));
                     valid = false;
@@ -2378,7 +2603,7 @@ namespace templide::middleend {
                         }
                     }
                     if (member == "heading_font" || member == "body_font") {
-                        return Type{Kind::String};
+                        return Type{Kind::Font};
                     }
                     error(location(node), "Unknown theme value: theme." + member);
                     return Type{Kind::Error};
@@ -2553,10 +2778,13 @@ namespace templide::middleend {
                 }
             }
 
-            // ---- 전개와 계산. 검사를 통과한 뒤에만 실행한다
+            // 전개와 계산. 검사를 통과한 뒤에만 실행한다
 
             ir::Document build_document() {
                 ir::Document document;
+                for (const auto& [name, constant] : constants_) {
+                    evaluate_constant(constant);
+                }
                 // 매개변수가 없는 master는 미리 만들고, 있는 master는 slide가 넘긴 값마다 만든다
                 for (const auto* master : master_order_) {
                     if (signatures_.at(master).empty()) {
@@ -2740,7 +2968,7 @@ namespace templide::middleend {
                     const auto* assign = static_cast<const ast::ASTAssign*>(statement);
                     const std::string& name = assign->name->name;
                     if (name == "heading_font" || name == "body_font") {
-                        (name == "heading_font" ? result.heading_font : result.body_font) = std::get<std::string>(evaluate(assign->expression, Env{}, Type{Kind::String}));
+                        (name == "heading_font" ? result.heading_font : result.body_font) = std::get<std::string>(evaluate(assign->expression, Env{}, Type{Kind::Font}));
                         continue;
                     }
                     for (const auto& [key, scheme] : theme_colors()) {
@@ -3312,6 +3540,24 @@ namespace templide::middleend {
                 if (expected.kind == Kind::Action && !std::holds_alternative<ir::Action>(value)) {
                     return ir::Action{"link", to_link(value), "", {}, ""};
                 }
+                // 그림은 image(경로)로, 비디오와 오디오는 경로 문자열로 넘긴다. 문자열 경로는 file(경로)와 같다
+                if (const auto* path = std::get_if<std::string>(&value); path != nullptr && expected.kind == Kind::Image) {
+                    return ir::Image{*path};
+                }
+                if (const auto* image = std::get_if<ir::Image>(&value); image != nullptr && (expected.kind == Kind::Video || expected.kind == Kind::Audio)) {
+                    return image->path;
+                }
+                return value;
+            }
+
+            // image NAME = 값;의 값. 그림은 ir::Image, 비디오와 오디오는 경로 문자열이다
+            ir::Value evaluate_constant(const ast::ASTConstant* node) {
+                if (!evaluating_.insert(node).second) {
+                    error(node->name->token, "'" + node->name->name + "' refers to itself");
+                    return ir::Image{};
+                }
+                ir::Value value = evaluate(node->expression, Env{}, constant_type(node));
+                evaluating_.erase(node);
                 return value;
             }
 
@@ -3364,6 +3610,9 @@ namespace templide::middleend {
                         if (expected.kind == Kind::Enum) {
                             return ir::EnumValue{expected.enumeration->name, name};
                         }
+                        if (const auto constant = constants_.find(name); constant != constants_.end() && expected.kind != Kind::Ref) {
+                            return evaluate_constant(constant->second);
+                        }
                         if (expected.kind == Kind::Ref) {
                             return name;
                         }
@@ -3401,6 +3650,8 @@ namespace templide::middleend {
                     }
                     case ast::COLOR_HEX:
                         return hex_color(static_cast<const ast::ASTString*>(static_cast<const ast::ASTColorHex*>(expr)->hex)->value);
+                    case ast::COLOR_SPACE:
+                        return evaluate_color_space(static_cast<const ast::ASTColorSpace*>(expr), env);
                     case ast::CALL:
                         // 검사를 통과했으면 linear나 image뿐이다
                         return evaluate_call(static_cast<const ast::ASTCall*>(expr), env);
@@ -3467,10 +3718,27 @@ namespace templide::middleend {
             ir::Value evaluate_call(const ast::ASTCall* call, const Env& env) {
                 const auto& arguments = call->arguments;
                 const std::string& name = call->name->name;
-                if (name == "image") {
-                    const ir::Value path = evaluate(arguments[0], env, Type{Kind::String});
-                    const auto* string = std::get_if<std::string>(&path);
-                    return ir::Image{string != nullptr ? *string : ""};
+                // image("경로")는 file("경로")와 같다. 경로는 main 폴더 기준이다
+                if (name == "image" || name == "file" || name == "asset") {
+                    const ir::Value argument = evaluate(arguments[0], env, Type{Kind::String});
+                    const auto* string = std::get_if<std::string>(&argument);
+                    if (string == nullptr || string->empty()) {
+                        error(location(arguments[0]), name == "asset" ? "The file name must not be empty" : "The path must not be empty");
+                        return ir::Image{};
+                    }
+                    if (name == "asset") {
+                        return ir::Image{resolve_asset(*string, location(arguments[0])).value_or("")};
+                    }
+                    return ir::Image{*string};
+                }
+                if (name == "font") {
+                    const ir::Value argument = evaluate(arguments[0], env, Type{Kind::String});
+                    const auto* family = std::get_if<std::string>(&argument);
+                    if (family == nullptr || family->empty()) {
+                        error(location(arguments[0]), "The font name must not be empty");
+                        return std::string();
+                    }
+                    return *family;
                 }
                 if (is_action_call(name)) {
                     return evaluate_action_call(call, env);
@@ -3514,7 +3782,7 @@ namespace templide::middleend {
             ir::Action evaluate_action_call(const ast::ASTCall* call, const Env& env) {
                 using Argument = std::variant<bool, double, std::string>;
                 const auto& arguments = call->arguments;
-                ir::Action action{call->name->name, {}, "", {}, where_of(call->token)};
+                ir::Action action{call->name->name == "action_file" ? "file" : call->name->name, {}, "", {}, where_of(call->token)};
                 const ir::Value target = evaluate(arguments[0], env, Type{Kind::String});
                 if (const auto* string = std::get_if<std::string>(&target)) {
                     action.target = *string;
@@ -3603,6 +3871,39 @@ namespace templide::middleend {
                 return static_cast<int>(*value);
             }
 
+            // hsl(...), oklch(...) 등을 sRGB 색으로. 값의 단위와 범위는 CSS Color 4를 따른다 (color::parse).
+            // sRGB 밖의 색(lab, lch, oklab, oklch)은 채도를 줄여 가장 가까운 색으로 맞추고 경고한다
+            ir::Color evaluate_color_space(const ast::ASTColorSpace* node, const Env& env) {
+                std::vector<color::Component> components;
+                for (const auto* argument : node->arguments) {
+                    const ir::Number number = as_number(evaluate(argument, env, Type{Kind::Float}));
+                    if (number.terms.empty()) {
+                        components.push_back({0, ""});
+                    } else if (number.terms.size() == 1) {
+                        components.push_back({number.terms[0].second, number.terms[0].first});
+                    } else {
+                        components.push_back({0, "?"});
+                    }
+                }
+                std::size_t index = 0;
+                std::string message;
+                const auto parsed = color::parse(node->space, components, index, message);
+                if (!parsed) {
+                    error(index < node->arguments.size() ? location(node->arguments[index]) : node->token, message);
+                    return ir::Color{};
+                }
+                color::Rgb rgb = color::to_srgb(node->space, parsed->values);
+                const bool outside = !color::in_gamut(rgb);
+                rgb = color::gamut_map(rgb);
+                const auto byte = [](double c) { return static_cast<int>(std::lround(std::clamp(c, 0.0, 1.0) * 255)); };
+                ir::Color result{byte(rgb.r), byte(rgb.g), byte(rgb.b), parsed->alpha, ""};
+                if (outside) {
+                    warning(node->token, "This " + node->space + " color is outside the sRGB range that pptx and html can show; using the nearest color "
+                        + color::format("hex", result.r, result.g, result.b, 1));
+                }
+                return result;
+            }
+
             double color_alpha(const ast::ASTNode* expr, const Env& env) {
                 const auto value = scalar(as_number(evaluate(expr, env, Type{Kind::Float})));
                 if (!value || *value < 0 || *value > 1) {
@@ -3612,7 +3913,7 @@ namespace templide::middleend {
                 return *value;
             }
 
-            // ---- text 만들기
+            // text 만들기
 
             ir::Text build_text(const ast::ASTNode* expr, const Env& env) {
                 TextBuilder builder;

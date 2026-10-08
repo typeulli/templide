@@ -1,0 +1,80 @@
+/* pptx 불러오기 창 (ImportDialog). 탐색기에서 연 창 전체를 쓴다 */
+
+.import { position: relative; display: flex; flex-direction: column; height: 100%; background: var(--canvas); color: var(--text); }
+
+.import-header { flex: none; display: flex; align-items: center; gap: 8px; padding: 12px 16px; background: var(--panel); border-bottom: 1px solid var(--border); }
+.import-title { font-weight: 600; font-size: 14px; }
+.import-subtitle { color: var(--muted); }
+
+.import-list { flex: 1; min-height: 0; overflow: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; }
+.import-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-height: 240px;
+    border: 2px dashed var(--border-strong); border-radius: 12px; color: var(--muted); }
+
+.import-card { flex: none; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
+.import-card-header { display: flex; align-items: center; gap: 6px; padding: 8px 10px 4px 6px; }
+.import-file { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.import-count { flex: none; padding: 0 6px; border-radius: 8px; background: var(--hover); color: var(--muted); font-size: 11px; }
+.import-icon { flex: none; color: var(--muted); }
+.import-icon-button { display: grid; place-items: center; width: 26px; height: 26px; border: none; border-radius: 6px; background: transparent; cursor: pointer; }
+.import-icon-button:hover:not(:disabled) { background: var(--hover); }
+
+.import-output { display: flex; align-items: center; gap: 8px; padding: 2px 12px 8px 34px; font-size: 12px; }
+.import-output-label { flex: none; color: var(--muted); }
+.import-output-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.import-small-button { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border: 1px solid var(--border-strong); border-radius: 6px;
+    background: var(--panel); font-size: 12px; cursor: pointer; }
+.import-small-button:hover:not(:disabled) { background: var(--hover); }
+.import-small-button:disabled { opacity: 0.5; cursor: default; }
+
+.import-message { display: flex; align-items: center; gap: 6px; padding: 6px 12px 10px 34px; color: var(--muted); }
+.import-message.error { color: var(--danger); }
+
+.import-problems { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 0 12px 8px 30px; }
+.import-problem { display: inline-flex; align-items: center; gap: 5px; padding: 2px 4px; border: none; border-radius: 4px; background: transparent;
+    color: var(--danger); font-size: 12px; text-align: left; cursor: pointer; }
+.import-problem:hover { background: #fdecec; }
+
+.import-tree { padding: 4px 4px 8px; border-top: 1px solid var(--border); }
+.import-row { display: flex; align-items: center; min-height: 26px; border-radius: 6px; transition: background 0.3s; }
+.import-row:hover { background: var(--hover); }
+.import-row.flash { background: var(--accent-soft); }
+.import-row.unsupported .import-text, .import-row.unsupported .import-icon { color: var(--muted); opacity: 0.7; }
+.import-chevron { flex: none; display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: none; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; }
+span.import-chevron { cursor: default; }
+button.import-chevron:hover { background: var(--border); }
+.import-label { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding-right: 8px; cursor: pointer; }
+.import-row.unsupported .import-label { cursor: default; }
+.import-label input, .import-card-header input { flex: none; margin: 0; }
+.import-text { flex: none; max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.import-tag { flex: none; padding: 0 5px; border-radius: 6px; background: var(--hover); color: var(--muted); font-size: 11px; }
+.import-detail { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; }
+.import-reason { flex: none; color: var(--muted); font-size: 11px; font-style: italic; }
+
+.import-result { margin: 0 12px 8px 30px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: #fbfbfc; }
+.import-result-head { display: flex; align-items: center; gap: 6px; }
+.import-result-head .ok { flex: none; color: var(--ok); }
+.import-result-paths { display: flex; gap: 8px; min-width: 0; overflow: hidden; font-weight: 600; }
+.import-result-paths span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.import-errors { margin-top: 6px; color: var(--danger); font-size: 12px; }
+.import-errors-title { display: flex; align-items: center; gap: 5px; font-weight: 600; }
+.import-error-line { padding-left: 18px; white-space: pre-wrap; word-break: break-all; }
+.import-warnings { margin-top: 6px; }
+.import-warning { display: flex; align-items: flex-start; gap: 5px; color: var(--warning-text); font-size: 12px; }
+.import-warning svg { flex: none; margin-top: 2px; }
+
+.import-footer { flex: none; display: flex; align-items: center; gap: 8px; padding: 10px 16px 12px; background: var(--panel); border-top: 1px solid var(--border); }
+.import-footer button { height: 32px; padding: 0 14px; border-radius: 7px; font-weight: 600; cursor: pointer; }
+.import-notice { display: flex; align-items: center; gap: 5px; min-width: 0; color: var(--warning-text); font-size: 12px; }
+.import-notice.error { color: var(--danger); }
+.import-secondary { border: 1px solid var(--border-strong); background: var(--panel); }
+.import-secondary:hover:not(:disabled) { background: var(--hover); }
+.import-primary { border: none; background: var(--accent); color: #fff; }
+.import-primary:hover:not(:disabled) { background: #0b87e0; }
+.import-footer button:disabled { opacity: 0.5; cursor: default; }
+
+/* 끌어다 놓는 동안 창 전체에 보이는 안내 */
+.import-drop { position: absolute; inset: 8px; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    border: 2px dashed var(--accent); border-radius: 12px; background: rgba(230, 244, 255, 0.92); color: var(--accent); font-weight: 600; pointer-events: none; }
+
+.spin { flex: none; animation: import-spin 1s linear infinite; }
+@keyframes import-spin { to { transform: rotate(360deg); } }

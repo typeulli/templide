@@ -3,7 +3,7 @@ import { useState, type ReactNode } from 'react';
 import { ChevronDown, ChevronUp, ChevronsDown, ChevronsUp, Film, List, ListOrdered, Minus, Pilcrow, Play, Plus, Trash2 } from 'lucide-react';
 import type { DeckResult, ElementInfo, Origin, Schema, SchemaVar, SlideInfo, Value } from './lsp';
 import {
-    ActionField, BoolField, ColorField, EnumField, FileField, NumberField, PaintField, RefField, Row, Section, TextField, NumberInput,
+    ActionField, BoolField, ColorField, EnumField, FileField, FontField, NumberField, PaintField, RefField, Row, Section, TextField, NumberInput,
     lockReason, type Measure, type SetValue,
 } from './Fields';
 import { label, objectNames, propertyNames, shapeKindNames, transitionNames, transitionOrder, optionNames, pptxOnlyTransitions } from './labels';
@@ -11,11 +11,12 @@ import { ObjectAnimations, animationsOf, type AnimationOp } from './Animations';
 import { lockOf } from './SlideView';
 
 // 파일을 문서 폴더로 가져오는 함수들. 고르지 않으면 null
+// 파일을 골라 기본 묶음(.tasset)에 넣고 그 파일을 가리키는 값(이름과 그 선언)을 준다
 export type Pickers = {
-    image(): Promise<string | null>;
-    media(kind: 'video' | 'audio'): Promise<string | null>;
-    sound(): Promise<string | null>;
-    poster(id: string): Promise<string | null>; // 비디오의 첫 장면을 그림으로 저장한다
+    image(): Promise<SetValue | null>;
+    media(kind: 'video' | 'audio'): Promise<SetValue | null>;
+    sound(): Promise<SetValue | null>;
+    poster(id: string): Promise<SetValue | null>; // 비디오의 첫 장면을 그림으로 저장한다
 };
 
 // 수 속성의 단위. 없으면 px
@@ -30,7 +31,7 @@ const measures: Record<string, Measure> = {
 const sections: [string, string[]][] = [
     ['배치', ['x', 'y', 'width', 'height', 'x1', 'y1', 'x2', 'y2', 'rotation', 'flip']],
     ['모양', ['kind', 'radius', 'adj1', 'adj2', 'adj3', 'adj4', 'adj5', 'adj6', 'adj7', 'adj8']],
-    ['내용', ['text', 'anchor', 'path', 'poster', 'fit', 'crop_left', 'crop_top', 'crop_right', 'crop_bottom', 'role', 'blur',
+    ['내용', ['text', 'anchor', 'data', 'path', 'poster', 'fit', 'crop_left', 'crop_top', 'crop_right', 'crop_bottom', 'role', 'blur',
         'from', 'to', 'from_side', 'to_side', 'start_arrow', 'end_arrow']],
     ['재생', ['start', 'volume', 'loop', 'rewind', 'fullscreen', 'hide_when_stopped', 'hide_icon', 'across_slides', 'trim_start', 'trim_end', 'fade_in', 'fade_out']],
     ['글상자', ['padding', 'padding_left', 'padding_top', 'padding_right', 'padding_bottom', 'autofit', 'wrap', 'text_direction', 'columns', 'column_gap']],
@@ -155,15 +156,15 @@ function PropertyList({ deck, schema, page, id, info, pickers, readSource, onSet
             const fallback = adjustments[Number(name.slice(3)) - 1];
             return <NumberField {...common} label={`조정 ${name.slice(3)}`} measure="number" placeholder={fallback ? String(fallback.value / 100000) : undefined} />;
         }
-        if (name === 'path' && (info.object === 'image' || info.object === 'video' || info.object === 'audio')) {
+        if (name === 'data' && (info.object === 'image' || info.object === 'video' || info.object === 'audio')) {
             return <FileField {...common} pick={info.object === 'image' ? pickers.image : () => pickers.media(info.object as 'video' | 'audio')} />;
         }
         if (name === 'poster') {
             return <FileField {...common} pick={pickers.image} extra={(
                 <button className="mini-button" title="비디오의 첫 장면을 표지 그림으로" disabled={!!lockReason(common.origin)} onClick={async () => {
-                    const file = await pickers.poster(id);
-                    if (file) {
-                        onSet(name, { string: file });
+                    const picked = await pickers.poster(id);
+                    if (picked) {
+                        onSet(name, picked);
                     }
                 }}><Film size={13} /></button>
             )} />;
@@ -179,6 +180,8 @@ function PropertyList({ deck, schema, page, id, info, pickers, readSource, onSet
                 return <BoolField {...common} />;
             case 'string':
                 return <TextField {...common} />;
+            case 'font':
+                return <FontField {...common} />;
             case 'color':
                 return <ColorField {...common} />;
             case 'color, gradient, pattern or image':
@@ -256,7 +259,7 @@ function TextInfo({ origin, readSource, onSet }: { origin: Origin; readSource(or
     );
 }
 
-// ---- 슬라이드와 문서
+// 슬라이드와 문서
 
 type SlideProps = {
     deck: DeckResult;
