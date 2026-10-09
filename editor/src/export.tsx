@@ -3,8 +3,10 @@ import { createRoot } from 'react-dom/client';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Lsp, pathToUri } from './lsp';
+import { initSettings } from './settings';
 import { ExportDialog, type BuildResult, type ExportTarget } from './ExportDialog';
 import './styles.css';
+import { t } from './i18n';
 
 const lsp = new Lsp();
 
@@ -19,11 +21,12 @@ async function load(uri: string, path: string) {
 }
 
 async function main() {
+    await initSettings().catch((error) => console.error('settings', error));
     const path = (await invoke<string | null>('export_file')) ?? '';
     const uri = pathToUri(path);
     const fileName = path.split(/[\\/]/).pop() ?? path;
     const window = getCurrentWindow();
-    await window.setTitle(`templide 내보내기 - ${fileName}`);
+    await window.setTitle(t('templide 내보내기 - {0}', fileName));
     createRoot(document.getElementById('root')!).render(
         <ExportDialog standalone fileName={fileName}
             load={() => load(uri, path)}

@@ -3,11 +3,10 @@ import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { message, open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
 import { emitTo, listen } from '@tauri-apps/api/event';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
-import { getVersion } from '@tauri-apps/api/app';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { lsp, pathToUri, type DeckResult, type Diagnostic, type Origin, type Range, type Schema, type TargetWarning } from './lsp';
 import { SlideView, findElement, selectionIn, type EditingRun, type Point, type Resize } from './SlideView';
-import { FormatBar, IconButton, Thumbnail, type StyleProperty, type Toggle } from './Panels';
+import { FormatBar, IconButton, Thumbnail, fontToggles, type StyleProperty, type Toggle } from './Panels';
 import { ElementPanel, SlidePanel, type Pickers } from './Properties';
 import { AnimationPane, type AnimationOp } from './Animations';
 import { quote, type SetValue } from './Fields';
@@ -17,11 +16,14 @@ import type { EditorAccess } from './mcp';
 import { attachDocument } from './navigation';
 import { FontPopup } from './FontPicker';
 import logo from '../../assets/icon/templide.svg';
-import license from '../../LICENSE?raw';
 import {
     Blend, Bot, ChevronDown, ChevronUp, CircleAlert, CircleCheck, CodeXml, Copy, FileOutput, FilePlus, Film, FolderOpen, Image as ImageIcon, Maximize, Minus,
     Music, PanelBottomClose, PanelBottomOpen, PanelRightClose, PanelRightOpen, PenTool, Play, Plus, Redo2, Save, Slash, Sparkles, Spline, Square, Trash2, TriangleAlert, Type, Undo2, X,
 } from 'lucide-react';
+import { t } from './i18n';
+import { getSettings, useSettings, type Settings } from './settings';
+import { bindings, commands, isMac, isTextInput, matchCommand, monacoKeybinding, shortcutText, withShortcut, type CommandId } from './shortcuts';
+import { openSettings } from './settingsWindow';
 
 type MonacoModule = typeof import('./monaco');
 
@@ -50,6 +52,23 @@ function relativeTo(folder: string, file: string): string {
 type Editor = import('monaco-editor/editor/editor.api').editor.IStandaloneCodeEditor;
 type ServerEdit = { uri: string; range: Range; newText: string };
 
+// 이 화면(탭)이 받는 단축키. 창 전체의 것(열기, 탭 닫기, 설정)은 Shell이 받는다
+const tabCommands: CommandId[] = [
+    'newFile', 'save', 'export', 'undo', 'redo', 'copy', 'cut', 'paste', 'duplicate', 'delete', 'bold', 'italic', 'underline',
+    'newSlide', 'zoomIn', 'zoomOut', 'zoomFit', 'showFromStart', 'showFromCurrent',
+];
+
+// 알림 뒤에 붙여넣기 단축키를 알려 준다
+function pasteHint(text: string): string {
+    const keys = shortcutText('paste');
+    return keys ? t('{0}. 붙여넣기: {1}', text, keys) : text;
+}
+
+// 설정의 코드 편집기 항목을 Monaco 옵션으로
+function editorOptions(editor: Settings['editor']): import('monaco-editor/editor/editor.api').editor.IEditorOptions & import('monaco-editor/editor/editor.api').editor.IGlobalEditorOptions {
+    return { fontSize: editor.fontSize, wordWrap: editor.wordWrap ? 'on' : 'off', minimap: { enabled: editor.minimap }, lineNumbers: editor.lineNumbers ? 'on' : 'off', tabSize: editor.tabSize };
+}
+
 // LSP 범위(0부터)를 Monaco 범위(1부터)로
 const toMonaco = (range: Range) => ({
     startLineNumber: range.start.line + 1,
@@ -72,6 +91,7 @@ export type DocumentHandle = {
     edit(edits: { range: Range; newText: string }[]): boolean; // 코드를 고친다. 한 번의 실행 취소로 되돌릴 수 있다
     reveal(range: Range): void; // 코드에서 그 자리를 보여 준다
     refresh(): void;          // 다시 컴파일한 덱을 받는다 (묶음이 바뀌었을 때)
+    reconnect(): void;        // 컴파일러를 다시 띄웠을 때: 문서를 새 컴파일러에 다시 올리고 분석을 다시 받는다
 };
 
 type DocumentProps = {
@@ -98,7 +118,8 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
     const [timings, setTimings] = useState<string[]>([]);
     const [monacoReady, setMonacoReady] = useState(false);
     const [notice, setNotice] = useState<string | null>(null);
-    const [codeOpen, setCodeOpen] = useState(true); // 코드 패널은 처음부터 보인다
+    const settings = useSettings();
+    const [codeOpen, setCodeOpen] = useState(() => settings.general.codePanelOpen); // 코드 패널을 펼친 채로 시작할지는 설정
     const propsOpen = usePropsOpen(); // 오른쪽 패널 (속성)
     const [bottomTab, setBottomTab] = useState<BottomTab>('code'); // 코드 패널에서 보이는 탭
     const [sizes, setSizes] = useState<Sizes>(loadSizes); // 경계를 끌어 바꾼 패널 크기
@@ -318,7 +339,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
     const applyEdits = useCallback((edits: ServerEdit[]) => {
         const instance = editor.current!;
         if (edits.some((edit) => edit.uri !== uri.current)) {
-            showNotice('다른 파일에 적힌 값이라 여기서 고칠 수 없습니다. 그 파일을 열어 고쳐 주세요');
+            showNotice(t('다른 파일에 적힌 값이라 여기서 고칠 수 없습니다. 그 파일을 열어 고쳐 주세요'));
             return false;
         }
         immediate.current = true;
@@ -333,7 +354,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             return false;
         }
         if (!fresh()) {
-            showNotice('다시 컴파일하는 중이거나 코드에 오류가 있어 지금은 캔버스에서 고칠 수 없습니다');
+            showNotice(t('다시 컴파일하는 중이거나 코드에 오류가 있어 지금은 캔버스에서 고칠 수 없습니다'));
             return false;
         }
         // 값과 함께 온 선언(declare)은 모아서 파일 위쪽에 넣는 op 하나로 보낸다
@@ -402,19 +423,19 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
     }, [requestEdit]);
 
     const insert = useCallback((object: 'text_box' | 'shape') => object === 'text_box'
-        ? insertObject('text_box', 400, 80, [{ name: 'text', string: '새 글상자' }])
+        ? insertObject('text_box', 400, 80, [{ name: 'text', string: t('새 글상자') }])
         : insertObject('shape', 300, 200, [{ name: 'kind', enum: 'rect' }]), [insertObject]);
 
     // 파일들을 기본 묶음(asset "..." default;)에 넣고, 파일마다 이름을 붙인 선언(image 이름 = asset("...");)을 만든다.
     // 기본 묶음이 없으면 새 묶음을 저장할 곳을 묻고 asset 문도 함께 만든다. codes는 파일마다 붙인 이름이다
     const addAssets = useCallback(async (files: { kind: AssetKind; file: { source: string } | { base64: string; name: string } }[]): Promise<{ codes: string[]; declare: string } | null> => {
         if (!pathRef.current || !uri.current) {
-            showNotice('먼저 파일을 저장하거나 열어 주세요');
+            showNotice(t('먼저 파일을 저장하거나 열어 주세요'));
             return null;
         }
         const current = await lsp.request<Schema & { error?: string }>('templide/schema', { uri: uri.current });
         if (current.error) {
-            showNotice('코드를 아직 분석하지 못해 파일을 넣을 수 없습니다');
+            showNotice(t('코드를 아직 분석하지 못해 파일을 넣을 수 없습니다'));
             return null;
         }
         const folder = pathRef.current.replace(/[\\/][^\\/]*$/, '');
@@ -428,7 +449,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
                 : target.namespaces.length > 0 ? `asset(${quote(target.namespaces[0] + '.' + entry)})` : `file(${quote(target.written + '/' + entry)})`;
         } else {
             const stem = pathRef.current.split(/[\\/]/).pop()!.replace(/\.[^.]*$/, '');
-            const chosen = await saveDialog({ title: '그림과 미디어를 담을 묶음 만들기', defaultPath: `${folder}\\${stem}.tasset`, filters: [{ name: 'Templide Asset', extensions: ['tasset'] }] });
+            const chosen = await saveDialog({ title: t('그림과 미디어를 담을 묶음 만들기'), defaultPath: `${folder}\\${stem}.tasset`, filters: [{ name: 'Templide Asset', extensions: ['tasset'] }] });
             if (!chosen) {
                 return null;
             }
@@ -442,7 +463,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
         for (const { kind, file } of files) {
             const added = await lsp.request<{ name?: string; error?: string }>('templide/asset_add', { bundle, ...file });
             if (!added.name) {
-                showNotice(added.error ?? '파일을 묶음에 넣을 수 없습니다');
+                showNotice(added.error ?? t('파일을 묶음에 넣을 수 없습니다'));
                 return null;
             }
             let name = identifierOf(added.name, kind);
@@ -472,7 +493,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
         if (!current || !pathRef.current) {
             return;
         }
-        const file = await openDialog({ multiple: false, filters: [{ name: '그림', extensions: ['png', 'jpg', 'jpeg', 'gif', 'bmp'] }] });
+        const file = await openDialog({ multiple: false, filters: [{ name: t('그림'), extensions: ['png', 'jpg', 'jpeg', 'gif', 'bmp'] }] });
         if (typeof file !== 'string') {
             return;
         }
@@ -522,15 +543,15 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             canvas.getContext('2d')!.drawImage(video, 0, 0);
             poster = canvas.toDataURL('image/png').split(',')[1];
         } catch (error) {
-            showNotice(`표지 그림을 만들 수 없습니다: ${error}`);
+            showNotice(t('표지 그림을 만들 수 없습니다: {0}', error));
         }
         return { w: video.videoWidth || 640, h: video.videoHeight || 360, poster };
     }, [showNotice]);
 
     const pickers: Pickers = {
-        image: () => pickAsset('image', '그림', ['png', 'jpg', 'jpeg', 'gif', 'bmp']),
-        media: (kind) => kind === 'video' ? pickAsset('video', '비디오', ['mp4', 'webm']) : pickAsset('audio', '오디오', ['mp3', 'wav', 'm4a']),
-        sound: () => pickAsset('audio', '소리 (wav)', ['wav']),
+        image: () => pickAsset('image', t('그림'), ['png', 'jpg', 'jpeg', 'gif', 'bmp']),
+        media: (kind) => kind === 'video' ? pickAsset('video', t('비디오'), ['mp4', 'webm']) : pickAsset('audio', t('오디오'), ['mp3', 'wav', 'm4a']),
+        sound: () => pickAsset('audio', t('소리 (wav)'), ['wav']),
         poster: async (id) => {
             // 캔버스의 비디오는 디스크 파일(묶음 안의 파일은 풀어 둔 것)을 "file:경로"로 가리킨다
             const element = findElement(deckRef.current?.deck.slides.flatMap((slide: { els: unknown[] }) => slide.els) ?? [], id);
@@ -551,7 +572,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
     // 비디오: 기본 묶음에 넣고 비율을 지켜 슬라이드의 절반 안에 넣는다. 첫 장면을 표지 그림으로 쓴다
     const insertVideo = useCallback(async () => {
         const current = deckRef.current;
-        const file = await openDialog({ multiple: false, filters: [{ name: '비디오', extensions: ['mp4', 'webm'] }] });
+        const file = await openDialog({ multiple: false, filters: [{ name: t('비디오'), extensions: ['mp4', 'webm'] }] });
         if (!current || typeof file !== 'string') {
             return;
         }
@@ -569,7 +590,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
     }, [addAssets, probeVideo, insertObject]);
 
     const insertAudio = useCallback(async () => {
-        const picked = await pickAsset('audio', '오디오', ['mp3', 'wav', 'm4a']);
+        const picked = await pickAsset('audio', t('오디오'), ['mp3', 'wav', 'm4a']);
         if (picked) {
             await insertObject('audio', 48, 48, [{ name: 'data', code: picked.code }], picked.declare);
         }
@@ -623,12 +644,12 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
         const id = selectedRef.current;
         const info = id ? deckRef.current?.elements[id] : null;
         if (!id || !info || ['line', 'connector', 'group'].includes(info.object)) {
-            showNotice('연결선을 시작할 개체(도형, 글상자, 그림 등)를 먼저 고르세요');
+            showNotice(t('연결선을 시작할 개체(도형, 글상자, 그림 등)를 먼저 고르세요'));
             return;
         }
         connectFrom.current = id;
         setMode('connect');
-        showNotice('연결할 다른 개체를 누르세요. Esc로 그만둡니다');
+        showNotice(t('연결할 다른 개체를 누르세요. Esc로 그만둡니다'));
     }, [showNotice]);
 
     // 자유형: 그린 점들을 (x, y)에서 잰 path로
@@ -663,7 +684,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             try {
                 script = await invoke<string>('read_text', { path: current.script });
             } catch (error) {
-                showNotice(`script를 읽을 수 없어 run 동작 없이 보여 줍니다: ${current.script}`);
+                showNotice(t('script를 읽을 수 없어 run 동작 없이 보여 줍니다: {0}', current.script));
             }
         }
         (await WebviewWindow.getByLabel('show'))?.close();
@@ -671,10 +692,10 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             unlisten();
             emitTo('show', 'show-deck', { deck: current.deck, page: start, script });
         });
-        const window = new WebviewWindow('show', { url: 'show.html', title: '슬라이드 쇼', fullscreen: true, focus: true });
+        const window = new WebviewWindow('show', { url: 'show.html', title: t('슬라이드 쇼'), fullscreen: true, focus: true });
         window.once('tauri://error', (event) => {
             unlisten();
-            showNotice(`슬라이드 쇼 창을 열 수 없습니다: ${JSON.stringify(event.payload)}`);
+            showNotice(t('슬라이드 쇼 창을 열 수 없습니다: {0}', JSON.stringify(event.payload)));
         });
     }, [showNotice]);
 
@@ -688,19 +709,19 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
         // 경고는 "파일:줄:칸: warning: 내용"이다. 토스트에는 "줄 N: 내용"으로 보인다
         const warnings = (result.warnings ?? []).map((line) => {
             const match = /^.*:(\d+):\d+: warning: (.*)$/.exec(line);
-            return match ? `줄 ${match[1]}: ${match[2]}` : line;
+            return match ? t('줄 {0}: {1}', match[1], match[2]) : line;
         });
         if (result.error || result.errors?.length) {
             setToast({ message: result.error ?? result.errors!.join('\n'), error: true, warnings });
         } else {
-            setToast({ message: `만들었습니다: ${result.path}`, path: result.path, warnings });
+            setToast({ message: t('만들었습니다: {0}', result.path), path: result.path, warnings });
         }
         return result;
     }, [flushChange]);
 
     // 새 .tlide를 만들고 연다
     const newFile = useCallback(async () => {
-        const file = await saveDialog({ title: '새 발표 자료', defaultPath: '새 발표.tlide', filters: [{ name: 'templide', extensions: ['tlide'] }] });
+        const file = await saveDialog({ title: t('새 발표 자료'), defaultPath: t('새 발표.tlide'), filters: [{ name: 'templide', extensions: ['tlide'] }] });
         if (!file) {
             return;
         }
@@ -709,7 +730,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             '#include <std/stddef>',
             '',
             'slide {',
-            '    put text_box { text = "제목을 입력하세요"; x = 80px; y = 280px; width = 1120px; height = 120px; anchor = middle; }',
+            `    put text_box { text = "${t('제목을 입력하세요')}"; x = 80px; y = 280px; width = 1120px; height = 120px; anchor = middle; }`,
             '}',
             '',
             `target out { path = "${name.replace(/"/g, '')}.pptx"; type = pptx; }`,
@@ -733,7 +754,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             return;
         }
         if (!deckRef.current.elements[source.id]) {
-            showNotice('복사한 요소를 찾을 수 없습니다. 코드가 바뀌어 다시 복사해야 합니다');
+            showNotice(t('복사한 요소를 찾을 수 없습니다. 코드가 바뀌어 다시 복사해야 합니다'));
             return;
         }
         const offset = source.page === pageRef.current ? 20 : 0;
@@ -753,14 +774,14 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             return;
         }
         if (info.source.kind !== 'block' || !info.source.range || info.source.uri !== uri.current) {
-            showNotice('이 요소는 잘라 낼 수 없습니다. 코드에서 고쳐 주세요');
+            showNotice(t('이 요소는 잘라 낼 수 없습니다. 코드에서 고쳐 주세요'));
             return;
         }
         const text = model.getValueInRange(toMonaco(info.source.range));
         if (await requestEdit([{ op: 'delete', id }])) {
             clipboard.current = { kind: 'cut', text };
             setSelected(null);
-            showNotice(info.fromTemplate ? '템플릿을 넣은 put 전체를 잘라 냈습니다. Ctrl+V로 붙입니다' : '잘라 냈습니다. Ctrl+V로 붙입니다');
+            showNotice(pasteHint(info.fromTemplate ? t('템플릿을 넣은 put 전체를 잘라 냈습니다') : t('잘라 냈습니다')));
         }
     }, [requestEdit, showNotice]);
 
@@ -799,7 +820,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             return;
         }
         if (deckRef.current?.elements[id]?.fromTemplate) {
-            showNotice('템플릿이 만든 요소라 그 템플릿을 넣은 put 전체를 지웁니다');
+            showNotice(t('템플릿이 만든 요소라 그 템플릿을 넣은 put 전체를 지웁니다'));
         }
         if (await requestEdit([{ op: 'delete', id }])) {
             setSelected(null);
@@ -811,7 +832,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
         const run = editing.current;
         if (run) {
             if (run.node.innerText.replace(/\r/g, '') !== run.original) {
-                showNotice('먼저 Enter로 글자 수정을 끝낸 뒤 서식을 넣어 주세요');
+                showNotice(t('먼저 Enter로 글자 수정을 끝낸 뒤 서식을 넣어 주세요'));
                 return null;
             }
             const range = selectionIn(run.node);
@@ -825,7 +846,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
         const runs = (info?.text ?? []).flatMap((paragraph, p) => paragraph.map((origin, r) => ({ p, r, origin, range: null as { start: number; end: number } | null })))
             .filter(({ origin }) => origin.kind === 'literal' && origin.text);
         if (!id || runs.length === 0) {
-            showNotice('서식을 넣을 수 있는 글자가 없습니다. 글자를 두 번 눌러 고르거나, 코드에서 고쳐 주세요');
+            showNotice(t('서식을 넣을 수 있는 글자가 없습니다. 글자를 두 번 눌러 고르거나, 코드에서 고쳐 주세요'));
             return null;
         }
         return { id, runs };
@@ -855,7 +876,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
         }
         const styled = targets.runs.filter(({ origin }) => origin?.styled);
         if (styled.length === 0) {
-            showNotice('지울 인라인 서식이 없습니다. 이름 있는 style로 넣은 서식은 코드에서 고쳐 주세요');
+            showNotice(t('지울 인라인 서식이 없습니다. 이름 있는 style로 넣은 서식은 코드에서 고쳐 주세요'));
             return;
         }
         await requestEdit(styled.map(({ p, r }) => ({ op: 'unstyle', id: targets.id, paragraph: p, run: r })));
@@ -954,14 +975,14 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
         // VS Code처럼, 연 뒤에 다른 프로그램이 파일을 고쳤으면 덮어쓸지 묻는다
         const disk = await invoke<string>('read_text', { path: pathRef.current }).catch(() => null);
         if (disk !== null && diskText.current !== null && disk !== diskText.current) {
-            const choice = await message('이 파일이 편집기 밖에서 바뀌었습니다. 편집기의 내용으로 덮어쓸까요?', {
-                title: '파일이 바뀌었습니다', kind: 'warning', buttons: { yes: '덮어쓰기', no: '파일 내용으로 되돌리기', cancel: '취소' },
+            const choice = await message(t('이 파일이 편집기 밖에서 바뀌었습니다. 편집기의 내용으로 덮어쓸까요?'), {
+                title: t('파일이 바뀌었습니다'), kind: 'warning', buttons: { yes: t('덮어쓰기'), no: t('파일 내용으로 되돌리기'), cancel: t('취소') },
             });
-            if (choice === 'No' || choice === '파일 내용으로 되돌리기') {
+            if (choice === 'No' || choice === t('파일 내용으로 되돌리기')) {
                 reloadFromDisk(disk);
                 return false;
             }
-            if (choice !== 'Yes' && choice !== '덮어쓰기') {
+            if (choice !== 'Yes' && choice !== t('덮어쓰기')) {
                 return false;
             }
         }
@@ -982,8 +1003,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             language: 'tlide',
             automaticLayout: true,
             fontFamily: 'Consolas, "Malgun Gothic", monospace',
-            fontSize: 14,
-            minimap: { enabled: false },
+            ...editorOptions(getSettings().editor),
             theme: 'templide',
         });
         editor.current = instance;
@@ -1027,8 +1047,6 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             }
             setSelected(best);
         });
-        // addCommand는 마지막에 만든 편집기에 걸리므로, 탭마다 있는 편집기에는 그 편집기에만 붙는 동작으로 둔다
-        instance.addAction({ id: 'templide.save', label: '저장', keybindings: [monaco.current.monaco.KeyMod.CtrlCmd | monaco.current.monaco.KeyCode.KeyS], run: () => { save(); } });
         detachDocument.current = attachDocument(monaco.current.monaco, lsp, instance, {
             uri: () => uri.current,
             flush: flushChange,
@@ -1124,7 +1142,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
                     return;
                 }
                 if (dirtyRef.current) {
-                    showNotice('파일이 편집기 밖에서 바뀌었습니다. 저장할 때 어떻게 할지 묻습니다');
+                    showNotice(t('파일이 편집기 밖에서 바뀌었습니다. 저장할 때 어떻게 할지 묻습니다'));
                 } else {
                     reloadFromDisk(content);
                 }
@@ -1164,65 +1182,87 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
         }
     }, [active]);
 
-    // 캔버스에서 고친 것도 코드의 실행 취소 기록에 있으므로, 포커스가 코드 밖에 있어도 Ctrl+Z, Ctrl+Y는 Monaco로 보낸다
+    // 단축키(shortcuts.ts). 캔버스에서 고친 것도 코드의 실행 취소 기록에 있으므로, 포커스가 코드 밖에 있어도 실행 취소와 다시 실행은 Monaco로 보낸다.
+    // 글자를 입력하는 중(코드 편집기, 입력칸)에는 canvas 범위의 명령을 받지 않는다. 저장은 코드 편집기 안에서는 Monaco의 동작이 받는다
     useEffect(() => {
         const keydown = (event: KeyboardEvent) => {
+            if (!activeRef.current || !editor.current) {
+                return;
+            }
             const target = event.target as HTMLElement;
-            if (!activeRef.current || !editor.current || target.closest('.code-host, input, select, textarea, [contenteditable="true"]')) {
-                return;
-            }
-            if (event.key === 'F5') {
-                event.preventDefault();
-                startShow(!event.shiftKey);
-                return;
-            }
-            if (event.key === 'Escape') {
-                connectFrom.current = null;
-                setMode((current) => current === 'connect' ? null : current);
-                setPreview(null);
-            }
-            if (event.key === 'Delete' && !event.ctrlKey && !event.metaKey) {
-                event.preventDefault();
-                // 썸네일을 눌러 슬라이드 목록에 포커스가 있으면 그 슬라이드를 지운다
-                if (target.closest('.thumbs')) {
-                    slideAction('delete');
-                } else {
-                    remove();
+            const id = matchCommand(event, tabCommands);
+            if (!id) {
+                if (event.key === 'Escape' && !isTextInput(target)) {
+                    connectFrom.current = null;
+                    setMode((current) => current === 'connect' ? null : current);
+                    setPreview(null);
                 }
                 return;
             }
-            if (!(event.ctrlKey || event.metaKey)) {
+            const fontKey = id === 'bold' || id === 'italic' || id === 'underline';
+            if (isTextInput(target) && commands[id].scope === 'canvas' && !(fontKey && target.closest('[contenteditable="true"]'))) {
                 return;
             }
-            const key = event.key.toLowerCase();
-            const redo = key === 'y' || (key === 'z' && event.shiftKey);
-            if (key === 'z' || redo) {
-                event.preventDefault();
-                editor.current.trigger('canvas', redo ? 'redo' : 'undo', null);
-            } else if (key === 's') {
-                event.preventDefault();
-                save();
-            } else if (key === 'c' && selectedRef.current) {
-                event.preventDefault();
-                clipboard.current = { kind: 'copy', id: selectedRef.current, page: pageRef.current };
-                showNotice('요소를 복사했습니다. Ctrl+V로 붙입니다');
-            } else if (key === 'x' && selectedRef.current) {
-                event.preventDefault();
-                cut();
-            } else if (key === 'v') {
-                event.preventDefault();
-                paste(clipboard.current);
-            } else if (key === 'd' && selectedRef.current) {
-                event.preventDefault();
-                paste({ kind: 'copy', id: selectedRef.current, page: pageRef.current });
-            } else if (key === '0') {
-                event.preventDefault();
-                setZoom(null);
+            if (id === 'save' && target.closest('.code-host')) {
+                return;
+            }
+            if ((id === 'copy' || id === 'cut' || id === 'duplicate' || fontKey) && !selectedRef.current) {
+                return;
+            }
+            event.preventDefault();
+            switch (id) {
+                case 'newFile': newFile(); break;
+                case 'save': save(); break;
+                case 'export': if (deckRef.current) setExportOpen(true); break;
+                case 'undo': editor.current.trigger('canvas', 'undo', null); break;
+                case 'redo': editor.current.trigger('canvas', 'redo', null); break;
+                case 'copy':
+                    clipboard.current = { kind: 'copy', id: selectedRef.current!, page: pageRef.current };
+                    showNotice(pasteHint(t('요소를 복사했습니다')));
+                    break;
+                case 'cut': cut(); break;
+                case 'paste': paste(clipboard.current); break;
+                case 'duplicate': paste({ kind: 'copy', id: selectedRef.current!, page: pageRef.current }); break;
+                case 'delete':
+                    // 썸네일을 눌러 슬라이드 목록에 포커스가 있으면 그 슬라이드를 지운다
+                    if (target.closest('.thumbs')) {
+                        slideAction('delete');
+                    } else {
+                        remove();
+                    }
+                    break;
+                case 'bold': case 'italic': case 'underline': applyStyle(fontToggles[id].properties, fontToggles[id].toggle); break;
+                case 'newSlide': slideAction('add'); break;
+                case 'zoomIn': setZoom(Math.min(4, (zoom ?? fitScale) * 1.25)); break;
+                case 'zoomOut': setZoom(Math.max(0.1, (zoom ?? fitScale) / 1.25)); break;
+                case 'zoomFit': setZoom(null); break;
+                case 'showFromStart': startShow(true); break;
+                case 'showFromCurrent': startShow(false); break;
             }
         };
         window.addEventListener('keydown', keydown);
         return () => window.removeEventListener('keydown', keydown);
-    }, [save, remove, slideAction, startShow, paste, cut, showNotice]);
+    }, [save, remove, slideAction, startShow, paste, cut, showNotice, newFile, applyStyle, zoom, fitScale]);
+
+    // 코드 편집기의 저장 동작. 키는 설정을 따른다 (addCommand는 마지막에 만든 편집기에 걸리므로, 탭마다 있는 편집기에는 그 편집기에만 붙는 동작으로 둔다)
+    useEffect(() => {
+        const instance = editor.current;
+        const loaded = monaco.current?.monaco;
+        if (!instance || !loaded) {
+            return;
+        }
+        const action = instance.addAction({
+            id: 'templide.save', label: t('저장'),
+            keybindings: bindings('save', settings.shortcuts).flatMap((binding) => monacoKeybinding(loaded, binding) ?? []),
+            run: () => { save(); },
+        });
+        return () => action.dispose();
+    }, [monacoReady, settings.shortcuts, settings.language, save]);
+
+    // 코드 편집기 설정
+    useEffect(() => {
+        editor.current?.updateOptions(editorOptions(settings.editor));
+    }, [monacoReady, settings.editor]);
 
     // 고른 파일마다 탭을 연다. .tasset은 묶음 보기 탭으로 열린다
     const pickFile = useCallback(async () => {
@@ -1298,8 +1338,18 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
     };
     accesses.set(tab, mcpAccess.current);
     // 손잡이는 처음 한 번 넘기므로 지금 함수를 ref로 읽는다
-    const latest = useRef({ save, flushChange, applyEdits, revealProblem, refreshDeck });
-    latest.current = { save, flushChange, applyEdits, revealProblem, refreshDeck };
+    const reconnect = useCallback(() => {
+        if (!uri.current) {
+            return;
+        }
+        window.clearTimeout(pending.current);
+        pending.current = 0;
+        version.current += 1;
+        lsp.notify('textDocument/didOpen', { textDocument: { uri: uri.current, languageId: 'tlide', version: version.current, text: editor.current?.getValue() ?? textRef.current } });
+        refreshDeck();
+    }, [refreshDeck]);
+    const latest = useRef({ save, flushChange, applyEdits, revealProblem, refreshDeck, reconnect });
+    latest.current = { save, flushChange, applyEdits, revealProblem, refreshDeck, reconnect };
     useEffect(() => {
         register({
             path: () => pathRef.current,
@@ -1310,6 +1360,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             edit: (edits) => !!editor.current && !!uri.current && latest.current.applyEdits(edits.map((edit) => ({ uri: uri.current!, ...edit }))),
             reveal: (range) => latest.current.revealProblem({ range, message: '', severity: 1 }),
             refresh: () => { latest.current.refreshDeck(); },
+            reconnect: () => { latest.current.reconnect(); },
         });
         return () => register(null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1334,39 +1385,39 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             {/* 빈 곳을 끌면 창이 움직이고, 두 번 누르면 최대화한다. 로고와 창 버튼은 위의 탭 줄(Shell)에 있다 */}
             <header className="toolbar" data-tauri-drag-region>
                 <span className="tool-group">
-                    <IconButton icon={FilePlus} title="새 파일" onClick={newFile} />
-                    <IconButton icon={FolderOpen} title="열기" onClick={pickFile} />
-                    <IconButton icon={Save} title="저장 (Ctrl+S)" onClick={save} disabled={!path || !dirty} />
-                    <IconButton icon={FileOutput} title="내보내기 (만들 target 고르기)" disabled={!deck} onClick={() => setExportOpen(true)} />
+                    <IconButton icon={FilePlus} title={withShortcut(t('새 파일'), 'newFile')} onClick={newFile} />
+                    <IconButton icon={FolderOpen} title={withShortcut(t('열기'), 'openFile')} onClick={pickFile} />
+                    <IconButton icon={Save} title={withShortcut(t('저장'), 'save')} onClick={save} disabled={!path || !dirty} />
+                    <IconButton icon={FileOutput} title={withShortcut(t('내보내기 (만들 target 고르기)'), 'export')} disabled={!deck} onClick={() => setExportOpen(true)} />
                 </span>
                 <span className="separator" />
                 {/* 글자가 있는 개체를 고르면 서식 막대를, 아니면 넣기 버튼을 보여 준다 */}
                 {textSelected ? <FormatBar enabled={monacoReady} onStyle={applyStyle} onClear={clearStyle} /> : <span className="tool-group">
-                    <IconButton icon={Type} title="글상자 넣기" disabled={!ready} onClick={() => insert('text_box')} />
-                    <IconButton icon={Square} title="도형 넣기" disabled={!ready} onClick={() => insert('shape')} />
-                    <IconButton icon={ImageIcon} title="그림 넣기" disabled={!ready} onClick={insertImage} />
-                    <IconButton icon={Film} title="비디오 넣기 (mp4, webm)" disabled={!ready} onClick={insertVideo} />
+                    <IconButton icon={Type} title={t('글상자 넣기')} disabled={!ready} onClick={() => insert('text_box')} />
+                    <IconButton icon={Square} title={t('도형 넣기')} disabled={!ready} onClick={() => insert('shape')} />
+                    <IconButton icon={ImageIcon} title={t('그림 넣기')} disabled={!ready} onClick={insertImage} />
+                    <IconButton icon={Film} title={t('비디오 넣기 (mp4, webm)')} disabled={!ready} onClick={insertVideo} />
                     <InsertMenu disabled={!ready} items={[
-                        { icon: Music, label: '오디오', title: 'mp3, wav, m4a', onClick: insertAudio },
-                        { icon: Slash, label: '선', title: '가운데에 가로선', onClick: insertLine },
-                        { icon: Spline, label: '연결선', title: '고른 개체에서 다음에 누르는 개체로 잇습니다', onClick: startConnect, disabled: !selected },
-                        { icon: PenTool, label: '자유형 그리기', title: '누를 때마다 점, 두 번 눌러 끝내기, Esc 취소', onClick: () => setMode('draw') },
-                        { icon: Blend, label: '배경 흐림', title: '뒤의 배경을 흐리게 비추는 유리 효과', onClick: () => insertObject('backdrop', 300, 200, [{ name: 'kind', enum: 'roundRect' }, { name: 'blur', length: 16 }]) },
+                        { icon: Music, label: t('오디오'), title: 'mp3, wav, m4a', onClick: insertAudio },
+                        { icon: Slash, label: t('선'), title: t('가운데에 가로선'), onClick: insertLine },
+                        { icon: Spline, label: t('연결선'), title: t('고른 개체에서 다음에 누르는 개체로 잇습니다'), onClick: startConnect, disabled: !selected },
+                        { icon: PenTool, label: t('자유형 그리기'), title: t('누를 때마다 점, 두 번 눌러 끝내기, Esc 취소'), onClick: () => setMode('draw') },
+                        { icon: Blend, label: t('배경 흐림'), title: t('뒤의 배경을 흐리게 비추는 유리 효과'), onClick: () => insertObject('backdrop', 300, 200, [{ name: 'kind', enum: 'roundRect' }, { name: 'blur', length: 16 }]) },
                     ]} active={mode !== null} />
                 </span>}
                 <span className="separator" />
                 <span className="tool-group">
-                    <IconButton icon={Undo2} title="실행 취소 (Ctrl+Z)" disabled={!monacoReady} onClick={() => undo(false)} />
-                    <IconButton icon={Redo2} title="다시 실행 (Ctrl+Y)" disabled={!monacoReady} onClick={() => undo(true)} />
-                    <IconButton icon={Trash2} title="선택한 요소 지우기 (Delete)" disabled={!selected || !monacoReady} onClick={remove} danger />
+                    <IconButton icon={Undo2} title={withShortcut(t('실행 취소'), 'undo')} disabled={!monacoReady} onClick={() => undo(false)} />
+                    <IconButton icon={Redo2} title={withShortcut(t('다시 실행'), 'redo')} disabled={!monacoReady} onClick={() => undo(true)} />
+                    <IconButton icon={Trash2} title={withShortcut(t('선택한 요소 지우기'), 'delete')} disabled={!selected || !monacoReady} onClick={remove} danger />
                 </span>
                 <span className="spacer" data-tauri-drag-region />
                 {/* 오른쪽 패널은 고른 개체가 있으면 개체 설정, 없으면 슬라이드 설정을 보인다 */}
-                <IconButton icon={propsOpen ? PanelRightClose : PanelRightOpen} title={propsOpen ? '오른쪽 패널 닫기' : '오른쪽 패널 열기'} onClick={() => setPropsOpen(!propsOpen)} />
-                <IconButton icon={Sparkles} title="애니메이션 창" disabled={!deck} active={paneOpen} onClick={() => setPaneOpen(!paneOpen)} />
+                <IconButton icon={propsOpen ? PanelRightClose : PanelRightOpen} title={propsOpen ? t('오른쪽 패널 닫기') : t('오른쪽 패널 열기')} onClick={() => setPropsOpen(!propsOpen)} />
+                <IconButton icon={Sparkles} title={t('애니메이션 창')} disabled={!deck} active={paneOpen} onClick={() => setPaneOpen(!paneOpen)} />
                 <TargetPicker deck={deck} target={target} onTarget={(name) => { targetRef.current = name; setTarget(name); refreshDeck(); }} />
-                <button className="play-button" disabled={!deck} title="슬라이드 쇼 (F5: 처음부터, Shift+F5: 지금 슬라이드부터)" onClick={() => startShow(false)}>
-                    <Play size={14} fill="currentColor" /> 슬라이드 쇼
+                <button className="play-button" disabled={!deck} title={t('슬라이드 쇼 ({0}: 처음부터, {1}: 지금 슬라이드부터)', shortcutText('showFromStart'), shortcutText('showFromCurrent'))} onClick={() => startShow(false)}>
+                    <Play size={14} fill="currentColor" /> {t('슬라이드 쇼')}
                 </button>
             </header>
             <nav className="slides">
@@ -1381,10 +1432,10 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
                 )}
                 {deck && (
                     <div className="zoom-control">
-                        <IconButton icon={Minus} title="축소" onClick={() => setZoom(Math.max(0.1, (zoom ?? fitScale) / 1.25))} />
-                        <button className="zoom-value" title="화면에 맞춤 (Ctrl+0)" onClick={() => setZoom(null)}>{zoom === null ? '맞춤' : `${Math.round(zoom * 100)}%`}</button>
-                        <IconButton icon={Plus} title="확대" onClick={() => setZoom(Math.min(4, (zoom ?? fitScale) * 1.25))} />
-                        <IconButton icon={Maximize} title="화면에 맞춤" onClick={() => setZoom(null)} />
+                        <IconButton icon={Minus} title={withShortcut(t('축소'), 'zoomOut')} onClick={() => setZoom(Math.max(0.1, (zoom ?? fitScale) / 1.25))} />
+                        <button className="zoom-value" title={withShortcut(t('화면에 맞춤'), 'zoomFit')} onClick={() => setZoom(null)}>{zoom === null ? t('맞춤') : `${Math.round(zoom * 100)}%`}</button>
+                        <IconButton icon={Plus} title={withShortcut(t('확대'), 'zoomIn')} onClick={() => setZoom(Math.min(4, (zoom ?? fitScale) * 1.25))} />
+                        <IconButton icon={Maximize} title={t('화면에 맞춤')} onClick={() => setZoom(null)} />
                     </div>
                 )}
                 {exportOpen && uri.current && (
@@ -1401,9 +1452,9 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
                             const paths = results.map((result) => result.path!);
                             const warnings = results.flatMap((result) => result.warnings ?? []).map((line) => {
                                 const match = /^.*:(\d+):\d+: warning: (.*)$/.exec(line);
-                                return match ? `줄 ${match[1]}: ${match[2]}` : line;
+                                return match ? t('줄 {0}: {1}', match[1], match[2]) : line;
                             });
-                            setToast({ message: `만들었습니다: ${paths.join(', ')}`, path: paths.length === 1 ? paths[0] : undefined, warnings });
+                            setToast({ message: t('만들었습니다: {0}', paths.join(', ')), path: paths.length === 1 ? paths[0] : undefined, warnings });
                         }} />
                 )}
                 {toast && (
@@ -1412,14 +1463,14 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
                             {toast.message}
                             {toast.warnings && toast.warnings.length > 0 && (
                                 <span className="toast-warnings">
-                                    <span className="toast-warnings-title"><TriangleAlert size={13} /> 이 target에서 빠진 것 {toast.warnings.length}개</span>
+                                    <span className="toast-warnings-title"><TriangleAlert size={13} /> {t('이 target에서 빠진 것 {0}개', toast.warnings.length)}</span>
                                     {toast.warnings.map((warning, i) => <span key={i} className="toast-warning">{warning}</span>)}
                                 </span>
                             )}
                         </span>
-                        {toast.path && <button onClick={() => invoke('open_path', { path: toast.path, reveal: false })}>열기</button>}
-                        {toast.path && <button onClick={() => invoke('open_path', { path: toast.path, reveal: true })}>폴더에서 보기</button>}
-                        <IconButton icon={X} title="닫기" onClick={() => setToast(null)} />
+                        {toast.path && <button onClick={() => invoke('open_path', { path: toast.path, reveal: false })}>{t('열기')}</button>}
+                        {toast.path && <button onClick={() => invoke('open_path', { path: toast.path, reveal: true })}>{t('폴더에서 보기')}</button>}
+                        <IconButton icon={X} title={t('닫기')} onClick={() => setToast(null)} />
                     </div>
                 )}
             </main>
@@ -1429,7 +1480,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
                 : deck && slideCount > 0
                     ? <SlidePanel deck={deck} schema={schema} page={Math.min(page, slideCount - 1)} pickers={pickers} readSource={readSource}
                         onSlide={onSlide} onDocument={onDocument} onPreview={startPreview} />
-                    : <aside className="props"><div className="props-empty">파일을 열면<br />여기서 속성을 바꿀 수 있습니다</div></aside>}
+                    : <aside className="props"><div className="props-empty">{t('파일을 열면')}<br />{t('여기서 속성을 바꿀 수 있습니다')}</div></aside>}
             {paneOpen && deck && slideCount > 0 && (
                 <AnimationPane deck={deck} schema={schema} page={Math.min(page, slideCount - 1)} selected={selected} playing={!!preview}
                     onSelect={select} onOp={onAnimation} onPreview={() => startPreview(false)} onStop={stopPreview} onClose={() => setPaneOpen(false)} />
@@ -1437,7 +1488,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             <section className="code">
                 <header className="code-header">
                     <button className={'code-tab' + (bottomTab === 'code' ? ' active' : '')} onClick={() => openTab('code')}>
-                        <CodeXml size={15} /> 코드
+                        <CodeXml size={15} /> {t('코드')}
                     </button>
                     <button className={'code-tab' + (bottomTab === 'ai' ? ' active' : '')} onClick={() => openTab('ai')}>
                         <Bot size={15} /> AI
@@ -1448,17 +1499,17 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
                             : warningCount > 0
                                 ? <span className="warning-count">{warningCount}</span>
                                 : <CircleCheck size={15} className="problems-ok" />}
-                        문제
+                        {t('문제')}
                     </button>
                     <span className="spacer" />
                     <span className="code-status">
                         {notice
                             ? <span className="notice"><CircleAlert size={13} /> {notice}</span>
                             : deckError && deckError !== 'The document has errors' && <span className="error"><CircleAlert size={13} /> {deckError}</span>}
-                        {deck?.warnings.length ? <span className="warning" title={deck.warnings.join('\n')}>html 미리보기 경고 {deck.warnings.length}개</span> : null}
+                        {deck?.warnings.length ? <span className="warning" title={deck.warnings.join('\n')}>{t('html 미리보기 경고 {0}개', deck.warnings.length)}</span> : null}
                         <span className="timings">{timings.join(' · ')}</span>
                     </span>
-                    <IconButton icon={codeOpen ? PanelBottomClose : PanelBottomOpen} title={codeOpen ? '패널 접기' : '패널 펼치기'} onClick={() => setCodeOpen((open) => !open)} />
+                    <IconButton icon={codeOpen ? PanelBottomClose : PanelBottomOpen} title={codeOpen ? t('패널 접기') : t('패널 펼치기')} onClick={() => setCodeOpen((open) => !open)} />
                 </header>
                 <div className="code-body">
                     <div ref={codeHost} className="code-host" style={{ display: monacoReady && bottomTab === 'code' ? 'block' : 'none' }} />
@@ -1466,26 +1517,26 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
                     <AgentPanel visible={codeOpen && bottomTab === 'ai'} folder={folder} session={tab} />
                     {bottomTab === 'problems' && (
                         <div className="problems">
-                            {errorCount === 0 && warningCount === 0 && <div className="problems-empty"><CircleCheck size={13} /> 오류 없음</div>}
+                            {errorCount === 0 && warningCount === 0 && <div className="problems-empty"><CircleCheck size={13} /> {t('오류 없음')}</div>}
                             {errors.map((diagnostic, i) => (
                                 <button key={'e' + i} className="problems-item error" onClick={() => revealProblem(diagnostic)}>
                                     <CircleAlert size={13} />
                                     <span className="problems-message">{diagnostic.message}</span>
-                                    <span className="problems-line">줄 {diagnostic.range.start.line + 1}</span>
+                                    <span className="problems-line">{t('줄 {0}', diagnostic.range.start.line + 1)}</span>
                                 </button>
                             ))}
                             {compileWarnings.map((warning, i) => (
                                 <button key={'c' + i} className="problems-item warning" onClick={() => revealProblem(warning)}>
                                     <TriangleAlert size={13} />
                                     <span className="problems-message">{warning.message}</span>
-                                    <span className="problems-line">줄 {warning.range.start.line + 1}</span>
+                                    <span className="problems-line">{t('줄 {0}', warning.range.start.line + 1)}</span>
                                 </button>
                             ))}
                             {warnings.map((warning, i) => (
-                                <button key={'w' + i} className="problems-item warning" title={`${deck?.target} target이 빼고 만드는 것`} onClick={() => revealProblem(warning)}>
+                                <button key={'w' + i} className="problems-item warning" title={t('{0} target이 빼고 만드는 것', deck?.target)} onClick={() => revealProblem(warning)}>
                                     <TriangleAlert size={13} />
                                     <span className="problems-message">{warning.message}</span>
-                                    <span className="problems-line">줄 {warning.range.start.line + 1}</span>
+                                    <span className="problems-line">{t('줄 {0}', warning.range.start.line + 1)}</span>
                                 </button>
                             ))}
                         </div>
@@ -1639,7 +1690,7 @@ function InsertMenu({ items, disabled, active }: { items: InsertItem[]; disabled
     }, [open]);
     return (
         <span className="menu-anchor" ref={anchor}>
-            <IconButton icon={Plus} title="더 넣기 (오디오, 선, 연결선, 자유형, 배경 흐림)" disabled={disabled} active={open || active} onClick={() => setOpen(!open)} />
+            <IconButton icon={Plus} title={t('더 넣기 (오디오, 선, 연결선, 자유형, 배경 흐림)')} disabled={disabled} active={open || active} onClick={() => setOpen(!open)} />
             {open && (
                 <span className="menu list-menu insert-menu">
                     {items.map(({ icon: Icon, label, title, onClick, disabled: off }) => (
@@ -1772,16 +1823,16 @@ function SlideList({ deck, count, page, ready, onPage, onAction, onMove }: {
                     <Thumbnail deck={deck} index={i} current={i === page} onClick={() => onPage(i)} />
                 </div>
             ))}
-            <button className="add-slide" disabled={!ready} title="지금 슬라이드 뒤에 새 슬라이드" onClick={() => onAction('add')}>
-                <Plus size={16} /> 새 슬라이드
+            <button className="add-slide" disabled={!ready} title={withShortcut(t('지금 슬라이드 뒤에 새 슬라이드'), 'newSlide')} onClick={() => onAction('add')}>
+                <Plus size={16} /> {t('새 슬라이드')}
             </button>
             {drag && <div ref={ghost} className="thumb-ghost" style={{ left: drag.x - drag.dx, top: drag.y - drag.dy }} />}
             {menu && (
                 <span ref={menuRef} className="menu list-menu insert-menu context-menu" style={{ left: menu.x, top: menu.y }}>
-                    <button disabled={!ready || menu.index === 0} onClick={() => run('up')}><ChevronUp size={15} /> 위로</button>
-                    <button disabled={!ready || menu.index >= count - 1} onClick={() => run('down')}><ChevronDown size={15} /> 아래로</button>
-                    <button disabled={!ready} onClick={() => run('duplicate')}><Copy size={15} /> 복제</button>
-                    <button disabled={!ready} className="danger" onClick={() => run('delete')}><Trash2 size={15} /> 삭제 <span className="shortcut">Del</span></button>
+                    <button disabled={!ready || menu.index === 0} onClick={() => run('up')}><ChevronUp size={15} /> {t('위로')}</button>
+                    <button disabled={!ready || menu.index >= count - 1} onClick={() => run('down')}><ChevronDown size={15} /> {t('아래로')}</button>
+                    <button disabled={!ready} onClick={() => run('duplicate')}><Copy size={15} /> {t('복제')}</button>
+                    <button disabled={!ready} className="danger" onClick={() => run('delete')}><Trash2 size={15} /> {t('삭제')} <span className="shortcut">{shortcutText('delete')}</span></button>
                 </span>
             )}
         </div>
@@ -1789,51 +1840,15 @@ function SlideList({ deck, count, page, ready, onPage, onAction, onMove }: {
 }
 
 // macOS는 창 버튼(신호등)을 시스템이 상단 바 왼쪽에 그린다 (tauri.macos.conf.json)
-export const isMac = navigator.userAgent.includes('Mac');
+export { isMac };
 
-// 로고를 누르면 버전, templide의 라이선스, 오픈소스 라이선스 창을 여는 메뉴
-export function AppMenu() {
-    const [open, setOpen] = useState(false);
-    const [version, setVersion] = useState('');
-    const anchor = useRef<HTMLSpanElement>(null);
-    useEffect(() => {
-        getVersion().then(setVersion);
-    }, []);
-    useEffect(() => {
-        if (!open) {
-            return;
-        }
-        const down = (event: MouseEvent) => {
-            if (!anchor.current?.contains(event.target as Node)) {
-                setOpen(false);
-            }
-        };
-        window.addEventListener('mousedown', down);
-        return () => window.removeEventListener('mousedown', down);
-    }, [open]);
-    // 이미 열려 있으면 그 창을 앞으로 가져온다
-    const openLicenses = async () => {
-        setOpen(false);
-        const existing = await WebviewWindow.getByLabel('licenses');
-        if (existing) {
-            await existing.setFocus();
-            return;
-        }
-        new WebviewWindow('licenses', { url: 'licenses.html', title: '오픈소스 라이선스', width: 760, height: 640, center: true, focus: true });
-    };
+// 로고를 누르면 설정 창을 연다 (버전과 라이선스도 설정 창의 '정보'에 있다)
+export function LogoButton() {
+    useSettings(); // 언어와 단축키가 바뀌면 안내 글을 다시 그린다
     return (
-        <span className="menu-anchor" ref={anchor}>
-            <button className="logo-button" title="templide" onClick={() => setOpen(!open)}>
-                <img className="logo" src={logo} alt="templide" draggable={false} />
-            </button>
-            {open && (
-                <span className="menu list-menu app-menu">
-                    <span className="app-menu-title">templide {version}</span>
-                    <button onClick={() => { setOpen(false); message(license, { title: 'templide 라이선스', kind: 'info' }); }}>templide 라이선스</button>
-                    <button onClick={openLicenses}>오픈소스 라이선스</button>
-                </span>
-            )}
-        </span>
+        <button className="logo-button" title={withShortcut(t('설정'), 'settings')} onClick={() => openSettings()}>
+            <img className="logo" src={logo} alt="templide" draggable={false} />
+        </button>
     );
 }
 
@@ -1851,11 +1866,11 @@ export function WindowControls() {
     }, []);
     return (
         <span className="window-controls">
-            <button title="최소화" onClick={() => getCurrentWindow().minimize()}><Minus size={16} /></button>
-            <button title={maximized ? '이전 크기로' : '최대화'} onClick={() => getCurrentWindow().toggleMaximize()}>
+            <button title={t('최소화')} onClick={() => getCurrentWindow().minimize()}><Minus size={16} /></button>
+            <button title={maximized ? t('이전 크기로') : t('최대화')} onClick={() => getCurrentWindow().toggleMaximize()}>
                 {maximized ? <Copy size={13} /> : <Square size={13} />}
             </button>
-            <button className="close" title="닫기" onClick={() => getCurrentWindow().close()}><X size={16} /></button>
+            <button className="close" title={t('닫기')} onClick={() => getCurrentWindow().close()}><X size={16} /></button>
         </span>
     );
 }
@@ -1866,10 +1881,10 @@ function TargetPicker({ deck, target, onTarget }: { deck: DeckResult | null; tar
         return null;
     }
     if (deck.targets.length === 0) {
-        return <span className="target-none muted" title={`target이 없어 ${deck.width} × ${deck.height}로 보여 줍니다`}>target 없음</span>;
+        return <span className="target-none muted" title={t('target이 없어 {0} × {1}로 보여 줍니다', deck.width, deck.height)}>{t('target 없음')}</span>;
     }
     return (
-        <select className="target-select" value={target ?? deck.target ?? ''} title={`미리 볼 target (${deck.width} × ${deck.height})`} onChange={(event) => onTarget(event.target.value)}>
+        <select className="target-select" value={target ?? deck.target ?? ''} title={t('미리 볼 target ({0} × {1})', deck.width, deck.height)} onChange={(event) => onTarget(event.target.value)}>
             {deck.targets.map((each) => <option key={each.name} value={each.name}>{each.name} ({each.type})</option>)}
         </select>
     );

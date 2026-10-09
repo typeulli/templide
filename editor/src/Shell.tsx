@@ -7,11 +7,15 @@ import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { ask, message, open as openDialog } from '@tauri-apps/plugin-dialog';
 import { FileText, Package, X } from 'lucide-react';
-import { App, AppMenu, WindowControls, isMac, type DocumentHandle } from './App';
+import { App, LogoButton, WindowControls, isMac, type DocumentHandle } from './App';
 import { AssetView, type OpenDocument } from './AssetView';
 import { lsp, type Range } from './lsp';
 import { serveMcp, type EditorAccess } from './mcp';
+import { useSettings } from './settings';
+import { matchCommand, type CommandId } from './shortcuts';
+import { openSettings } from './settingsWindow';
 import './tabs.css';
+import { t } from './i18n';
 
 type Tab = {
     id: string;
@@ -38,6 +42,9 @@ const noDocument: EditorAccess = {
     build: async () => ({ error: 'No document is open in the editor' }),
 };
 
+// 창 전체에 걸리는 단축키. 문서 하나에 하는 것(저장, 내보내기 등)은 그 탭의 App(App.tsx)이 받는다
+const windowCommands: CommandId[] = ['openFile', 'closeTab', 'nextTab', 'previousTab', 'settings'];
+
 // 다른 탭이 바뀌어도 숨은 탭의 화면은 다시 그리지 않는다
 const TabApp = memo(App);
 const TabAssets = memo(AssetView);
@@ -48,6 +55,7 @@ type TabCallbacks = {
 };
 
 export function Shell() {
+    useSettings(); // 언어를 바꾸면 탭 줄의 글도 다시 그린다
     const [ready, setReady] = useState(false);
     const [tabs, setTabs] = useState<Tab[]>([]);
     const [activeId, setActiveId] = useState<string | null>(null);
@@ -101,19 +109,19 @@ export function Shell() {
         }
         if (tab.kind === 'tlide' && handle?.dirty()) {
             if (!handle.path()) {
-                if (!await ask('저장하지 않은 내용이 있습니다. 탭을 닫을까요?', { title: 'templide', kind: 'warning', okLabel: '닫기', cancelLabel: '취소' })) {
+                if (!await ask(t('저장하지 않은 내용이 있습니다. 탭을 닫을까요?'), { title: 'templide', kind: 'warning', okLabel: t('닫기'), cancelLabel: t('취소') })) {
                     return;
                 }
             } else {
                 activate(id);
-                const choice = await message(`${nameOf(handle.path()!)}에 저장하지 않은 변경이 있습니다. 저장할까요?`, {
-                    title: 'templide', kind: 'warning', buttons: { yes: '저장', no: '저장 안 함', cancel: '취소' },
+                const choice = await message(t('{0}에 저장하지 않은 변경이 있습니다. 저장할까요?', nameOf(handle.path()!)), {
+                    title: 'templide', kind: 'warning', buttons: { yes: t('저장'), no: t('저장 안 함'), cancel: t('취소') },
                 });
-                if (choice === 'Yes' || choice === '저장') {
+                if (choice === 'Yes' || choice === t('저장')) {
                     if (!await handle.save()) {
                         return;
                     }
-                } else if (choice !== 'No' && choice !== '저장 안 함') {
+                } else if (choice !== 'No' && choice !== t('저장 안 함')) {
                     return;
                 }
             }
@@ -222,12 +230,53 @@ export function Shell() {
         }
     }, []);
 
+    // 단축키
+    useEffect(() => {
+        const keydown = (event: KeyboardEvent) => {
+            const id = matchCommand(event, windowCommands);
+            if (!id) {
+                return;
+            }
+            event.preventDefault();
+            const current = tabsRef.current;
+            const index = current.findIndex((tab) => tab.id === activeRef.current);
+            if (id === 'openFile') {
+                pick();
+            } else if (id === 'closeTab') {
+                if (activeRef.current) {
+                    close(activeRef.current);
+                }
+            } else if (id === 'settings') {
+                openSettings();
+            } else if (current.length > 1) {
+                activate(current[(index + (id === 'nextTab' ? 1 : current.length - 1)) % current.length].id);
+            }
+        };
+        window.addEventListener('keydown', keydown);
+        return () => window.removeEventListener('keydown', keydown);
+    }, [pick, close, activate]);
+
     // 시작: 컴파일러와 연결하고, MCP를 열고, 명령줄의 파일(없으면 빈 탭)을 연다
     useEffect(() => {
         (async () => {
             await lsp.start();
             await lsp.request('initialize', { processId: null, rootUri: null, capabilities: {} });
             lsp.notify('initialized', {});
+            // 설정의 컴파일러를 실행하지 못해 기본 컴파일러로 시작했으면 알린다
+            invoke<{ error?: string | null }>('compiler_info').then((info) => {
+                if (info.error) {
+                    message(t('설정에 적은 컴파일러를 실행하지 못해 기본 컴파일러를 씁니다.') + '\n\n' + info.error, { title: 'templide', kind: 'warning' });
+                }
+            });
+            // 설정 창에서 컴파일러를 바꾸면 새 컴파일러와 다시 연결하고 열린 문서를 다시 올린다
+            await listen('compiler-restarted', async () => {
+                lsp.reset();
+                await lsp.request('initialize', { processId: null, rootUri: null, capabilities: {} });
+                lsp.notify('initialized', {});
+                for (const handle of handles.current.values()) {
+                    handle.reconnect();
+                }
+            });
             // 에이전트는 자기를 실행한 탭(session)의 문서를 고친다. session이 없으면 보이는 탭
             serveMcp((session) => accesses.current.get(session || activeRef.current || '') ?? noDocument).catch((error) => console.error('mcp', error));
             // 저장하지 않은 탭이 있으면 창을 닫기 전에 묻는다
@@ -236,8 +285,8 @@ export function Shell() {
                 if (unsaved.length === 0) {
                     return;
                 }
-                const names = unsaved.map((tab) => tab.path ? nameOf(tab.path) : '새 탭').join(', ');
-                if (!await ask(`저장하지 않은 변경이 있습니다 (${names}). 정말 종료할까요?`, { title: 'templide', kind: 'warning', okLabel: '종료', cancelLabel: '취소' })) {
+                const names = unsaved.map((tab) => tab.path ? nameOf(tab.path) : t('새 탭')).join(', ');
+                if (!await ask(t('저장하지 않은 변경이 있습니다 ({0}). 정말 종료할까요?', names), { title: 'templide', kind: 'warning', okLabel: t('종료'), cancelLabel: t('취소') })) {
                     event.preventDefault();
                 }
             });
@@ -264,7 +313,7 @@ export function Shell() {
         <div className={'shell' + (isMac ? ' mac' : '')}>
             {/* 창 제목 줄을 겸한다. 빈 곳을 끌면 창이 움직이고, 두 번 누르면 최대화한다 */}
             <header className="tabbar" data-tauri-drag-region>
-                <span className="brand" data-tauri-drag-region><AppMenu /></span>
+                <span className="brand" data-tauri-drag-region><LogoButton /></span>
                 <div className={'tabs' + (drag ? ' sorting' : '')} ref={tabsBox} data-tauri-drag-region>
                     {tabs.map((tab, i) => {
                         const Icon = tab.kind === 'asset' ? Package : FileText;
@@ -274,9 +323,9 @@ export function Shell() {
                                 onPointerDown={(event) => pointerDown(event, tab.id)}
                                 onAuxClick={(event) => event.button === 1 && close(tab.id)}>
                                 <Icon size={14} className="tab-icon" />
-                                <span className="tab-name">{tab.path ? nameOf(tab.path) : '새 탭'}</span>
-                                {tab.dirty && <span className="dirty" title="저장하지 않은 변경" />}
-                                <button className="tab-close" title="닫기" onPointerDown={(event) => event.stopPropagation()} onClick={() => close(tab.id)}>
+                                <span className="tab-name">{tab.path ? nameOf(tab.path) : t('새 탭')}</span>
+                                {tab.dirty && <span className="dirty" title={t('저장하지 않은 변경')} />}
+                                <button className="tab-close" title={t('닫기')} onPointerDown={(event) => event.stopPropagation()} onClick={() => close(tab.id)}>
                                     <X size={13} />
                                 </button>
                             </div>

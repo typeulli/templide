@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "편집기 창, 슬라이드 쇼 창, 내보내기 창, 불러오기 창이 쓰는 권한",
-  "windows": ["main", "show", "export", "import"],
+  "description": "편집기 창, 슬라이드 쇼 창, 설정 창, 내보내기 창, 불러오기 창이 쓰는 권한",
+  "windows": ["main", "show", "settings", "export", "import"],
   "permissions": [
     "core:default",
     "dialog:default",

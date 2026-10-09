@@ -9,6 +9,7 @@ import {
 import { label, objectNames, propertyNames, shapeKindNames, transitionNames, transitionOrder, optionNames, pptxOnlyTransitions } from './labels';
 import { ObjectAnimations, animationsOf, type AnimationOp } from './Animations';
 import { lockOf } from './SlideView';
+import { t } from './i18n';
 
 // 파일을 문서 폴더로 가져오는 함수들. 고르지 않으면 null
 // 파일을 골라 기본 묶음(.tasset)에 넣고 그 파일을 가리키는 값(이름과 그 선언)을 준다
@@ -28,19 +29,19 @@ const measures: Record<string, Measure> = {
 };
 
 // 속성 탭의 묶음. 개체가 가진 속성만 보이고, 어느 묶음에도 없는 속성은 "그 밖의 속성"에 모은다
-const sections: [string, string[]][] = [
-    ['배치', ['x', 'y', 'width', 'height', 'x1', 'y1', 'x2', 'y2', 'rotation', 'flip']],
-    ['모양', ['kind', 'radius', 'adj1', 'adj2', 'adj3', 'adj4', 'adj5', 'adj6', 'adj7', 'adj8']],
-    ['내용', ['text', 'anchor', 'data', 'path', 'poster', 'fit', 'crop_left', 'crop_top', 'crop_right', 'crop_bottom', 'role', 'blur',
+const sections = (): [string, string[]][] => [
+    [t('배치'), ['x', 'y', 'width', 'height', 'x1', 'y1', 'x2', 'y2', 'rotation', 'flip']],
+    [t('모양'), ['kind', 'radius', 'adj1', 'adj2', 'adj3', 'adj4', 'adj5', 'adj6', 'adj7', 'adj8']],
+    [t('내용'), ['text', 'anchor', 'data', 'path', 'poster', 'fit', 'crop_left', 'crop_top', 'crop_right', 'crop_bottom', 'role', 'blur',
         'from', 'to', 'from_side', 'to_side', 'start_arrow', 'end_arrow']],
-    ['재생', ['start', 'volume', 'loop', 'rewind', 'fullscreen', 'hide_when_stopped', 'hide_icon', 'across_slides', 'trim_start', 'trim_end', 'fade_in', 'fade_out']],
-    ['글상자', ['padding', 'padding_left', 'padding_top', 'padding_right', 'padding_bottom', 'autofit', 'wrap', 'text_direction', 'columns', 'column_gap']],
-    ['채우기', ['fill', 'opacity']],
-    ['선', ['line_color', 'line_width', 'line_dash', 'line_cap', 'line_join', 'line_compound']],
-    ['그림자', ['shadow', 'shadow_blur', 'shadow_distance', 'shadow_angle', 'inner_shadow', 'inner_shadow_blur', 'inner_shadow_distance', 'inner_shadow_angle']],
-    ['네온, 가장자리, 반사', ['glow', 'glow_size', 'soft_edge', 'reflection', 'reflection_size', 'reflection_distance', 'reflection_blur']],
-    ['3차원', ['bevel', 'bevel_width', 'bevel_height', 'depth', 'depth_color', 'rotation_x', 'rotation_y', 'perspective']],
-    ['링크와 실행 설정', ['link', 'action', 'action_sound', 'action_highlight', 'hover_action', 'hover_sound', 'hover_highlight']],
+    [t('재생'), ['start', 'volume', 'loop', 'rewind', 'fullscreen', 'hide_when_stopped', 'hide_icon', 'across_slides', 'trim_start', 'trim_end', 'fade_in', 'fade_out']],
+    [t('글상자'), ['padding', 'padding_left', 'padding_top', 'padding_right', 'padding_bottom', 'autofit', 'wrap', 'text_direction', 'columns', 'column_gap']],
+    [t('채우기'), ['fill', 'opacity']],
+    [t('선'), ['line_color', 'line_width', 'line_dash', 'line_cap', 'line_join', 'line_compound']],
+    [t('그림자'), ['shadow', 'shadow_blur', 'shadow_distance', 'shadow_angle', 'inner_shadow', 'inner_shadow_blur', 'inner_shadow_distance', 'inner_shadow_angle']],
+    [t('네온, 가장자리, 반사'), ['glow', 'glow_size', 'soft_edge', 'reflection', 'reflection_size', 'reflection_distance', 'reflection_blur']],
+    [t('3차원'), ['bevel', 'bevel_width', 'bevel_height', 'depth', 'depth_color', 'rotation_x', 'rotation_y', 'perspective']],
+    [t('링크와 실행 설정'), ['link', 'action', 'action_sound', 'action_highlight', 'hover_action', 'hover_sound', 'hover_highlight']],
 ];
 
 // 세부값은 기본값(앞의 속성)이 있어야 쓸 수 있다 (컴파일러 규칙)
@@ -98,12 +99,12 @@ export function ElementPanel(props: ElementProps) {
         <aside className="props">
             <header className="props-title">
                 <span>{objectNames[info.object] ?? info.object}</span>
-                {info.name && <span className="name-badge" title="put ... as 이름">{info.name}</span>}
-                {info.fromTemplate && <span className="badge" title="템플릿이 만든 요소입니다. 템플릿에 넘긴 값만 바꿀 수 있습니다">템플릿</span>}
+                {info.name && <span className="name-badge" title={t('put ... as 이름')}>{info.name}</span>}
+                {info.fromTemplate && <span className="badge" title={t('템플릿이 만든 요소입니다. 템플릿에 넘긴 값만 바꿀 수 있습니다')}>{t('템플릿')}</span>}
             </header>
             <div className="props-tabs">
-                <button className={tab === 'properties' ? 'active' : ''} onClick={() => setTab('properties')}>속성</button>
-                <button className={tab === 'animations' ? 'active' : ''} onClick={() => setTab('animations')}>애니메이션{count > 0 && <span className="count">{count}</span>}</button>
+                <button className={tab === 'properties' ? 'active' : ''} onClick={() => setTab('properties')}>{t('속성')}</button>
+                <button className={tab === 'animations' ? 'active' : ''} onClick={() => setTab('animations')}>{t('애니메이션')}{count > 0 && <span className="count">{count}</span>}</button>
             </div>
             {tab === 'properties'
                 ? <PropertyList {...props} />
@@ -115,7 +116,7 @@ export function ElementPanel(props: ElementProps) {
 function PropertyList({ deck, schema, page, id, info, pickers, readSource, onSet, onUnset, onOrder }: ElementProps) {
     const sourceLock = lockOf(info.source);
     if (!schema) {
-        return <div className="props-empty">속성 목록을 불러오는 중입니다</div>;
+        return <div className="props-empty">{t('속성 목록을 불러오는 중입니다')}</div>;
     }
     const own = schema.objects[info.object] ?? [];
     const hasText = own.some((each) => each.name === 'text');
@@ -126,7 +127,7 @@ function PropertyList({ deck, schema, page, id, info, pickers, readSource, onSet
     const adjustments = info.object === 'shape' || info.object === 'backdrop' || info.object === 'image' ? window.Templide.adjustments(kind || 'rect') : [];
     // 조정값이 하나인 도형은 PowerPoint에서 이름이 adj이므로 순서로 맞춘다 (adj1 = 첫 조정값)
     const hidden = (name: string) => (/^adj\d$/.test(name) && Number(name.slice(3)) > adjustments.length) || unusable(info.object, kind, name);
-    const used = new Set(sections.flatMap(([, names]) => names));
+    const used = new Set(sections().flatMap(([, names]) => names));
     const rest = vars.map((each) => each.name).filter((name) => !used.has(name));
     const names = Object.values(deck.elements).map((each) => each.name).filter((name): name is string => !!name);
 
@@ -137,9 +138,9 @@ function PropertyList({ deck, schema, page, id, info, pickers, readSource, onSet
         }
         // 세부값은 기본값을 먼저 정해야 하고, 링크와 누를 때 동작은 하나만 쓸 수 있다
         const base = needs[name];
-        const blocked = base && info.values[base] === undefined ? `먼저 ${propertyNames[base] ?? base}을(를) 정하세요`
-            : name === 'link' && info.values.action !== undefined ? "'누를 때'가 있어 링크를 쓸 수 없음"
-            : name === 'action' && info.values.link !== undefined ? '링크가 있어 쓸 수 없음 (링크를 지우세요)' : null;
+        const blocked = base && info.values[base] === undefined ? t('먼저 {0}을(를) 정하세요', propertyNames[base] ?? base)
+            : name === 'link' && info.values.action !== undefined ? t('\'누를 때\'가 있어 링크를 쓸 수 없음')
+            : name === 'action' && info.values.link !== undefined ? t('링크가 있어 쓸 수 없음 (링크를 지우세요)') : null;
         const origin: Origin = blocked ? { kind: 'locked', reason: blocked } : originOf(info, name);
         const common = {
             key: name, name, label: propertyNames[name] ?? name, value: info.values[name] as Value | undefined, origin,
@@ -154,14 +155,14 @@ function PropertyList({ deck, schema, page, id, info, pickers, readSource, onSet
         }
         if (/^adj\d$/.test(name)) {
             const fallback = adjustments[Number(name.slice(3)) - 1];
-            return <NumberField {...common} label={`조정 ${name.slice(3)}`} measure="number" placeholder={fallback ? String(fallback.value / 100000) : undefined} />;
+            return <NumberField {...common} label={t('조정 {0}', name.slice(3))} measure="number" placeholder={fallback ? String(fallback.value / 100000) : undefined} />;
         }
         if (name === 'data' && (info.object === 'image' || info.object === 'video' || info.object === 'audio')) {
             return <FileField {...common} pick={info.object === 'image' ? pickers.image : () => pickers.media(info.object as 'video' | 'audio')} />;
         }
         if (name === 'poster') {
             return <FileField {...common} pick={pickers.image} extra={(
-                <button className="mini-button" title="비디오의 첫 장면을 표지 그림으로" disabled={!!lockReason(common.origin)} onClick={async () => {
+                <button className="mini-button" title={t('비디오의 첫 장면을 표지 그림으로')} disabled={!!lockReason(common.origin)} onClick={async () => {
                     const picked = await pickers.poster(id);
                     if (picked) {
                         onSet(name, picked);
@@ -202,17 +203,17 @@ function PropertyList({ deck, schema, page, id, info, pickers, readSource, onSet
 
     return (
         <div className="property-list">
-            {sections.map(([title, list]) => {
+            {sections().map(([title, list]) => {
                 const fields = list.map(field).filter(Boolean);
                 return fields.length > 0 && <Section key={title} title={title}>{fields}</Section>;
             })}
-            {rest.length > 0 && <Section title="그 밖의 속성">{rest.map(field)}</Section>}
-            <Section title="순서" lock={sourceLock}>
+            {rest.length > 0 && <Section title={t('그 밖의 속성')}>{rest.map(field)}</Section>}
+            <Section title={t('순서')} lock={sourceLock}>
                 <div className="order">
-                    <button disabled={!!sourceLock} onClick={() => onOrder('back')} title="맨 뒤로"><ChevronsDown size={15} /> 맨 뒤</button>
-                    <button disabled={!!sourceLock} onClick={() => onOrder('backward')} title="뒤로"><ChevronDown size={15} /> 뒤로</button>
-                    <button disabled={!!sourceLock} onClick={() => onOrder('forward')} title="앞으로"><ChevronUp size={15} /> 앞으로</button>
-                    <button disabled={!!sourceLock} onClick={() => onOrder('front')} title="맨 앞으로"><ChevronsUp size={15} /> 맨 앞</button>
+                    <button disabled={!!sourceLock} onClick={() => onOrder('back')} title={t('맨 뒤로')}><ChevronsDown size={15} /> {t('맨 뒤')}</button>
+                    <button disabled={!!sourceLock} onClick={() => onOrder('backward')} title={t('뒤로')}><ChevronDown size={15} /> {t('뒤로')}</button>
+                    <button disabled={!!sourceLock} onClick={() => onOrder('forward')} title={t('앞으로')}><ChevronUp size={15} /> {t('앞으로')}</button>
+                    <button disabled={!!sourceLock} onClick={() => onOrder('front')} title={t('맨 앞으로')}><ChevronsUp size={15} /> {t('맨 앞')}</button>
                 </div>
             </Section>
         </div>
@@ -241,14 +242,14 @@ function TextInfo({ origin, readSource, onSet }: { origin: Origin; readSource(or
         const replaced = source.replace(/^(\s*)(bullets|numbers|dashes|paragraphs)/, `$1${kind === 'none' ? 'paragraphs' : kind}`);
         onSet({ code: replaced });
     };
-    const kinds: [string, ReactNode, string][] = [['none', <Pilcrow size={14} />, '목록 아님'], ['bullets', <List size={14} />, '글머리 기호'],
-        ['numbers', <ListOrdered size={14} />, '번호 매기기'], ['dashes', <Minus size={14} />, '대시']];
+    const kinds: [string, ReactNode, string][] = [['none', <Pilcrow size={14} />, t('목록 아님')], ['bullets', <List size={14} />, t('글머리 기호')],
+        ['numbers', <ListOrdered size={14} />, t('번호 매기기')], ['dashes', <Minus size={14} />, t('대시')]];
     return (
         <>
-            <Row label="글자" lock={null}>
-                <span className="muted small">캔버스에서 두 번 눌러 고칩니다</span>
+            <Row label={t('글자')} lock={null}>
+                <span className="muted small">{t('캔버스에서 두 번 눌러 고칩니다')}</span>
             </Row>
-            <Row label="목록" lock={current === null ? lock ?? '글자가 하나의 문자열이나 목록이 아님' : null}>
+            <Row label={t('목록')} lock={current === null ? lock ?? t('글자가 하나의 문자열이나 목록이 아님') : null}>
                 <span className="segmented">
                     {kinds.map(([kind, icon, title]) => (
                         <button key={kind} className={current === kind || (kind === 'none' && current === 'paragraphs') ? 'active' : ''} title={title} disabled={current === null} onClick={() => change(kind)}>{icon}</button>
@@ -276,7 +277,7 @@ type SlideProps = {
 export function SlidePanel({ deck, schema, page, pickers, readSource, onSlide, onDocument, onPreview }: SlideProps) {
     const slide: SlideInfo | undefined = deck.slides[page];
     if (!slide) {
-        return <aside className="props"><div className="props-empty">슬라이드가 없습니다</div></aside>;
+        return <aside className="props"><div className="props-empty">{t('슬라이드가 없습니다')}</div></aside>;
     }
     const slideLock = lockOf(slide.source);
     const blockOrigin = (name: string): Origin => slide.properties[name] ?? { ...slide.source, name };
@@ -292,13 +293,13 @@ export function SlidePanel({ deck, schema, page, pickers, readSource, onSlide, o
     return (
         <aside className="props">
             <header className="props-title">
-                <span>슬라이드 {page + 1}</span>
-                {slide.section && <span className="name-badge" title="구역">{slide.section}</span>}
+                <span>{t('슬라이드 {0}', page + 1)}</span>
+                {slide.section && <span className="name-badge" title={t('구역')}>{slide.section}</span>}
             </header>
             <div className="property-list">
                 {layoutOrigin && (
-                    <Section title="레이아웃">
-                        <Row label="레이아웃" lock={lockOf(layoutOrigin)}>
+                    <Section title={t('레이아웃')}>
+                        <Row label={t('레이아웃')} lock={lockOf(layoutOrigin)}>
                             <select disabled={!!lockOf(layoutOrigin) || cases.length === 0} value={layoutCase ?? ''} onChange={(event) => onSlide({ op: 'layout', case: event.target.value })}>
                                 {layoutCase && !cases.includes(layoutCase) && <option value={layoutCase}>{layoutCase}</option>}
                                 {cases.map((each) => <option key={each} value={each}>{each}</option>)}
@@ -306,27 +307,27 @@ export function SlidePanel({ deck, schema, page, pickers, readSource, onSlide, o
                         </Row>
                     </Section>
                 )}
-                <Section title="배경" lock={slideLock}>
-                    <PaintField name="background" label="배경" value={slide.values.background} origin={blockOrigin('background')}
+                <Section title={t('배경')} lock={slideLock}>
+                    <PaintField name="background" label={t('배경')} value={slide.values.background} origin={blockOrigin('background')}
                         onSet={set('background')} onUnset={unset('background')} patterns={schema?.enums.pattern_kind ?? []} pickImage={pickers.image} />
                 </Section>
                 <TransitionSection deck={deck} schema={schema} slide={slide} pickers={pickers} onSlide={onSlide} onPreview={() => onPreview(true)} />
-                <Section title="슬라이드 쇼" lock={slideLock}>
-                    <NumberField name="advance_after" label="자동으로 넘기기" value={slide.values.advance_after} origin={blockOrigin('advance_after')} measure="seconds"
-                        placeholder="클릭할 때" onSet={set('advance_after')} onUnset={unset('advance_after')} />
-                    <BoolField name="hidden" label="슬라이드 숨기기" value={slide.values.hidden} origin={blockOrigin('hidden')} onSet={set('hidden')} onUnset={unset('hidden')} />
+                <Section title={t('슬라이드 쇼')} lock={slideLock}>
+                    <NumberField name="advance_after" label={t('자동으로 넘기기')} value={slide.values.advance_after} origin={blockOrigin('advance_after')} measure="seconds"
+                        placeholder={t('클릭할 때')} onSet={set('advance_after')} onUnset={unset('advance_after')} />
+                    <BoolField name="hidden" label={t('슬라이드 숨기기')} value={slide.values.hidden} origin={blockOrigin('hidden')} onSet={set('hidden')} onUnset={unset('hidden')} />
                     <div className="tab-actions">
-                        <button className="ghost-button" onClick={() => onPreview(true)}><Play size={13} /> 이 슬라이드 미리 보기</button>
+                        <button className="ghost-button" onClick={() => onPreview(true)}><Play size={13} /> {t('이 슬라이드 미리 보기')}</button>
                     </div>
                 </Section>
                 <NotesSection slide={slide} onSlide={onSlide} />
                 <ReviewSection slide={slide} onSlide={onSlide} />
-                <Section title="문서 (고른 target)" lock={doc.source ? lockOf(doc.source) : 'target이 없음'}>
-                    <TextField name="title" label="제목" value={doc.title} origin={docOrigin('title')}
+                <Section title={t('문서 (고른 target)')} lock={doc.source ? lockOf(doc.source) : t('target이 없음')}>
+                    <TextField name="title" label={t('제목')} value={doc.title} origin={docOrigin('title')}
                         onSet={(value) => onDocument({ op: 'document_set', name: 'title', ...value })} onUnset={() => onDocument({ op: 'document_unset', name: 'title' })} />
-                    <TextField name="author" label="작성자" value={doc.author} origin={docOrigin('author')}
+                    <TextField name="author" label={t('작성자')} value={doc.author} origin={docOrigin('author')}
                         onSet={(value) => onDocument({ op: 'document_set', name: 'author', ...value })} onUnset={() => onDocument({ op: 'document_unset', name: 'author' })} />
-                    <BoolField name="loop" label="끝나면 처음부터 반복" value={doc.loop} origin={docOrigin('loop')}
+                    <BoolField name="loop" label={t('끝나면 처음부터 반복')} value={doc.loop} origin={docOrigin('loop')}
                         onSet={(value) => onDocument({ op: 'document_set', name: 'loop', ...value })} onUnset={() => onDocument({ op: 'document_unset', name: 'loop' })} />
                 </Section>
             </div>
@@ -344,34 +345,34 @@ function TransitionSection({ deck, schema, slide, pickers, onSlide, onPreview }:
     const html = deck.targets.find((each) => each.name === deck.target)?.type !== 'pptx';
     const soundOrigin: Origin = slide.properties.transition_sound ?? { ...slide.source, name: 'transition_sound' };
     return (
-        <Section title="화면 전환" lock={lock}>
+        <Section title={t('화면 전환')} lock={lock}>
             <div className="transition-grid">
-                <button className={!transition ? 'active' : ''} disabled={!!lock} onClick={() => onSlide({ op: 'transition', remove: true })}>없음</button>
+                <button className={!transition ? 'active' : ''} disabled={!!lock} onClick={() => onSlide({ op: 'transition', remove: true })}>{t('없음')}</button>
                 {kinds.map((kind) => (
-                    <button key={kind} className={transition?.kind === kind ? 'active' : ''} disabled={!!lock} title={kind + (pptxOnlyTransitions.has(kind) ? ' (pptx 전용)' : '')}
+                    <button key={kind} className={transition?.kind === kind ? 'active' : ''} disabled={!!lock} title={kind + (pptxOnlyTransitions.has(kind) ? t(' (pptx 전용)') : '')}
                         onClick={() => write(kind, '', transition?.duration)}>
                         {label(transitionNames, kind)}{html && pptxOnlyTransitions.has(kind) ? ' *' : ''}
                     </button>
                 ))}
             </div>
-            {html && <div className="muted small note">* 표시는 PowerPoint(pptx)에서만 됩니다</div>}
+            {html && <div className="muted small note">{t('* 표시는 PowerPoint(pptx)에서만 됩니다')}</div>}
             {transition && options.length > 0 && (
-                <Row label="효과 옵션" lock={lock}>
+                <Row label={t('효과 옵션')} lock={lock}>
                     <select disabled={!!lock} value={transition.option} onChange={(event) => write(transition.kind, event.target.value, transition.duration)}>
                         {options.map((option) => <option key={option} value={option}>{label(optionNames, option)}</option>)}
                     </select>
                 </Row>
             )}
             {transition && (
-                <Row label="기간" lock={lock}>
-                    <NumberInput value={transition.duration} measure="seconds" disabled={!!lock} placeholder="기본" onCommit={(shown) => write(transition.kind, transition.option, Math.max(0, shown * 1000))} />
+                <Row label={t('기간')} lock={lock}>
+                    <NumberInput value={transition.duration} measure="seconds" disabled={!!lock} placeholder={t('기본')} onCommit={(shown) => write(transition.kind, transition.option, Math.max(0, shown * 1000))} />
                 </Row>
             )}
-            <FileField name="transition_sound" label="소리 (wav)" value={slide.values.transition_sound} origin={soundOrigin} pick={pickers.sound}
+            <FileField name="transition_sound" label={t('소리 (wav)')} value={slide.values.transition_sound} origin={soundOrigin} pick={pickers.sound}
                 onSet={(value) => onSlide({ op: 'slide_set', name: 'transition_sound', ...value })} onUnset={() => onSlide({ op: 'slide_unset', name: 'transition_sound' })} />
             {transition && (
                 <div className="tab-actions">
-                    <button className="ghost-button" onClick={onPreview}><Play size={13} /> 전환 미리 보기</button>
+                    <button className="ghost-button" onClick={onPreview}><Play size={13} /> {t('전환 미리 보기')}</button>
                 </div>
             )}
         </Section>
@@ -387,8 +388,8 @@ function NotesSection({ slide, onSlide }: { slide: SlideInfo; onSlide(op: object
         setDraft(slide.notes);
     }
     return (
-        <Section title="발표자 메모" lock={lock}>
-            <textarea className="notes-input" disabled={!!lock} rows={4} placeholder="발표할 때 볼 메모 (comment 문장)" value={draft}
+        <Section title={t('발표자 메모')} lock={lock}>
+            <textarea className="notes-input" disabled={!!lock} rows={4} placeholder={t('발표할 때 볼 메모 (comment 문장)')} value={draft}
                 onChange={(event) => setDraft(event.target.value)} onBlur={() => draft !== slide.notes && onSlide({ op: 'notes', text: draft })} />
         </Section>
     );
@@ -409,20 +410,20 @@ function ReviewSection({ slide, onSlide }: { slide: SlideInfo; onSlide(op: objec
         setAdding(false);
     };
     return (
-        <Section title={`검토 메모${slide.reviews.length ? ` (${slide.reviews.length})` : ''}`} lock={lock}
-            actions={<button className="mini-button" title="검토 메모 추가" disabled={!!lock} onClick={() => setAdding(!adding)}><Plus size={13} /></button>}>
+        <Section title={t('검토 메모{0}', slide.reviews.length ? ` (${slide.reviews.length})` : '')} lock={lock}
+            actions={<button className="mini-button" title={t('검토 메모 추가')} disabled={!!lock} onClick={() => setAdding(!adding)}><Plus size={13} /></button>}>
             {slide.reviews.map((review, index) => (
                 <ReviewItem key={index} review={review} onSave={(next) => onSlide({ op: 'review', action: 'update', index, text: next.text, author: next.author, x: review.x, y: review.y })}
                     onDelete={() => onSlide({ op: 'review', action: 'delete', index })} />
             ))}
-            {slide.reviews.length === 0 && !adding && <div className="muted small">검토 메모가 없습니다</div>}
+            {slide.reviews.length === 0 && !adding && <div className="muted small">{t('검토 메모가 없습니다')}</div>}
             {adding && (
                 <div className="review-form">
-                    <input className="text-input" placeholder="작성자" value={author} onChange={(event) => setAuthor(event.target.value)} />
-                    <textarea rows={3} placeholder="메모" value={text} onChange={(event) => setText(event.target.value)} />
+                    <input className="text-input" placeholder={t('작성자')} value={author} onChange={(event) => setAuthor(event.target.value)} />
+                    <textarea rows={3} placeholder={t('메모')} value={text} onChange={(event) => setText(event.target.value)} />
                     <div className="tab-actions">
-                        <button className="primary-button" onClick={save}>추가</button>
-                        <button className="ghost-button" onClick={() => setAdding(false)}>취소</button>
+                        <button className="primary-button" onClick={save}>{t('추가')}</button>
+                        <button className="ghost-button" onClick={() => setAdding(false)}>{t('취소')}</button>
                     </div>
                 </div>
             )}
@@ -438,7 +439,7 @@ function ReviewItem({ review, onSave, onDelete }: { review: SlideInfo['reviews']
             <div className="review-head">
                 <span className="review-author">{review.author}</span>
                 <span className="spacer" />
-                <button className="mini-button danger" title="지우기" disabled={!!lock} onClick={onDelete}><Trash2 size={12} /></button>
+                <button className="mini-button danger" title={t('지우기')} disabled={!!lock} onClick={onDelete}><Trash2 size={12} /></button>
             </div>
             <textarea rows={2} disabled={!!lock} value={text} onChange={(event) => setText(event.target.value)}
                 onBlur={() => text !== review.text && onSave({ text, author: review.author })} />

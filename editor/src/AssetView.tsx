@@ -7,6 +7,7 @@ import { CircleAlert, File, Film, FolderOpen, Image as ImageIcon, LoaderCircle, 
 import { IconButton } from './Panels';
 import { lsp, type Range } from './lsp';
 import type { DocumentHandle } from './App';
+import { t, useLang } from './i18n';
 
 // 열린 .tlide 탭
 export type OpenDocument = { tab: string; name: string; handle: DocumentHandle };
@@ -22,7 +23,7 @@ const kindOf = (name: string): Kind => {
         : ['mp4', 'webm', 'mov'].includes(extension) ? 'video'
         : ['mp3', 'wav', 'm4a', 'ogg'].includes(extension) ? 'audio' : 'other';
 };
-const kindNames: Record<Kind, string> = { image: '그림', video: '비디오', audio: '오디오', other: '파일' };
+const kindNames = (): Record<Kind, string> => ({ image: t('그림'), video: t('비디오'), audio: t('오디오'), other: t('파일') });
 const kindIcons = { image: ImageIcon, video: Film, audio: Music, other: File };
 
 const sizeText = (bytes: number) => bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -35,6 +36,7 @@ export function AssetView({ path, active, documents, onReveal, onChanged, onPick
     onChanged(): void;                          // 묶음이 바뀌었다 (열린 문서를 다시 컴파일한다)
     onPick(): void;                             // 열 파일을 고른다
 }) {
+    useLang(); // 언어를 바꾸면 다시 그린다
     const [entries, setEntries] = useState<Entry[] | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [selected, setSelected] = useState<string | null>(null);
@@ -50,7 +52,7 @@ export function AssetView({ path, active, documents, onReveal, onChanged, onPick
     const load = useCallback(async () => {
         const result = await lsp.request<{ entries?: Entry[]; error?: string }>('templide/asset_list', { bundle: path });
         if (!result.entries) {
-            setError(result.error ?? '묶음을 열 수 없습니다');
+            setError(result.error ?? t('묶음을 열 수 없습니다'));
             setEntries(null);
             return;
         }
@@ -109,7 +111,7 @@ export function AssetView({ path, active, documents, onReveal, onChanged, onPick
     const add = async () => {
         const files = await openDialog({
             multiple: true,
-            filters: [{ name: '그림, 비디오, 오디오', extensions: ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg', 'mp4', 'webm', 'mp3', 'wav', 'm4a'] }, { name: '모든 파일', extensions: ['*'] }],
+            filters: [{ name: t('그림, 비디오, 오디오'), extensions: ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg', 'mp4', 'webm', 'mp3', 'wav', 'm4a'] }, { name: t('모든 파일'), extensions: ['*'] }],
         });
         const list = Array.isArray(files) ? files : typeof files === 'string' ? [files] : [];
         if (list.length === 0) {
@@ -122,7 +124,7 @@ export function AssetView({ path, active, documents, onReveal, onChanged, onPick
             if (added.name) {
                 last = added.name;
             } else {
-                showNotice(added.error ?? `${source}을(를) 넣을 수 없습니다`);
+                showNotice(added.error ?? t('{0}을(를) 넣을 수 없습니다', source));
             }
         }
         setBusy(false);
@@ -150,7 +152,7 @@ export function AssetView({ path, active, documents, onReveal, onChanged, onPick
             }
         }
         if (failed.length > 0) {
-            showNotice(`코드를 고치지 못한 탭이 있습니다: ${failed.join(', ')}`);
+            showNotice(t('코드를 고치지 못한 탭이 있습니다: {0}', failed.join(', ')));
         }
         await load();
         setSelected(to);
@@ -171,7 +173,7 @@ export function AssetView({ path, active, documents, onReveal, onChanged, onPick
             return;
         }
         if (entries?.some((each) => each.name !== entry && each.name.toLowerCase() === to.toLowerCase())) {
-            showNotice(`${to}은(는) 이미 묶음에 있습니다`);
+            showNotice(t('{0}은(는) 이미 묶음에 있습니다', to));
             return;
         }
         const uses = await usesOf(entry, to);
@@ -203,7 +205,7 @@ export function AssetView({ path, active, documents, onReveal, onChanged, onPick
         const uses = await usesOf(entry);
         if (uses.length > 0) {
             setRemoval({ entry, uses });
-        } else if (await ask(`${entry}을(를) 묶음에서 지울까요? 되돌릴 수 없습니다.`, { title: 'templide', kind: 'warning', okLabel: '지우기', cancelLabel: '취소' })) {
+        } else if (await ask(t('{0}을(를) 묶음에서 지울까요? 되돌릴 수 없습니다.', entry), { title: 'templide', kind: 'warning', okLabel: t('지우기'), cancelLabel: t('취소') })) {
             await remove(entry);
         }
     };
@@ -238,15 +240,15 @@ export function AssetView({ path, active, documents, onReveal, onChanged, onPick
         <div className="asset">
             <header className="toolbar asset-toolbar" data-tauri-drag-region>
                 <span className="tool-group">
-                    <IconButton icon={FolderOpen} title="열기" onClick={onPick} />
+                    <IconButton icon={FolderOpen} title={t('열기')} onClick={onPick} />
                 </span>
                 <span className="file" title={path}><Package size={15} className="asset-file-icon" /> {fileName}</span>
-                {entries && <span className="muted asset-summary">파일 {entries.length}개 · {sizeText(total)}</span>}
+                {entries && <span className="muted asset-summary">{t('파일 {0}개 · {1}', entries.length, sizeText(total))}</span>}
                 <span className="separator" />
                 <span className="tool-group">
-                    <IconButton icon={Plus} title="파일 넣기" disabled={!!error || busy} onClick={add} />
-                    <IconButton icon={PenLine} title="이름 바꾸기 (F2)" disabled={!current || busy} onClick={startRename} />
-                    <IconButton icon={Trash2} title="지우기 (Delete)" disabled={!current || busy} onClick={startRemove} danger />
+                    <IconButton icon={Plus} title={t('파일 넣기')} disabled={!!error || busy} onClick={add} />
+                    <IconButton icon={PenLine} title={t('이름 바꾸기 (F2)')} disabled={!current || busy} onClick={startRename} />
+                    <IconButton icon={Trash2} title={t('지우기 (Delete)')} disabled={!current || busy} onClick={startRemove} danger />
                 </span>
                 {busy && <LoaderCircle size={15} className="spin" />}
                 <span className="spacer" data-tauri-drag-region />
@@ -254,7 +256,7 @@ export function AssetView({ path, active, documents, onReveal, onChanged, onPick
             <div className="asset-body">
                 <div className="asset-grid" onMouseDown={(event) => event.target === event.currentTarget && setSelected(null)}>
                     {error && <div className="asset-message error"><CircleAlert size={14} /> {error}</div>}
-                    {entries && entries.length === 0 && <div className="asset-message">묶음이 비어 있습니다. 파일 넣기(+)로 그림, 비디오, 오디오를 넣으세요</div>}
+                    {entries && entries.length === 0 && <div className="asset-message">{t('묶음이 비어 있습니다. 파일 넣기(+)로 그림, 비디오, 오디오를 넣으세요')}</div>}
                     {entries?.map((entry) => {
                         const kind = kindOf(entry.name);
                         const Icon = kindIcons[kind];
@@ -296,17 +298,17 @@ export function AssetView({ path, active, documents, onReveal, onChanged, onPick
                                     }}
                                     onBlur={() => setRenaming(null)} />
                             ) : (
-                                <button className="asset-detail-name" title="이름 바꾸기 (F2)" onClick={startRename}>{current.name}</button>
+                                <button className="asset-detail-name" title={t('이름 바꾸기 (F2)')} onClick={startRename}>{current.name}</button>
                             )}
-                            <div className="asset-detail-info muted">{kindNames[kindOf(current.name)]} · {sizeText(current.size)}</div>
+                            <div className="asset-detail-info muted">{kindNames()[kindOf(current.name)]} · {sizeText(current.size)}</div>
                         </>
-                    ) : <div className="props-empty">파일을 고르면<br />여기서 미리 봅니다</div>}
+                    ) : <div className="props-empty">{t('파일을 고르면')}<br />{t('여기서 미리 봅니다')}</div>}
                 </aside>
             </div>
             {notice && (
                 <div className="toast error asset-toast">
                     <span className="toast-message">{notice}</span>
-                    <IconButton icon={X} title="닫기" onClick={() => setNotice(null)} />
+                    <IconButton icon={X} title={t('닫기')} onClick={() => setNotice(null)} />
                 </div>
             )}
             {refactor && (
@@ -314,11 +316,11 @@ export function AssetView({ path, active, documents, onReveal, onChanged, onPick
                     <div className="export refactor" onMouseDown={(event) => event.stopPropagation()}>
                         <header className="export-header">
                             <PenLine size={16} />
-                            <span className="export-title">이름 바꾸기</span>
+                            <span className="export-title">{t('이름 바꾸기')}</span>
                             <span className="export-file">{refactor.entry} → {refactor.to}</span>
                         </header>
                         <div className="export-body">
-                            <p className="refactor-text">열린 탭에서 이 파일을 쓰는 곳이 {refactor.uses.length}개 있습니다. 새 이름으로 고칠 곳을 고르세요. 고친 탭은 저장해야 파일에 남습니다.</p>
+                            <p className="refactor-text">{t('열린 탭에서 이 파일을 쓰는 곳이 {0}개 있습니다. 새 이름으로 고칠 곳을 고르세요. 고친 탭은 저장해야 파일에 남습니다.', refactor.uses.length)}</p>
                             <UseList uses={refactor.uses} render={(use, i) => (
                                 <label key={i} className="refactor-row">
                                     <input type="checkbox" checked={refactor.checked.has(i)} onChange={() => setRefactor((old) => {
@@ -328,18 +330,18 @@ export function AssetView({ path, active, documents, onReveal, onChanged, onPick
                                         }
                                         return { ...old!, checked };
                                     })} />
-                                    <span className="refactor-line">줄 {use.range.start.line + 1}</span>
+                                    <span className="refactor-line">{t('줄 {0}', use.range.start.line + 1)}</span>
                                     <Preview use={use} />
                                 </label>
                             )} />
                         </div>
                         <footer className="export-footer">
-                            <button className="export-secondary" onClick={() => setRefactor(null)}>취소</button>
+                            <button className="export-secondary" onClick={() => setRefactor(null)}>{t('취소')}</button>
                             <button className="export-primary" onClick={() => {
                                 const { entry, to, uses, checked } = refactor;
                                 setRefactor(null);
                                 rename(entry, to, uses.filter((_, i) => checked.has(i)));
-                            }}>이름 바꾸기 (코드 {refactor.checked.size}곳 고침)</button>
+                            }}>{t('이름 바꾸기 (코드 {0}곳 고침)', refactor.checked.size)}</button>
                         </footer>
                     </div>
                 </div>
@@ -349,28 +351,28 @@ export function AssetView({ path, active, documents, onReveal, onChanged, onPick
                     <div className="export refactor" onMouseDown={(event) => event.stopPropagation()}>
                         <header className="export-header">
                             <Trash2 size={16} />
-                            <span className="export-title">지우기</span>
+                            <span className="export-title">{t('지우기')}</span>
                             <span className="export-file">{removal.entry}</span>
                         </header>
                         <div className="export-body">
-                            <p className="refactor-text">열린 탭에서 이 파일을 쓰는 곳이 {removal.uses.length}개 있습니다. 지우면 이 코드들은 오류가 납니다. 누르면 그 자리로 갑니다.</p>
+                            <p className="refactor-text">{t('열린 탭에서 이 파일을 쓰는 곳이 {0}개 있습니다. 지우면 이 코드들은 오류가 납니다. 누르면 그 자리로 갑니다.', removal.uses.length)}</p>
                             <UseList uses={removal.uses} render={(use, i) => (
                                 <button key={i} className="refactor-row link" onClick={() => {
                                     setRemoval(null);
                                     onReveal(use.tab, use.range);
                                 }}>
-                                    <span className="refactor-line">줄 {use.range.start.line + 1}</span>
+                                    <span className="refactor-line">{t('줄 {0}', use.range.start.line + 1)}</span>
                                     <Preview use={use} />
                                 </button>
                             )} />
                         </div>
                         <footer className="export-footer">
-                            <button className="export-secondary" onClick={() => setRemoval(null)}>취소</button>
+                            <button className="export-secondary" onClick={() => setRemoval(null)}>{t('취소')}</button>
                             <button className="export-primary danger" onClick={() => {
                                 const entry = removal.entry;
                                 setRemoval(null);
                                 remove(entry);
-                            }}>그래도 지우기</button>
+                            }}>{t('그래도 지우기')}</button>
                         </footer>
                     </div>
                 </div>

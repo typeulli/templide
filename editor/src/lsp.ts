@@ -13,6 +13,15 @@ export class Lsp {
         await listen<string>('lsp', (event) => this.receive(JSON.parse(event.payload)));
     }
 
+    // 컴파일러를 다시 띄웠을 때: 이전 컴파일러에 보낸 요청은 답을 받을 수 없으므로 모두 실패시킨다
+    reset() {
+        const pending = [...this.pending.values()];
+        this.pending.clear();
+        for (const { reject } of pending) {
+            reject(new Error('The compiler was restarted'));
+        }
+    }
+
     // 탭마다 받으므로 여럿 둘 수 있다. 돌려준 함수를 부르면 그만 받는다
     onNotification(method: string, handler: (params: any) => void): () => void {
         const set = this.handlers.get(method) ?? new Set();

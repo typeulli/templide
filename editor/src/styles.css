@@ -54,7 +54,6 @@ body.resizing-row, body.resizing-row * { cursor: row-resize !important; user-sel
 .logo { display: block; width: 30px; height: 30px; }
 .logo-button { padding: 2px; border: none; border-radius: 6px; background: transparent; cursor: pointer; }
 .logo-button:hover { background: var(--hover); }
-.app-menu-title { padding: 2px 8px 6px; border-bottom: 1px solid var(--border); margin-bottom: 2px; font-weight: 600; white-space: nowrap; }
 .tool-group { display: flex; align-items: center; gap: 2px; }
 .separator { width: 1px; height: 20px; margin: 0 4px; background: var(--border); }
 .file { display: flex; align-items: center; gap: 6px; min-width: 60px; max-width: 180px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 600; }

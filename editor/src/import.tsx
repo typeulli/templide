@@ -2,6 +2,7 @@
 import { createRoot } from 'react-dom/client';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Lsp } from './lsp';
+import { initSettings } from './settings';
 import { ImportDialog } from './ImportDialog';
 import './styles.css';
 
@@ -15,9 +16,12 @@ async function start() {
 }
 
 const window = getCurrentWindow();
-createRoot(document.getElementById('root')!).render(
-    <ImportDialog ready={start()} request={(method, params) => lsp.request(method, params)}
-        onTitle={(title) => window.setTitle(title)} onClose={() => window.close()} />,
-);
-// 창은 숨긴 채로 만든다(src-tauri/src/main.rs). 화면을 한 번 그린 뒤에 보여 준다
-requestAnimationFrame(() => requestAnimationFrame(() => window.show()));
+// 설정(언어)을 읽은 뒤에 그린다
+initSettings().catch((error) => console.error('settings', error)).finally(() => {
+    createRoot(document.getElementById('root')!).render(
+        <ImportDialog ready={start()} request={(method, params) => lsp.request(method, params)}
+            onTitle={(title) => window.setTitle(title)} onClose={() => window.close()} />,
+    );
+    // 창은 숨긴 채로 만든다(src-tauri/src/main.rs). 화면을 한 번 그린 뒤에 보여 준다
+    requestAnimationFrame(() => requestAnimationFrame(() => window.show()));
+});

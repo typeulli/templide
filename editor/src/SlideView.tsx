@@ -2,6 +2,7 @@
 // 바꾼 것은 화면에서 미리 보여 주기만 하고, 놓을 때 onMove, onResize, onText로 원문 수정을 요청한다
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { DeckResult, ElementInfo, Origin } from './lsp';
+import { t } from './i18n';
 
 type Box = { x: number; y: number; w: number; h: number };
 export type Resize = { x?: number; y?: number; width?: number; height?: number };
@@ -38,27 +39,27 @@ export function selectionIn(node: HTMLElement): { start: number; end: number } |
     return { start: offset(range.startContainer, range.startOffset), end: offset(range.endContainer, range.endOffset) };
 }
 
-const reasons: Record<string, string> = {
-    template: '템플릿 정의 안에 적힌 값',
-    computed: '계산식으로 만든 값',
-    for: 'for 반복으로 만든 값',
-    package: '패키지 파일에 있는 값',
-    layout: '마스터 레이아웃의 값',
-};
+const reasons = (): Record<string, string> => ({
+    template: t('템플릿 정의 안에 적힌 값'),
+    computed: t('계산식으로 만든 값'),
+    for: t('for 반복으로 만든 값'),
+    package: t('패키지 파일에 있는 값'),
+    layout: t('마스터 레이아웃의 값'),
+});
 
 // 고칠 수 없으면 그 이유
 export function lockOf(origin: Origin | undefined): string | null {
     if (!origin) {
-        return '코드에 적힌 값이 없음';
+        return t('코드에 적힌 값이 없음');
     }
-    return origin.kind === 'locked' ? reasons[origin.reason ?? ''] ?? origin.reason ?? '고칠 수 없는 값' : null;
+    return origin.kind === 'locked' ? reasons()[origin.reason ?? ''] ?? origin.reason ?? t('고칠 수 없는 값') : null;
 }
 
 // 끌어서 옮길 수 없는 이유. template이 만든 요소는 그 template을 넣은 put의 x, y를 바꾼다
 function moveLock(info: ElementInfo): string | null {
     const properties = info.fromTemplate ? info.instance ?? {} : info.properties;
     if (info.fromTemplate && (!properties.x || !properties.y)) {
-        return '템플릿을 넣은 put에 x, y가 없음';
+        return t('템플릿을 넣은 put에 x, y가 없음');
     }
     return lockOf(properties.x) ?? lockOf(properties.y);
 }
@@ -389,7 +390,7 @@ export function SlideView({ deck, index, selected, editable, editing, zoom, onZo
         const runIndex = Array.from(paragraph.querySelectorAll('.tl-run')).indexOf(run);
         const reason = lockOf(deck.elements[id]?.text?.[paragraphIndex]?.[runIndex]);
         if (reason) {
-            onNotice(`이 글자는 고칠 수 없습니다: ${reason}. 코드에서 고쳐 주세요`);
+            onNotice(t('이 글자는 고칠 수 없습니다: {0}. 코드에서 고쳐 주세요', reason));
             return;
         }
         const original = run.innerText;
@@ -454,7 +455,7 @@ export function SlideView({ deck, index, selected, editable, editing, zoom, onZo
                         {editable && !dragBox && !offset && handles.filter(handleAllowed).map((handle) => (
                             <div key={handle} data-handle={handle} className={`handle handle-${handle}`} style={{ width: 9 / scale, height: 9 / scale, borderWidth: 1 / scale }} />
                         ))}
-                        {lock && <div className="lock" style={{ fontSize: 12 / scale, padding: `${2 / scale}px ${6 / scale}px`, top: -22 / scale }}>🔒 옮길 수 없음: {lock}</div>}
+                        {lock && <div className="lock" style={{ fontSize: 12 / scale, padding: `${2 / scale}px ${6 / scale}px`, top: -22 / scale }}>{t('🔒 옮길 수 없음: {0}', lock)}</div>}
                     </div>
                 )}
             </div>

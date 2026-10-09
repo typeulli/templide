@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { CircleAlert, CircleCheck, FileOutput, LoaderCircle, TriangleAlert, X } from 'lucide-react';
 import './export.css';
+import { t, tn, useLang } from './i18n';
 
 export type ExportTarget = { name: string; type: string; path: string };
 export type BuildResult = { path?: string; errors?: string[]; error?: string; warnings?: string[] };
@@ -14,7 +15,7 @@ type Status = { state: 'building' } | { state: 'done'; result: BuildResult };
 // 경고는 "파일:줄:칸: warning: 내용"이다. "줄 N: 내용"으로 보인다
 const warningText = (line: string) => {
     const match = /^.*:(\d+):\d+: warning: (.*)$/.exec(line);
-    return match ? `줄 ${match[1]}: ${match[2]}` : line;
+    return match ? t('줄 {0}: {1}', match[1], match[2]) : line;
 };
 
 export function ExportDialog({ fileName, load, build, onClose, onDone, standalone = false }: {
@@ -25,6 +26,7 @@ export function ExportDialog({ fileName, load, build, onClose, onDone, standalon
     onDone(results: BuildResult[]): void; // 고른 target을 모두 만들었을 때
     standalone?: boolean; // 창 전체를 쓰는 내보내기 창 (탐색기에서 연 것)
 }) {
+    useLang(); // 언어를 바꾸면 다시 그린다
     const [targets, setTargets] = useState<ExportTarget[] | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [checked, setChecked] = useState<Set<string>>(new Set());
@@ -34,7 +36,7 @@ export function ExportDialog({ fileName, load, build, onClose, onDone, standalon
     useEffect(() => {
         load().then((result) => {
             if (result.error || !result.targets) {
-                setLoadError(result.error ?? 'target을 읽을 수 없습니다');
+                setLoadError(result.error ?? t('target을 읽을 수 없습니다'));
                 return;
             }
             setTargets(result.targets);
@@ -86,22 +88,22 @@ export function ExportDialog({ fileName, load, build, onClose, onDone, standalon
         <div className={'export' + (standalone ? ' standalone' : '')} onMouseDown={(event) => event.stopPropagation()}>
             <header className="export-header">
                 <FileOutput size={16} />
-                <span className="export-title">내보내기</span>
+                <span className="export-title">{t('내보내기')}</span>
                 <span className="export-file" title={fileName}>{fileName}</span>
-                {!standalone && <button className="export-close" title="닫기 (Esc)" disabled={running} onClick={onClose}><X size={16} /></button>}
+                {!standalone && <button className="export-close" title={t('닫기 (Esc)')} disabled={running} onClick={onClose}><X size={16} /></button>}
             </header>
             <div className="export-body">
-                {loadError && <div className="export-message error"><CircleAlert size={14} /> {loadError === 'The document has errors' ? '코드에 오류가 있어 내보낼 수 없습니다' : loadError}</div>}
-                {!loadError && !targets && <div className="export-message"><LoaderCircle size={14} className="spin" /> target을 읽는 중</div>}
+                {loadError && <div className="export-message error"><CircleAlert size={14} /> {loadError === 'The document has errors' ? t('코드에 오류가 있어 내보낼 수 없습니다') : loadError}</div>}
+                {!loadError && !targets && <div className="export-message"><LoaderCircle size={14} className="spin" /> {t('target을 읽는 중')}</div>}
                 {targets && targets.length === 0 && (
-                    <div className="export-message">target이 없습니다. <code>target out {'{'} path = "out.pptx"; type = pptx; {'}'}</code> 처럼 추가해 주세요</div>
+                    <div className="export-message">{tn('target이 없습니다. {0}처럼 추가해 주세요', <code>target out {'{'} path = "out.pptx"; type = pptx; {'}'}</code>)}</div>
                 )}
                 {targets && targets.length > 0 && (
                     <>
                         <label className="export-all">
                             <input type="checkbox" checked={all} disabled={running}
                                 onChange={() => setChecked(all ? new Set() : new Set(targets.map((target) => target.name)))} />
-                            모두 선택
+                            {t('모두 선택')}
                         </label>
                         <div className="export-list">
                             {targets.map((target) => {
@@ -121,8 +123,8 @@ export function ExportDialog({ fileName, load, build, onClose, onDone, standalon
                                         </label>
                                         {result && !failed && result.path && (
                                             <div className="export-actions">
-                                                <button onClick={() => invoke('open_path', { path: result.path, reveal: false })}>열기</button>
-                                                <button onClick={() => invoke('open_path', { path: result.path, reveal: true })}>폴더에서 보기</button>
+                                                <button onClick={() => invoke('open_path', { path: result.path, reveal: false })}>{t('열기')}</button>
+                                                <button onClick={() => invoke('open_path', { path: result.path, reveal: true })}>{t('폴더에서 보기')}</button>
                                             </div>
                                         )}
                                         {failed && <div className="export-error">{result!.error ?? result!.errors!.join('\n')}</div>}
@@ -137,9 +139,9 @@ export function ExportDialog({ fileName, load, build, onClose, onDone, standalon
                 )}
             </div>
             <footer className="export-footer">
-                <button className="export-secondary" disabled={running} onClick={onClose}>닫기</button>
+                <button className="export-secondary" disabled={running} onClick={onClose}>{t('닫기')}</button>
                 <button className="export-primary" disabled={running || !targets || checked.size === 0} onClick={run}>
-                    {running ? '만드는 중…' : `내보내기 (${checked.size})`}
+                    {running ? t('만드는 중…') : t('내보내기 ({0})', checked.size)}
                 </button>
             </footer>
         </div>

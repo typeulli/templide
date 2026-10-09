@@ -8,6 +8,8 @@ import { Unicode11Addon } from '@xterm/addon-unicode11';
 import '@xterm/xterm/css/xterm.css';
 import { Play, RotateCw, Square } from 'lucide-react';
 import { IconButton } from './Panels';
+import { t } from './i18n';
+import { getSettings } from './settings';
 
 // 편집기 MCP 서버에 붙는 정보. config는 Claude Code의 --mcp-config 형식 JSON
 type Mcp = { config: string; url: string; token: string };
@@ -20,7 +22,7 @@ type Agent = {
     launch(mcp: Mcp): { args: string[]; env?: Record<string, string> };
 };
 
-const agents: Agent[] = [
+export const agents: Agent[] = [
     {
         id: 'claude-code', label: 'Claude Code', program: 'claude', install: 'https://code.claude.com/docs/en/setup',
         launch: (mcp) => ({ args: ['--mcp-config', mcp.config] }),
@@ -42,7 +44,7 @@ type Status = 'idle' | 'running' | 'exited' | 'failed';
 // visible은 AI 탭이 보이는지. 탭을 바꿔도 세션과 터미널은 그대로 둔다.
 // session은 이 패널이 있는 파일 탭. 에이전트는 MCP 주소 /mcp/<session>으로 그 탭의 문서만 고친다
 export function AgentPanel({ visible, folder, session }: { visible: boolean; folder: string | null; session: string }) {
-    const [agentId, setAgentId] = useState(agents[0].id);
+    const [agentId, setAgentId] = useState(() => agents.find((each) => each.id === getSettings().agent.default)?.id ?? agents[0].id); // 기본 에이전트는 설정
     const [status, setStatus] = useState<Status>('idle');
     const [message, setMessage] = useState<string | null>(null);
     const host = useRef<HTMLDivElement>(null);
@@ -91,7 +93,7 @@ export function AgentPanel({ visible, folder, session }: { visible: boolean; fol
             if (payload.run === run.current) {
                 running.current = null;
                 setStatus('exited');
-                term.write(`\r\n\x1b[90m[끝났습니다${payload.code != null ? ` (코드 ${payload.code})` : ''}]\x1b[0m\r\n`);
+                term.write(`\r\n\x1b[90m[${t('끝났습니다')}${payload.code != null ? t(' (코드 {0})', payload.code) : ''}]\x1b[0m\r\n`);
             }
         });
         return () => {
@@ -143,7 +145,7 @@ export function AgentPanel({ visible, folder, session }: { visible: boolean; fol
             server.url += `/${encodeURIComponent(session)}`;
             const config = JSON.stringify(parsed);
             const { args, env } = agent.launch({ config, url: server.url, token: server.headers.Authorization.replace(/^Bearer /, '') });
-            run.current = await invoke<number>('agent_start', { id: sessionId, program: agent.program, search: agent.search ?? [], args, env: env ?? {}, cwd: folder, cols: term.cols, rows: term.rows });
+            run.current = await invoke<number>('agent_start', { id: sessionId, program: getSettings().agent.paths[agent.id] || agent.program, search: agent.search ?? [], args, env: env ?? {}, cwd: folder, cols: term.cols, rows: term.rows });
             early.current.filter((each) => each.run === run.current).forEach((each) => term.write(each.data));
             early.current = [];
             setStatus('running');
@@ -151,7 +153,7 @@ export function AgentPanel({ visible, folder, session }: { visible: boolean; fol
         } catch (error) {
             running.current = null;
             setStatus('failed');
-            setMessage(`${agent.label}을(를) 실행하지 못했습니다. 설치되어 있는지 확인해 주세요. (${error})`);
+            setMessage(t('{0}을(를) 실행하지 못했습니다. 설치되어 있는지 확인해 주세요. ({1})', agent.label, error));
         }
     }, [agent, folder, session, sessionId]);
 
@@ -173,20 +175,20 @@ export function AgentPanel({ visible, folder, session }: { visible: boolean; fol
     return (
         <div className="agent" style={{ display: visible ? 'flex' : 'none' }}>
             <div className="agent-bar">
-                <select value={agentId} onChange={(event) => choose(event.target.value)} title="에이전트">
+                <select value={agentId} onChange={(event) => choose(event.target.value)} title={t('에이전트')}>
                     {agents.map((each) => <option key={each.id} value={each.id}>{each.label}</option>)}
                 </select>
                 {status === 'running'
                     ? <>
-                        <IconButton icon={RotateCw} title="다시 시작" onClick={start} />
-                        <IconButton icon={Square} title="멈추기" onClick={stop} danger />
+                        <IconButton icon={RotateCw} title={t('다시 시작')} onClick={start} />
+                        <IconButton icon={Square} title={t('멈추기')} onClick={stop} danger />
                     </>
-                    : <IconButton icon={Play} title={`${agent.label} 실행`} onClick={start}>실행</IconButton>}
-                <span className="agent-folder muted" title={folder ?? undefined}>{folder ?? '파일을 열지 않아 홈 폴더에서 실행합니다'}</span>
+                    : <IconButton icon={Play} title={t('{0} 실행', agent.label)} onClick={start}>{t('실행')}</IconButton>}
+                <span className="agent-folder muted" title={folder ?? undefined}>{folder ?? t('파일을 열지 않아 홈 폴더에서 실행합니다')}</span>
                 {message && (
                     <span className="agent-message">
                         {message}
-                        <button onClick={() => invoke('open_path', { path: agent.install, reveal: false })}>설치 안내</button>
+                        <button onClick={() => invoke('open_path', { path: agent.install, reveal: false })}>{t('설치 안내')}</button>
                     </span>
                 )}
             </div>
@@ -194,8 +196,8 @@ export function AgentPanel({ visible, folder, session }: { visible: boolean; fol
                 <div ref={host} className="agent-host" />
                 {status === 'idle' && (
                     <div className="agent-idle">
-                        <button className="play-button" onClick={start}><Play size={14} fill="currentColor" /> {agent.label} 실행</button>
-                        <span className="muted">설치된 {agent.label}을(를) 문서 폴더에서 그대로 실행합니다. 로그인과 요금은 본인 계정을 따릅니다.</span>
+                        <button className="play-button" onClick={start}><Play size={14} fill="currentColor" /> {t('{0} 실행', agent.label)}</button>
+                        <span className="muted">{t('설치된 {0}을(를) 문서 폴더에서 그대로 실행합니다. 로그인과 요금은 본인 계정을 따릅니다.', agent.label)}</span>
                     </div>
                 )}
             </div>

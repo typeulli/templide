@@ -3,9 +3,14 @@
 import { emitTo, listen } from '@tauri-apps/api/event';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { getSettings, initSettings } from './settings';
+import { t } from './i18n';
 
 // 편집기 덱의 비디오, 오디오("file:경로")는 Tauri의 asset 주소로 읽는다
 window.Templide.mediaUrl = (path) => convertFileSrc(path);
+
+// 설정(언어, 끝 화면)을 읽은 뒤에 시작한다
+await initSettings().catch((error) => console.error('settings', error));
 
 const current = getCurrentWebviewWindow();
 const nextKeys = new Set(['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter', 'n', 'N']);
@@ -16,7 +21,7 @@ let loop = false;
 
 const end = document.createElement('div');
 end.className = 'show-end';
-end.textContent = '슬라이드 쇼가 끝났습니다. 넘기면 닫힙니다.';
+end.textContent = t('슬라이드 쇼가 끝났습니다. 넘기면 닫힙니다.');
 end.style.cssText = 'position: fixed; inset: 0; z-index: 100; display: none; align-items: center; justify-content: center; '
     + 'background: #000; color: #fff; font: 24px "Malgun Gothic", "Segoe UI", sans-serif; cursor: default;';
 document.body.appendChild(end);
@@ -27,7 +32,7 @@ const showEnd = (visible: boolean) => {
 };
 
 // 더 넘길 슬라이드도 단계(애니메이션)도 없다
-const atEnd = () => reveal !== null && !loop && reveal.isLastSlide() && !reveal.availableFragments().next;
+const atEnd = () => reveal !== null && !loop && getSettings().show.endScreen && reveal.isLastSlide() && !reveal.availableFragments().next;
 
 // 다음으로 넘기는 입력이면 true를 돌려주고 reveal.js에는 보내지 않는다
 const next = (event: Event) => {

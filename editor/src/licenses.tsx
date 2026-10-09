@@ -4,7 +4,9 @@ import { createRoot } from 'react-dom/client';
 import { invoke } from '@tauri-apps/api/core';
 import { ChevronDown, ChevronRight, Search } from 'lucide-react';
 import data from './generated/licenses.json';
+import { initSettings } from './settings';
 import './licenses.css';
+import { t, useLang } from './i18n';
 
 type Package = { name: string; version: string; license: string; url: string; texts: string[] };
 type Section = { title: string; packages: Package[] };
@@ -20,6 +22,7 @@ const openSite = (event: React.MouseEvent, url: string) => {
 };
 
 function Licenses() {
+    useLang(); // 언어를 바꾸면 다시 그린다
     const [query, setQuery] = useState('');
     const [open, setOpen] = useState<Set<string>>(new Set());
     const shown = useMemo(() => {
@@ -41,12 +44,12 @@ function Licenses() {
         <div className="licenses">
             <header className="licenses-header">
                 <div>
-                    <h1>오픈소스 라이선스</h1>
-                    <p>templide는 아래 오픈소스 소프트웨어를 사용합니다. 항목을 누르면 라이선스 전문을 볼 수 있습니다. ({total}개)</p>
+                    <h1>{t('오픈소스 라이선스')}</h1>
+                    <p>{t('templide는 아래 오픈소스 소프트웨어를 사용합니다. 항목을 누르면 라이선스 전문을 볼 수 있습니다. ({0}개)', total)}</p>
                 </div>
                 <label className="licenses-search">
                     <Search size={14} />
-                    <input value={query} placeholder="이름이나 라이선스로 찾기" onChange={(event) => setQuery(event.target.value)} />
+                    <input value={query} placeholder={t('이름이나 라이선스로 찾기')} onChange={(event) => setQuery(event.target.value)} />
                 </label>
             </header>
             <main className="licenses-body">
@@ -75,10 +78,13 @@ function Licenses() {
                         })}
                     </section>
                 ))}
-                {shown.length === 0 && <div className="licenses-empty">찾는 항목이 없습니다</div>}
+                {shown.length === 0 && <div className="licenses-empty">{t('찾는 항목이 없습니다')}</div>}
             </main>
         </div>
     );
 }
 
-createRoot(document.getElementById('root')!).render(<Licenses />);
+initSettings().catch((error) => console.error('settings', error)).finally(() => {
+    document.title = t('오픈소스 라이선스');
+    createRoot(document.getElementById('root')!).render(<Licenses />);
+});

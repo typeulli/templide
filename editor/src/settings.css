@@ -1,0 +1,96 @@
+/* 설정 창. 편집기(styles.css)와 같은 색을 쓴다 */
+
+.settings { display: grid; grid-template-columns: 200px 1fr; height: 100%; background: var(--panel); color: var(--text); }
+
+.settings-nav { display: flex; flex-direction: column; gap: 2px; padding: 16px 10px; overflow-y: auto; background: var(--canvas); border-right: 1px solid var(--border); user-select: none; }
+.settings-nav button { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 12px; border: none; border-radius: 7px; background: transparent; text-align: left; cursor: pointer; }
+.settings-nav button svg { flex: none; color: var(--muted); }
+.settings-nav button:hover { background: var(--hover); }
+.settings-nav button.active { background: var(--accent-soft); color: #0b6dbd; font-weight: 600; }
+.settings-nav button.active svg { color: #0b6dbd; }
+
+.settings-body { min-width: 0; overflow-y: auto; padding: 22px 32px 40px; }
+.settings-body h1 { margin: 0 0 8px; font-size: 18px; }
+
+.setting-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+.setting-row.stack { flex-direction: column; align-items: stretch; gap: 8px; }
+.setting-text { flex: 1; min-width: 0; }
+.setting-title { font-weight: 600; }
+.setting-hint { margin-top: 2px; color: var(--muted); font-size: 12px; }
+p.setting-hint { margin: 6px 0 12px; }
+.setting-problem { margin: 0 0 10px; color: var(--danger); font-size: 12px; }
+.setting-control { flex: none; display: flex; align-items: center; }
+.setting-row.stack .setting-control { flex: 1; }
+.setting-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 14px 0; }
+
+.settings select, .settings .number-input, .settings .path-input, .settings .search-box {
+    height: 30px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--panel); outline: none;
+}
+.settings select, .settings .number-input, .settings .path-input { padding: 0 8px; }
+.settings select:focus, .settings .number-input:focus, .settings .path-input:focus, .settings .search-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.settings .number-input { width: 84px; }
+.settings select { min-width: 160px; }
+
+.path-edit { display: flex; flex: 1; gap: 6px; min-width: 0; }
+.settings .path-input { flex: 1; min-width: 0; font-family: Consolas, "Malgun Gothic", monospace; font-size: 12px; }
+.path-box { max-width: 460px; text-align: right; }
+.path-value { font-family: Consolas, "Malgun Gothic", monospace; font-size: 12px; word-break: break-all; user-select: text; }
+.setting-row:has(.path-box) { align-items: flex-start; }
+
+.plain-button, .primary-button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 30px; padding: 0 12px; border-radius: 6px; white-space: nowrap; cursor: pointer; }
+.plain-button { border: 1px solid var(--border-strong); background: var(--panel); }
+.plain-button:hover:not(:disabled) { background: var(--hover); }
+.plain-button.danger { color: var(--danger); }
+.primary-button { border: none; background: var(--accent); color: #fff; font-weight: 600; }
+.primary-button:hover:not(:disabled) { background: #0b87e0; }
+.plain-button:disabled, .primary-button:disabled { opacity: 0.5; cursor: default; }
+.icon-only { display: grid; place-items: center; width: 28px; height: 28px; border: none; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
+.icon-only:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+.icon-only:disabled { opacity: 0.35; cursor: default; }
+
+.settings .spin { animation: settings-spin 1s linear infinite; }
+@keyframes settings-spin { to { transform: rotate(360deg); } }
+
+.switch { position: relative; display: inline-block; width: 38px; height: 22px; }
+.switch input { position: absolute; inset: 0; z-index: 1; margin: 0; opacity: 0; cursor: pointer; }
+.switch span { position: absolute; inset: 0; border-radius: 11px; background: var(--border-strong); transition: background 0.15s; }
+.switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); transition: transform 0.15s; }
+.switch input:checked + span { background: var(--accent); }
+.switch input:checked + span::after { transform: translateX(16px); }
+.switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.notice { display: flex; align-items: flex-start; gap: 6px; margin: 10px 0 0; padding: 8px 10px; border-radius: 6px; font-size: 12px; word-break: break-all; }
+.notice svg { flex: none; margin-top: 2px; }
+.notice.ok { background: #e8f6ee; color: #1b7a4b; }
+.notice.error { background: #fdecec; color: #b3282d; }
+.notice.warning { background: #fff4e0; color: var(--warning-text); }
+
+/* 단축키 */
+
+.shortcuts-bar { display: flex; align-items: center; gap: 8px; margin: 4px 0 0; }
+.settings .search-box { display: flex; flex: 1; align-items: center; gap: 6px; padding: 0 8px; color: var(--muted); }
+.search-box input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; color: var(--text); }
+.shortcut-group h3 { margin: 18px 0 4px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.shortcut-item { border-bottom: 1px solid var(--border); }
+.shortcut-row { display: flex; align-items: center; gap: 12px; min-height: 40px; }
+.shortcut-name { flex: none; width: 180px; }
+.shortcut-keys { display: flex; flex: 1; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.key-chip { display: inline-flex; align-items: center; height: 26px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--canvas); font-size: 12px; }
+.key-text { height: 100%; padding: 0 4px 0 8px; border: none; background: transparent; font-family: Consolas, "Malgun Gothic", monospace; cursor: pointer; }
+.key-text:hover { color: var(--accent); }
+.key-remove { display: grid; place-items: center; width: 20px; height: 100%; border: none; background: transparent; color: var(--muted); cursor: pointer; }
+.key-remove:hover { color: var(--danger); }
+.key-add { display: grid; place-items: center; width: 26px; height: 26px; border: 1px dashed var(--border-strong); border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
+.key-add:hover { border-color: var(--accent); color: var(--accent); }
+.key-chip.recording { padding: 0 10px; border-color: var(--accent); background: var(--accent-soft); color: #0b6dbd; }
+.shortcut-conflict { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 8px; padding: 8px 10px; border-radius: 6px; background: #fff4e0; color: var(--warning-text); font-size: 12px; }
+.shortcut-conflict .plain-button { height: 24px; padding: 0 8px; }
+.settings-empty { padding: 40px; text-align: center; color: var(--muted); }
+
+/* 정보 */
+
+.about { display: flex; align-items: center; gap: 16px; padding: 16px 0 6px; }
+.about-name { font-size: 18px; font-weight: 600; }
+.license { margin-top: 4px; }
+.license summary { cursor: pointer; color: var(--muted); }
+.license pre { margin: 8px 0 0; padding: 10px 12px; max-height: 320px; overflow: auto; border-radius: 6px; background: var(--canvas); font: 12px/1.5 Consolas, "Malgun Gothic", monospace; white-space: pre-wrap; user-select: text; }

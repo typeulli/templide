@@ -6,6 +6,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import type * as Monaco from 'monaco-editor/editor/editor.api';
 import { uriToPath, type Lsp, type Range } from './lsp';
+import { t } from './i18n';
 
 type Location = { uri: string; range: Range };
 type OutlineSymbol = { name: string; detail?: string; kind: number; range: Range; selectionRange: Range; children?: OutlineSymbol[] };
@@ -221,7 +222,7 @@ function register(m: typeof Monaco, lsp: Lsp) {
         resolveRenameLocation: async (model, position) => {
             const request = params(model, position);
             if (!request || !documents.has(model)) {
-                return { range: new m.Range(1, 1, 1, 1), text: '', rejectReason: '편집 중인 문서에서만 이름을 바꿀 수 있습니다' };
+                return { range: new m.Range(1, 1, 1, 1), text: '', rejectReason: t('편집 중인 문서에서만 이름을 바꿀 수 있습니다') };
             }
             try {
                 const result = await lsp.request<{ range: Range; placeholder: string }>('textDocument/prepareRename', request);
@@ -233,7 +234,7 @@ function register(m: typeof Monaco, lsp: Lsp) {
         provideRenameEdits: async (model, position, newName) => {
             const request = params(model, position);
             if (!request) {
-                return { edits: [], rejectReason: '문서가 열려 있지 않습니다' };
+                return { edits: [], rejectReason: t('문서가 열려 있지 않습니다') };
             }
             try {
                 const result = await lsp.request<{ changes: Record<string, { range: Range; newText: string }[]> }>('textDocument/rename', { ...request, newName });
@@ -332,7 +333,7 @@ function register(m: typeof Monaco, lsp: Lsp) {
                         range,
                         options: {
                             before: { content: '\u00a0', inlineClassName: 'tlide-swatch ' + swatchClass(each.color), inlineClassNameAffectsLetterSpacing: true },
-                            hoverMessage: { value: '테마 색입니다. 테마에서 바꿉니다' },
+                            hoverMessage: { value: t('테마 색입니다. 테마에서 바꿉니다') },
                         },
                     });
                 }
@@ -372,7 +373,7 @@ function register(m: typeof Monaco, lsp: Lsp) {
         const update = () => {
             const model = created.getModel();
             const foreign = !!model && serverUris.has(model.uri.toString());
-            created.updateOptions({ readOnly: foreign, readOnlyMessage: { value: '다른 파일이라 여기서 고칠 수 없습니다. 그 파일을 열어 고쳐 주세요' } });
+            created.updateOptions({ readOnly: foreign, readOnlyMessage: { value: t('다른 파일이라 여기서 고칠 수 없습니다. 그 파일을 열어 고쳐 주세요') } });
         };
         created.onDidChangeModel(update);
         update();

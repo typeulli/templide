@@ -5,6 +5,7 @@ import type { AnimationInfo, DeckResult, Schema, SlideInfo } from './lsp';
 import { animationCategories, effectNames, label, objectNames, optionNames, startNames } from './labels';
 import { lockOf, findElement } from './SlideView';
 import { NumberInput } from './Fields';
+import { t } from './i18n';
 
 // 편집 요청: 추가, 고치기, 지우기, 옮기기
 export type AnimationOp =
@@ -36,7 +37,7 @@ function targetLabel(deck: DeckResult, page: number, animation: AnimationInfo): 
     }
     const el = findElement(deck.deck.slides[page]?.els ?? [], animation.elementId);
     const text = el?.tx?.ps?.map((paragraph: any) => paragraph.rs.map((run: any) => run.t).join('')).join(' ').trim();
-    const kind = info?.fromTemplate || info?.object === 'group' ? '템플릿' : objectNames[info?.object ?? ''] ?? info?.object ?? animation.target;
+    const kind = info?.fromTemplate || info?.object === 'group' ? t('템플릿') : objectNames[info?.object ?? ''] ?? info?.object ?? animation.target;
     return text ? `${kind}: ${text.slice(0, 16)}${text.length > 16 ? '…' : ''}` : kind;
 }
 
@@ -55,7 +56,7 @@ const effectLabel = (animation: { category: string; effect: string; option?: str
 // 효과 고르기
 
 function EffectPicker({ schema, media, onPick, onClose }: { schema: Schema; media: boolean; onPick(category: string, effect: string): void; onClose(): void }) {
-    const categories = animationCategories.filter(([category]) => category !== 'media' || media);
+    const categories = animationCategories().filter(([category]) => category !== 'media' || media);
     const [category, setCategory] = useState(categories[0][0]);
     const effects = category === 'media' ? ['play', 'pause', 'stop']
         : Object.keys(schema.animations).filter((key) => key.startsWith(category + '.')).map((key) => key.slice(category.length + 1));
@@ -82,7 +83,7 @@ function EffectPicker({ schema, media, onPick, onClose }: { schema: Schema; medi
                         <span className="dot" style={{ background: categoryColors[key] }} />{title}
                     </button>
                 ))}
-                <button className="close" title="닫기" onClick={onClose}><X size={14} /></button>
+                <button className="close" title={t('닫기')} onClick={onClose}><X size={14} /></button>
             </div>
             <div className="effect-grid">
                 {effects.map((effect) => (
@@ -111,10 +112,10 @@ function AnimationEditor({ schema, animation, index, count, onOp }: { schema: Sc
     const [path, setPath] = useState(animation.path ?? '');
     useEffect(() => setPath(animation.path ?? ''), [animation.path]);
     return (
-        <div className={'animation-editor' + (lock ? ' locked' : '')} title={lock ? `🔒 ${lock}. 코드에서 고쳐 주세요` : undefined}>
-            {lock && <div className="lock-note"><Lock size={11} /> {lock}이라 여기서 바꿀 수 없습니다</div>}
+        <div className={'animation-editor' + (lock ? ' locked' : '')} title={lock ? t('🔒 {0}. 코드에서 고쳐 주세요', lock) : undefined}>
+            {lock && <div className="lock-note"><Lock size={11} /> {t('{0}이라 여기서 바꿀 수 없습니다', lock)}</div>}
             <div className="field-row">
-                <span className="field-label">효과</span>
+                <span className="field-label">{t('효과')}</span>
                 <span className="field-control">
                     <select disabled={!!lock} value={animation.effect} onChange={(event) => update({ effect: event.target.value, ...(event.target.value === 'path' ? { path: 'M 0 0 L 200 0' } : {}) })}>
                         {effects.map((effect) => <option key={effect} value={effect}>{label(effectNames, effect)}</option>)}
@@ -123,16 +124,16 @@ function AnimationEditor({ schema, animation, index, count, onOp }: { schema: Sc
             </div>
             {animation.effect === 'path' && (
                 <div className="field-row">
-                    <span className="field-label">경로</span>
+                    <span className="field-label">{t('경로')}</span>
                     <span className="field-control">
-                        <input className="text-input" disabled={!!lock} value={path} title="SVG path (M, L, C, Q, A, Z). 좌표는 개체에서 잰 px" onChange={(event) => setPath(event.target.value)}
+                        <input className="text-input" disabled={!!lock} value={path} title={t('SVG path (M, L, C, Q, A, Z). 좌표는 개체에서 잰 px')} onChange={(event) => setPath(event.target.value)}
                             onBlur={() => path !== animation.path && update({ path })} onKeyDown={(event) => event.key === 'Enter' && update({ path })} />
                     </span>
                 </div>
             )}
             {options.length > 0 && (
                 <div className="field-row">
-                    <span className="field-label">옵션</span>
+                    <span className="field-label">{t('옵션')}</span>
                     <span className="field-control">
                         <select disabled={!!lock} value={animation.option} onChange={(event) => update({ option: event.target.value })}>
                             {options.map((option) => <option key={option} value={option}>{label(optionNames, option)}</option>)}
@@ -141,7 +142,7 @@ function AnimationEditor({ schema, animation, index, count, onOp }: { schema: Sc
                 </div>
             )}
             <div className="field-row">
-                <span className="field-label">시작</span>
+                <span className="field-label">{t('시작')}</span>
                 <span className="field-control">
                     <select disabled={!!lock} value={animation.start} onChange={(event) => update({ start: event.target.value })}>
                         {Object.entries(startNames).map(([start, title]) => <option key={start} value={start}>{title}</option>)}
@@ -150,25 +151,25 @@ function AnimationEditor({ schema, animation, index, count, onOp }: { schema: Sc
             </div>
             <div className="pair">
                 <div className="field-row compact">
-                    <span className="field-label">길이</span>
+                    <span className="field-label">{t('길이')}</span>
                     <span className="field-control">
-                        <NumberInput value={endless ? undefined : animation.duration} measure="seconds" disabled={!!lock || endless} placeholder={endless ? '–' : '기본'}
+                        <NumberInput value={endless ? undefined : animation.duration} measure="seconds" disabled={!!lock || endless} placeholder={endless ? '–' : t('기본')}
                             onCommit={(shown) => update({ duration: Math.max(0, shown * 1000) })} />
                     </span>
                 </div>
                 <div className="field-row compact">
-                    <span className="field-label">지연</span>
+                    <span className="field-label">{t('지연')}</span>
                     <span className="field-control">
                         <NumberInput value={animation.delay ?? 0} measure="seconds" disabled={!!lock} onCommit={(shown) => update({ delay: Math.max(0, shown * 1000) })} />
                     </span>
                 </div>
             </div>
             <div className="animation-actions">
-                <span className="muted">재생 순서 {index + 1}{animation.order !== undefined ? ` (order ${animation.order})` : ''}</span>
+                <span className="muted">{t('재생 순서 {0}{1}', index + 1, animation.order !== undefined ? ` (order ${animation.order})` : '')}</span>
                 <span className="spacer" />
-                <button className="mini-button" title="앞으로 (먼저 재생)" disabled={index === 0} onClick={() => onOp({ action: 'move', index, to: index - 1 })}><ChevronUp size={14} /></button>
-                <button className="mini-button" title="뒤로 (나중에 재생)" disabled={index >= count - 1} onClick={() => onOp({ action: 'move', index, to: index + 1 })}><ChevronDown size={14} /></button>
-                <button className="mini-button danger" title="애니메이션 지우기" disabled={!!lock} onClick={() => onOp({ action: 'delete', index })}><Trash2 size={14} /></button>
+                <button className="mini-button" title={t('앞으로 (먼저 재생)')} disabled={index === 0} onClick={() => onOp({ action: 'move', index, to: index - 1 })}><ChevronUp size={14} /></button>
+                <button className="mini-button" title={t('뒤로 (나중에 재생)')} disabled={index >= count - 1} onClick={() => onOp({ action: 'move', index, to: index + 1 })}><ChevronDown size={14} /></button>
+                <button className="mini-button danger" title={t('애니메이션 지우기')} disabled={!!lock} onClick={() => onOp({ action: 'delete', index })}><Trash2 size={14} /></button>
             </div>
         </div>
     );
@@ -182,7 +183,7 @@ export function ObjectAnimations({ schema, slide, id, media, onOp, onPreview }: 
     const [picking, setPicking] = useState(false);
     const [open, setOpen] = useState<number | null>(null);
     if (!schema || !slide) {
-        return <div className="props-empty">애니메이션 목록을 불러오는 중입니다</div>;
+        return <div className="props-empty">{t('애니메이션 목록을 불러오는 중입니다')}</div>;
     }
     const list = animationsOf(slide, id);
     const numbers = clickNumbers(slide.animations);
@@ -196,12 +197,12 @@ export function ObjectAnimations({ schema, slide, id, media, onOp, onPreview }: 
         <div className="object-animations">
             <div className="tab-actions">
                 <span className="menu-anchor">
-                    <button className="primary-button" onClick={() => setPicking(!picking)}><Plus size={14} /> 애니메이션 추가</button>
+                    <button className="primary-button" onClick={() => setPicking(!picking)}><Plus size={14} /> {t('애니메이션 추가')}</button>
                     {picking && <EffectPicker schema={schema} media={media} onPick={add} onClose={() => setPicking(false)} />}
                 </span>
-                <button className="ghost-button" title="이 슬라이드의 애니메이션을 캔버스에서 재생" onClick={onPreview}><Play size={13} /> 미리 보기</button>
+                <button className="ghost-button" title={t('이 슬라이드의 애니메이션을 캔버스에서 재생')} onClick={onPreview}><Play size={13} /> {t('미리 보기')}</button>
             </div>
-            {list.length === 0 && <div className="props-empty small">이 개체에는 애니메이션이 없습니다.<br />추가하면 이 개체의 put 블록에 animate 문장이 들어갑니다</div>}
+            {list.length === 0 && <div className="props-empty small">{t('이 개체에는 애니메이션이 없습니다.')}<br />{t('추가하면 이 개체의 put 블록에 animate 문장이 들어갑니다')}</div>}
             {list.map(({ animation, index }) => (
                 <div key={index} className={'animation-item' + (open === index ? ' open' : '')}>
                     <button className="animation-row" onClick={() => setOpen(open === index ? null : index)}>
@@ -243,17 +244,17 @@ export function AnimationPane({ deck, schema, page, selected, playing, onSelect,
     return (
         <aside className="animation-pane">
             <header className="pane-header">
-                <span>애니메이션 창</span>
+                <span>{t('애니메이션 창')}</span>
                 <span className="spacer" />
                 {playing
-                    ? <button className="ghost-button" onClick={onStop}><Square size={12} /> 멈추기</button>
-                    : <button className="ghost-button" disabled={!animations.length && !slide?.transition} onClick={onPreview}><Play size={13} /> 미리 보기</button>}
-                <button className="mini-button" title="닫기" onClick={onClose}><X size={14} /></button>
+                    ? <button className="ghost-button" onClick={onStop}><Square size={12} /> {t('멈추기')}</button>
+                    : <button className="ghost-button" disabled={!animations.length && !slide?.transition} onClick={onPreview}><Play size={13} /> {t('미리 보기')}</button>}
+                <button className="mini-button" title={t('닫기')} onClick={onClose}><X size={14} /></button>
             </header>
             <div className="pane-add">
                 <span className="menu-anchor">
-                    <button className="primary-button" disabled={!selected || !schema} title={selected ? '고른 개체에 애니메이션 추가' : '먼저 캔버스에서 개체를 고르세요'} onClick={() => setPicking(!picking)}>
-                        <Plus size={14} /> 추가
+                    <button className="primary-button" disabled={!selected || !schema} title={selected ? t('고른 개체에 애니메이션 추가') : t('먼저 캔버스에서 개체를 고르세요')} onClick={() => setPicking(!picking)}>
+                        <Plus size={14} /> {t('추가')}
                     </button>
                     {picking && schema && selected && (
                         <EffectPicker schema={schema} media={selectedInfo?.object === 'video' || selectedInfo?.object === 'audio'}
@@ -261,10 +262,10 @@ export function AnimationPane({ deck, schema, page, selected, playing, onSelect,
                             onClose={() => setPicking(false)} />
                     )}
                 </span>
-                <span className="muted small">{animations.length ? '끌어서 재생 순서를 바꿉니다' : ''}</span>
+                <span className="muted small">{animations.length ? t('끌어서 재생 순서를 바꿉니다') : ''}</span>
             </div>
             <div className="pane-list" onDragOver={(event) => { event.preventDefault(); }} onDrop={() => drop(animations.length)}>
-                {animations.length === 0 && <div className="props-empty small">이 슬라이드에는 애니메이션이 없습니다</div>}
+                {animations.length === 0 && <div className="props-empty small">{t('이 슬라이드에는 애니메이션이 없습니다')}</div>}
                 {animations.map((animation, index) => {
                     const lock = lockOf(animation.source);
                     const active = selected === animation.elementId || (!!selected && selected.startsWith(animation.elementId + '/'));

@@ -5,6 +5,7 @@ import { FontPopup, cssFont, fontCode } from './FontPicker';
 import type { ActionValue, LinkValue, Origin, PaintValue, Value } from './lsp';
 import { enumNames, label } from './labels';
 import { lockOf } from './SlideView';
+import { t } from './i18n';
 
 // declare는 값과 함께 파일 위쪽에 넣을 선언이다 (그림을 묶음에 넣고 붙인 이름 등)
 export type SetValue = { length?: number; number?: number; unit?: string; enum?: string; bool?: boolean; color?: string; string?: string; code?: string; declare?: string };
@@ -20,7 +21,7 @@ type FieldProps = {
 };
 
 export function lockReason(origin: Origin | undefined): string | null {
-    return origin ? lockOf(origin) : '코드에 적힌 값이 없음';
+    return origin ? lockOf(origin) : t('코드에 적힌 값이 없음');
 }
 
 // 색과 식
@@ -51,10 +52,10 @@ const swatches = ['#1F1F1F', '#7F8C8D', '#FFFFFF', '#E74C3C', '#E67E22', '#F1C40
 export function Row({ label: text, lock, origin, onUnset, children, wide }: { label: string; lock?: string | null; origin?: Origin; onUnset?(): void; children: ReactNode; wide?: boolean }) {
     const resettable = !!onUnset && !!origin?.statement && !lock;
     return (
-        <div className={'field-row' + (wide ? ' wide' : '') + (lock ? ' locked' : '')} title={lock ? `🔒 ${lock}. 코드에서 고쳐 주세요` : undefined}>
+        <div className={'field-row' + (wide ? ' wide' : '') + (lock ? ' locked' : '')} title={lock ? t('🔒 {0}. 코드에서 고쳐 주세요', lock) : undefined}>
             <span className="field-label">{text}{lock && <Lock size={10} />}</span>
             <span className="field-control">{children}</span>
-            <button className={'field-reset' + (resettable ? '' : ' hidden')} title="기본값으로 (코드에서 이 값을 지웁니다)" onClick={onUnset} disabled={!resettable}>
+            <button className={'field-reset' + (resettable ? '' : ' hidden')} title={t('기본값으로 (코드에서 이 값을 지웁니다)')} onClick={onUnset} disabled={!resettable}>
                 <RotateCcw size={12} />
             </button>
         </div>
@@ -66,7 +67,7 @@ export function Row({ label: text, lock, origin, onUnset, children, wide }: { la
 // 단위: px(길이), deg(각도), ratio(0~1을 %로 보여 줌), percent(%), seconds(ms를 초로 보여 줌), int, number
 export type Measure = 'px' | 'deg' | 'ratio' | 'percent' | 'seconds' | 'int' | 'number';
 
-const suffix: Record<Measure, string> = { px: 'px', deg: '°', ratio: '%', percent: '%', seconds: '초', int: '', number: '' };
+const suffix = (): Record<Measure, string> => ({ px: 'px', deg: '°', ratio: '%', percent: '%', seconds: t('초'), int: '', number: '' });
 
 function toDisplay(measure: Measure, value: number): number {
     const shown = measure === 'ratio' ? value * 100 : measure === 'seconds' ? value / 1000 : value;
@@ -101,7 +102,7 @@ export function NumberInput({ value, measure, disabled, placeholder, onCommit }:
         <span className={'number-input' + (disabled ? ' disabled' : '')}>
             <input disabled={disabled} value={draft} placeholder={placeholder ?? '–'} onChange={(event) => setDraft(event.target.value)} onBlur={commit}
                 onKeyDown={(event) => { if (event.key === 'Enter') commit(); if (event.key === 'Escape') setDraft(shown); }} />
-            {suffix[measure] && <span className="unit">{suffix[measure]}</span>}
+            {suffix()[measure] && <span className="unit">{suffix()[measure]}</span>}
         </span>
     );
 }
@@ -124,7 +125,7 @@ export function EnumField({ name, label: text, value, origin, onSet, onUnset, op
     return (
         <Row label={text ?? name} lock={lock} origin={origin} onUnset={onUnset}>
             <select disabled={!!lock} value={current} onChange={(event) => onSet({ enum: event.target.value })}>
-                {!current && <option value="">기본값</option>}
+                {!current && <option value="">{t('기본값')}</option>}
                 {current && !options.includes(current) && <option value={current}>{current}</option>}
                 {options.map((option) => <option key={option} value={option}>{label(names ?? enumNames, option)}</option>)}
             </select>
@@ -168,7 +169,7 @@ export function TextField({ name, label: text, value, origin, onSet, onUnset, mu
 export function FontField({ name, label: text, value, origin, onSet, onUnset }: FieldProps) {
     const lock = lockReason(origin);
     const family = typeof value === 'string' ? value : '';
-    const shown = family === '+mj' ? '테마 제목 폰트' : family === '+mn' ? '테마 본문 폰트' : family || '기본';
+    const shown = family === '+mj' ? t('테마 제목 폰트') : family === '+mn' ? t('테마 본문 폰트') : family || t('기본');
     const [popup, setPopup] = useState<{ x: number; y: number } | null>(null);
     return (
         <Row label={text ?? name} lock={lock} origin={origin} onUnset={onUnset}>
@@ -192,12 +193,12 @@ export function FontField({ name, label: text, value, origin, onSet, onUnset }: 
 export function FileField({ name, label: text, value, origin, onSet, onUnset, pick, extra }: FieldProps & { pick(): Promise<SetValue | null>; extra?: ReactNode }) {
     const lock = lockReason(origin);
     const path = typeof value === 'string' ? value : value && typeof value === 'object' && 'image' in value ? String((value as { image: string }).image) : '';
-    const shown = path || '없음';
+    const shown = path || t('없음');
     return (
         <Row label={text ?? name} lock={lock} origin={origin} onUnset={onUnset}>
             <span className="file-field">
                 <span className="file-name" title={shown}>{shown}</span>
-                <button className="mini-button" disabled={!!lock} title="파일 고르기" onClick={async () => {
+                <button className="mini-button" disabled={!!lock} title={t('파일 고르기')} onClick={async () => {
                     const picked = await pick();
                     if (picked) {
                         onSet(picked);
@@ -238,7 +239,7 @@ function ColorPicker({ value, disabled, onPick, onClear, allowTheme = true }: { 
         <span className="color-picker" ref={ref}>
             <button className="color-button" disabled={disabled} onClick={() => setOpen(!open)}>
                 <span className={'swatch' + (hex ? '' : ' empty')} style={hex ? { background: value! } : undefined} />
-                <span className="color-text">{hex ?? '없음'}</span>
+                <span className="color-text">{hex ?? t('없음')}</span>
                 {hex && alpha < 100 && <span className="muted">{alpha}%</span>}
             </button>
             {open && (
@@ -248,7 +249,7 @@ function ColorPicker({ value, disabled, onPick, onClear, allowTheme = true }: { 
                     </span>
                     {allowTheme && (
                         <>
-                            <span className="popover-label">테마 색</span>
+                            <span className="popover-label">{t('테마 색')}</span>
                             <span className="swatch-row">
                                 {themeColors.map(([name, color]) => <button key={name} className="swatch-chip" style={{ background: color }} title={`theme.${name}`} onClick={() => { setOpen(false); onPick({ code: `theme.${name}` }); }} />)}
                             </span>
@@ -256,11 +257,11 @@ function ColorPicker({ value, disabled, onPick, onClear, allowTheme = true }: { 
                     )}
                     <span className="popover-row">
                         <input type="color" value={hex ?? '#FFFFFF'} onChange={(event) => onPick({ color: withAlpha(event.target.value, alpha) })} />
-                        <span className="muted">불투명도</span>
+                        <span className="muted">{t('불투명도')}</span>
                         <input type="range" min={0} max={100} value={alpha} onChange={(event) => onPick({ color: withAlpha(hex ?? '#FFFFFF', Number(event.target.value)) })} />
                         <span className="alpha-text">{alpha}%</span>
                     </span>
-                    {onClear && <button className="link-button" onClick={() => { setOpen(false); onClear(); }}>색 없애기 (기본값)</button>}
+                    {onClear && <button className="link-button" onClick={() => { setOpen(false); onClear(); }}>{t('색 없애기 (기본값)')}</button>}
                 </span>
             )}
         </span>
@@ -332,63 +333,63 @@ export function PaintField({ name, label: text, value, origin, onSet, onUnset, p
             onSet({ code });
         }
     };
-    const modes: [Paint['mode'], string][] = [['none', '없음'], ['solid', '단색'], ['gradient', '그라데이션'], ['pattern', '무늬'], ['image', '그림']];
+    const modes: [Paint['mode'], string][] = [['none', t('없음')], ['solid', t('단색')], ['gradient', t('그라데이션')], ['pattern', t('무늬')], ['image', t('그림')]];
     return (
-        <div className={'paint-field' + (lock ? ' locked' : '')} title={lock ? `🔒 ${lock}. 코드에서 고쳐 주세요` : undefined}>
+        <div className={'paint-field' + (lock ? ' locked' : '')} title={lock ? t('🔒 {0}. 코드에서 고쳐 주세요', lock) : undefined}>
             <Row label={text ?? name} lock={lock} origin={origin} onUnset={onUnset}>
                 <select disabled={!!lock} value={paint.mode} onChange={(event) => write({ ...paint, mode: event.target.value as Paint['mode'] })}>
                     {modes.map(([mode, title]) => <option key={mode} value={mode} disabled={mode === 'none' && !origin?.statement && paint.mode !== 'none'}>{title}</option>)}
                 </select>
             </Row>
             {!lock && paint.mode === 'solid' && (
-                <Row label="색">
+                <Row label={t('색')}>
                     <ColorPicker value={paint.color} onPick={(picked) => picked.code ? onSet({ code: picked.code }) : write({ ...paint, color: picked.color! })} />
                 </Row>
             )}
             {!lock && paint.mode === 'gradient' && (
                 <>
-                    <Row label="방식">
+                    <Row label={t('방식')}>
                         <span className="segmented-text">
-                            <button className={!paint.radial ? 'active' : ''} onClick={() => write({ ...paint, radial: false })}>선형</button>
-                            <button className={paint.radial ? 'active' : ''} onClick={() => write({ ...paint, radial: true })}>방사형</button>
+                            <button className={!paint.radial ? 'active' : ''} onClick={() => write({ ...paint, radial: false })}>{t('선형')}</button>
+                            <button className={paint.radial ? 'active' : ''} onClick={() => write({ ...paint, radial: true })}>{t('방사형')}</button>
                         </span>
                     </Row>
                     {!paint.radial && (
-                        <Row label="각도">
+                        <Row label={t('각도')}>
                             <NumberInput value={paint.angle} measure="deg" onCommit={(angle) => write({ ...paint, angle })} />
                         </Row>
                     )}
                     {paint.colors.map((color, i) => (
-                        <Row key={i} label={`색 ${i + 1}`}>
+                        <Row key={i} label={t('색 {0}', i + 1)}>
                             <span className="stop-row">
                                 <ColorPicker value={color} allowTheme={false} onPick={(picked) => write({ ...paint, colors: paint.colors.map((each, j) => j === i ? picked.color! : each) })} />
                                 {paint.colors.length > 2 && (
-                                    <button className="mini-button" title="이 색 빼기" onClick={() => write({ ...paint, colors: paint.colors.filter((_, j) => j !== i) })}><X size={12} /></button>
+                                    <button className="mini-button" title={t('이 색 빼기')} onClick={() => write({ ...paint, colors: paint.colors.filter((_, j) => j !== i) })}><X size={12} /></button>
                                 )}
                             </span>
                         </Row>
                     ))}
                     <button className="link-button indent" onClick={() => write({ ...paint, colors: [...paint.colors, paint.colors[paint.colors.length - 1]] })}>
-                        <Plus size={12} /> 색 더하기
+                        <Plus size={12} /> {t('색 더하기')}
                     </button>
                 </>
             )}
             {!lock && paint.mode === 'pattern' && (
                 <>
-                    <Row label="무늬">
+                    <Row label={t('무늬')}>
                         <select value={paint.pattern} onChange={(event) => write({ ...paint, pattern: event.target.value })}>
                             {patterns.map((kind) => <option key={kind} value={kind}>{kind.replace(/_/g, ' ')}</option>)}
                         </select>
                     </Row>
-                    <Row label="앞 색"><ColorPicker value={paint.foreground} allowTheme={false} onPick={(picked) => write({ ...paint, foreground: picked.color! })} /></Row>
-                    <Row label="뒤 색"><ColorPicker value={paint.background} allowTheme={false} onPick={(picked) => write({ ...paint, background: picked.color! })} /></Row>
+                    <Row label={t('앞 색')}><ColorPicker value={paint.foreground} allowTheme={false} onPick={(picked) => write({ ...paint, foreground: picked.color! })} /></Row>
+                    <Row label={t('뒤 색')}><ColorPicker value={paint.background} allowTheme={false} onPick={(picked) => write({ ...paint, background: picked.color! })} /></Row>
                 </>
             )}
             {!lock && paint.mode === 'image' && (
-                <Row label="그림">
+                <Row label={t('그림')}>
                     <span className="file-field">
-                        <span className="file-name" title={paint.image}>{paint.image || '없음'}</span>
-                        <button className="mini-button" title="그림 고르기" onClick={async () => {
+                        <span className="file-name" title={paint.image}>{paint.image || t('없음')}</span>
+                        <button className="mini-button" title={t('그림 고르기')} onClick={async () => {
                             const picked = await pickImage();
                             if (picked) {
                                 onSet(picked);
@@ -403,9 +404,9 @@ export function PaintField({ name, label: text, value, origin, onSet, onUnset, p
 
 // 링크와 실행 설정
 
-const jumps: [string, string][] = [
-    ['next_slide', '다음 슬라이드'], ['previous_slide', '이전 슬라이드'], ['first_slide', '첫 슬라이드'], ['last_slide', '마지막 슬라이드'],
-    ['last_viewed_slide', '마지막으로 본 슬라이드'], ['end_show', '쇼 마치기'],
+const jumps = (): [string, string][] => [
+    ['next_slide', t('다음 슬라이드')], ['previous_slide', t('이전 슬라이드')], ['first_slide', t('첫 슬라이드')], ['last_slide', t('마지막 슬라이드')],
+    ['last_viewed_slide', t('마지막으로 본 슬라이드')], ['end_show', t('쇼 마치기')],
 ];
 
 type ActionDraft = { kind: string; text: string; slide: number; args: string };
@@ -428,7 +429,7 @@ function draftOf(value: Value | undefined): ActionDraft {
 }
 
 function actionCode(draft: ActionDraft): string | null {
-    if (jumps.some(([jump]) => jump === draft.kind)) {
+    if (jumps().some(([jump]) => jump === draft.kind)) {
         return draft.kind;
     }
     switch (draft.kind) {
@@ -449,8 +450,8 @@ export function ActionField({ name, label: text, value, origin, onSet, onUnset, 
     const [draft, setDraft] = useState(current);
     const key = JSON.stringify(current);
     useEffect(() => setDraft(current), [key]); // eslint-disable-line react-hooks/exhaustive-deps
-    const kinds: [string, string][] = [['none', '없음'], ...jumps, ['slide', '슬라이드 번호'], ['url', '웹 주소'],
-        ...(linkOnly ? [] : [['run', 'JS 함수 실행 (html, web)'], ['program', '프로그램 실행 (pptx)'], ['macro', '매크로 실행 (pptx)'], ['file', '파일 열기']] as [string, string][])];
+    const kinds: [string, string][] = [['none', t('없음')], ...jumps(), ['slide', t('슬라이드 번호')], ['url', t('웹 주소')],
+        ...(linkOnly ? [] : [['run', t('JS 함수 실행 (html, web)')], ['program', t('프로그램 실행 (pptx)')], ['macro', t('매크로 실행 (pptx)')], ['file', t('파일 열기')]] as [string, string][])];
     const commit = (next: ActionDraft) => {
         setDraft(next);
         if (next.kind === 'none') {
@@ -479,17 +480,17 @@ export function ActionField({ name, label: text, value, origin, onSet, onUnset, 
                 </select>
             </Row>
             {!lock && draft.kind === 'slide' && (
-                <Row label="번호"><NumberInput value={draft.slide} measure="int" onCommit={(slide) => commit({ ...draft, slide })} /></Row>
+                <Row label={t('번호')}><NumberInput value={draft.slide} measure="int" onCommit={(slide) => commit({ ...draft, slide })} /></Row>
             )}
             {!lock && needsText && (
-                <Row label={draft.kind === 'url' ? '주소' : draft.kind === 'run' ? '함수 이름' : draft.kind === 'macro' ? '매크로 이름' : '경로'}>
+                <Row label={draft.kind === 'url' ? t('주소') : draft.kind === 'run' ? t('함수 이름') : draft.kind === 'macro' ? t('매크로 이름') : t('경로')}>
                     <input className="text-input" value={draft.text} placeholder={draft.kind === 'url' ? 'https://' : ''} onChange={(event) => setDraft({ ...draft, text: event.target.value })}
                         onBlur={() => commit(draft)} onKeyDown={(event) => event.key === 'Enter' && commit(draft)} />
                 </Row>
             )}
             {!lock && draft.kind === 'run' && (
-                <Row label="넘길 값">
-                    <input className="text-input" value={draft.args} placeholder='예: "안녕", 3, @slide.number' onChange={(event) => setDraft({ ...draft, args: event.target.value })}
+                <Row label={t('넘길 값')}>
+                    <input className="text-input" value={draft.args} placeholder={t('예: "안녕", 3, @slide.number')} onChange={(event) => setDraft({ ...draft, args: event.target.value })}
                         onBlur={() => commit(draft)} onKeyDown={(event) => event.key === 'Enter' && commit(draft)} />
                 </Row>
             )}
@@ -505,7 +506,7 @@ export function RefField({ name, label: text, value, origin, onSet, onUnset, nam
     return (
         <Row label={text ?? name} lock={lock} origin={origin} onUnset={onUnset}>
             <select disabled={!!lock} value={current} onChange={(event) => onSet({ enum: event.target.value })}>
-                {!names.includes(current) && <option value={current}>{current || '고르기'}</option>}
+                {!names.includes(current) && <option value={current}>{current || t('고르기')}</option>}
                 {names.map((each) => <option key={each} value={each}>{each}</option>)}
             </select>
         </Row>
@@ -520,7 +521,7 @@ export function Section({ title, lock, children, defaultOpen = true, actions }: 
             <h4>
                 <button className="section-toggle" onClick={() => setOpen(!open)}>
                     <span className="chevron">{open ? '▾' : '▸'}</span>{title}
-                    {lock && <span className="section-lock" title={`${lock}. 코드에서 고쳐 주세요`}><Lock size={11} /></span>}
+                    {lock && <span className="section-lock" title={t('{0}. 코드에서 고쳐 주세요', lock)}><Lock size={11} /></span>}
                 </button>
                 {actions}
             </h4>

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { animationCategories, effectNames, label, objectNames, optionNames, startNames } from './labels';
 import './import.css';
+import { t, useLang } from './i18n';
 
 // templide/pptx_tree가 주는 트리의 노드. server/server.h 참고
 type ImportNode = {
@@ -49,9 +50,9 @@ type Tree = {
 const extensions = ['.pptx', '.pptm', '.ppsx', '.potx'];
 
 // labels.ts에 없는, templide가 지원하지 않는 개체의 이름
-const extraObjectNames: Record<string, string> = {
-    table: '표', chart: '차트', smartart: 'SmartArt', ole: 'OLE 개체', ink: '잉크', equation: '수식', model3d: '3D 모델',
-};
+const extraObjectNames = (): Record<string, string> => ({
+    table: t('표'), chart: t('차트'), smartart: 'SmartArt', ole: t('OLE 개체'), ink: t('잉크'), equation: t('수식'), model3d: t('3D 모델'),
+});
 
 const objectIcons: Record<string, LucideIcon> = {
     text_box: Type, shape: Shapes, image: Image, line: Minus, connector: Waypoints, freeform: PenTool, group: Boxes, placeholder: SquareDashed,
@@ -62,8 +63,6 @@ const kindIcons: Record<string, LucideIcon> = {
     file: FileText, masters: LayoutTemplate, master: Palette, layout: LayoutTemplate, slides: Layers, slide: Presentation, animation: Sparkles,
     background: PaintBucket, transition: ArrowRightLeft, notes: StickyNote, comments: MessageSquare,
 };
-
-const categoryNames = Object.fromEntries(animationCategories);
 
 const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 const isHeading = (node: ImportNode) => node.kind === 'file' || node.kind === 'masters' || node.kind === 'slides';
@@ -183,9 +182,9 @@ function problemsOf(index: Index, checked: Set<string>): Problem[] {
                 continue;
             }
             const required = index.nodes.get(id);
-            const what = required?.kind === 'master' ? '슬라이드 마스터' : '레이아웃';
+            const what = required?.kind === 'master' ? t('슬라이드 마스터') : t('레이아웃');
             const name = required?.label ?? id;
-            problems.push({ message: `${node.label}: ${what} '${name}'${objectParticle(name)} 함께 골라야 합니다`, target: id });
+            problems.push({ message: t('{0}: {1} \'{2}\'{3} 함께 골라야 합니다', node.label, what, name, objectParticle(name)), target: id });
         }
     }
     return problems;
@@ -200,7 +199,7 @@ function slideCount(index: Index, checked: Set<string>): [number, number] {
 function nodeText(node: ImportNode): string {
     const animation = node.animation;
     if (node.kind === 'animation' && animation) {
-        const parts = [label(categoryNames, animation.category), label(effectNames, animation.effect)];
+        const parts = [label(Object.fromEntries(animationCategories()), animation.category), label(effectNames, animation.effect)];
         if (animation.option) {
             parts.push(label(optionNames, animation.option));
         }
@@ -259,6 +258,7 @@ export function ImportDialog({ ready, request, onTitle, onClose }: {
     onTitle(title: string): void;
     onClose(): void;
 }) {
+    useLang(); // 언어를 바꾸면 다시 그린다
     const [trees, setTrees] = useState<Tree[]>([]);
     const treesRef = useRef<Tree[]>([]);
     const [running, setRunning] = useState(false);
@@ -286,7 +286,7 @@ export function ImportDialog({ ready, request, onTitle, onClose }: {
     const addFiles = useCallback(async (paths: string[]) => {
         const wanted = paths.filter((path) => extensions.some((extension) => path.toLowerCase().endsWith(extension)));
         if (wanted.length < paths.length) {
-            showNotice('pptx, pptm, ppsx, potx 파일만 불러올 수 있습니다');
+            showNotice(t('pptx, pptm, ppsx, potx 파일만 불러올 수 있습니다'));
         }
         for (const path of wanted) {
             const key = path.toLowerCase();
@@ -305,7 +305,7 @@ export function ImportDialog({ ready, request, onTitle, onClose }: {
                     await ready;
                     const result = await request<{ tree?: ImportNode; error?: string }>('templide/pptx_tree', { path });
                     if (!result.tree) {
-                        update(key, () => ({ state: 'error', error: result.error ?? 'pptx를 읽을 수 없습니다' }));
+                        update(key, () => ({ state: 'error', error: result.error ?? t('pptx를 읽을 수 없습니다') }));
                         return;
                     }
                     const root = result.tree;
@@ -350,7 +350,7 @@ export function ImportDialog({ ready, request, onTitle, onClose }: {
 
     const firstName = trees[0]?.name ?? '';
     useEffect(() => {
-        onTitle(firstName ? `templide 불러오기 - ${firstName}` : 'templide 불러오기');
+        onTitle(firstName ? t('templide 불러오기 - {0}', firstName) : t('templide 불러오기'));
     }, [firstName, onTitle]);
 
     useEffect(() => {
@@ -382,7 +382,7 @@ export function ImportDialog({ ready, request, onTitle, onClose }: {
     };
 
     const changeOutput = async (tree: Tree) => {
-        const chosen = await save({ title: '만들 .tlide 파일', defaultPath: tree.output || undefined, filters: [{ name: 'templide', extensions: ['tlide'] }] });
+        const chosen = await save({ title: t('만들 .tlide 파일'), defaultPath: tree.output || undefined, filters: [{ name: 'templide', extensions: ['tlide'] }] });
         if (chosen) {
             update(tree.key, () => ({ output: /\.tlide$/i.test(chosen) ? chosen : `${chosen}.tlide` }));
         }
@@ -425,8 +425,8 @@ export function ImportDialog({ ready, request, onTitle, onClose }: {
         const open = tree.expanded.has(node.id);
         const Icon = nodeIcon(node);
         const mark = `${tree.key}\n${node.id}`;
-        const objectName = node.kind === 'element' && node.object ? label({ ...objectNames, ...extraObjectNames }, node.object) : null;
-        const lockTitle = locks > 0 ? `슬라이드 ${locks}개가 이 개체 틀을 씁니다` : undefined;
+        const objectName = node.kind === 'element' && node.object ? label({ ...objectNames, ...extraObjectNames() }, node.object) : null;
+        const lockTitle = locks > 0 ? t('슬라이드 {0}개가 이 개체 틀을 씁니다', locks) : undefined;
         return (
             <div key={node.id}>
                 <div className={'import-row' + (disabled ? ' unsupported' : '') + (flash === mark ? ' flash' : '')} data-row={mark} style={{ paddingLeft: 8 + depth * 18 }}
@@ -479,18 +479,18 @@ export function ImportDialog({ ready, request, onTitle, onClose }: {
                     )}
                     <FileText size={15} className="import-icon" />
                     <span className="import-file" title={tree.path}>{tree.name}</span>
-                    {index && <span className="import-count">슬라이드 {picked}/{total}개</span>}
+                    {index && <span className="import-count">{t('슬라이드 {0}/{1}개', picked, total)}</span>}
                     {(tree.state === 'loading' || tree.running) && <LoaderCircle size={14} className="spin" />}
                     <span className="spacer" />
-                    <button className="import-icon-button" title="목록에서 빼기" disabled={running}
+                    <button className="import-icon-button" title={t('목록에서 빼기')} disabled={running}
                         onClick={() => replace(treesRef.current.filter((each) => each.key !== tree.key))}><X size={14} /></button>
                 </header>
                 <div className="import-output">
-                    <span className="import-output-label">저장할 곳</span>
+                    <span className="import-output-label">{t('저장할 곳')}</span>
                     <span className="import-output-path" title={tree.output}>{tree.output || '…'}</span>
-                    <button className="import-small-button" disabled={running || !tree.output} onClick={() => changeOutput(tree)}><FolderOpen size={13} /> 변경</button>
+                    <button className="import-small-button" disabled={running || !tree.output} onClick={() => changeOutput(tree)}><FolderOpen size={13} /> {t('변경')}</button>
                 </div>
-                {tree.state === 'loading' && <div className="import-message"><LoaderCircle size={14} className="spin" /> pptx를 읽는 중</div>}
+                {tree.state === 'loading' && <div className="import-message"><LoaderCircle size={14} className="spin" /> {t('pptx를 읽는 중')}</div>}
                 {tree.state === 'error' && <div className="import-message error"><CircleAlert size={14} /> {tree.error}</div>}
                 {tree.result && <ResultView result={tree.result} />}
                 {problems.length > 0 && (
@@ -513,28 +513,28 @@ export function ImportDialog({ ready, request, onTitle, onClose }: {
         <div className="import">
             <header className="import-header">
                 <FileInput size={16} />
-                <span className="import-title">pptx 불러오기</span>
-                <span className="import-subtitle">고른 슬라이드와 요소만 .tlide로 바꿉니다</span>
+                <span className="import-title">{t('pptx 불러오기')}</span>
+                <span className="import-subtitle">{t('고른 슬라이드와 요소만 .tlide로 바꿉니다')}</span>
             </header>
             <div className="import-list" ref={listRef}>
                 {trees.length === 0 && (
                     <div className="import-empty">
                         <FileInput size={28} />
-                        <span>pptx 파일을 이 창에 끌어다 놓으세요</span>
+                        <span>{t('pptx 파일을 이 창에 끌어다 놓으세요')}</span>
                     </div>
                 )}
                 {trees.map(renderTree)}
             </div>
             <footer className="import-footer">
                 {notice && <span className="import-notice"><TriangleAlert size={13} /> {notice}</span>}
-                {!notice && problemCount > 0 && <span className="import-notice error"><CircleAlert size={13} /> 함께 골라야 하는 레이아웃이 {problemCount}개 있습니다</span>}
+                {!notice && problemCount > 0 && <span className="import-notice error"><CircleAlert size={13} /> {t('함께 골라야 하는 레이아웃이 {0}개 있습니다', problemCount)}</span>}
                 <span className="spacer" />
-                <button className="import-secondary" disabled={running} onClick={onClose}>닫기</button>
+                <button className="import-secondary" disabled={running} onClick={onClose}>{t('닫기')}</button>
                 <button className="import-primary" disabled={running || chosen === 0 || problemCount > 0} onClick={run}>
-                    {running ? '바꾸는 중…' : `불러오기 (${chosen})`}
+                    {running ? t('바꾸는 중…') : t('불러오기 ({0})', chosen)}
                 </button>
             </footer>
-            {dropping && <div className="import-drop"><FileInput size={32} /><span>놓으면 불러올 목록에 더합니다</span></div>}
+            {dropping && <div className="import-drop"><FileInput size={32} /><span>{t('놓으면 불러올 목록에 더합니다')}</span></div>}
         </div>
     );
 }
@@ -557,14 +557,14 @@ function ResultView({ result }: { result: ImportResult }) {
                 <span className="spacer" />
                 {result.tlide && (
                     <>
-                        <button className="import-small-button" onClick={() => invoke('open_in_editor', { path: result.tlide })}><ExternalLink size={13} /> 편집기에서 열기</button>
-                        <button className="import-small-button" onClick={() => invoke('open_path', { path: result.tlide, reveal: true })}><FolderOpen size={13} /> 폴더에서 보기</button>
+                        <button className="import-small-button" onClick={() => invoke('open_in_editor', { path: result.tlide })}><ExternalLink size={13} /> {t('편집기에서 열기')}</button>
+                        <button className="import-small-button" onClick={() => invoke('open_path', { path: result.tlide, reveal: true })}><FolderOpen size={13} /> {t('폴더에서 보기')}</button>
                     </>
                 )}
             </div>
             {result.errors && result.errors.length > 0 && (
                 <div className="import-errors">
-                    <div className="import-errors-title"><CircleAlert size={13} /> 만든 코드에 오류가 있습니다 (파일은 만들었습니다)</div>
+                    <div className="import-errors-title"><CircleAlert size={13} /> {t('만든 코드에 오류가 있습니다 (파일은 만들었습니다)')}</div>
                     {result.errors.map((line, i) => <div key={i} className="import-error-line">{line}</div>)}
                 </div>
             )}
@@ -572,7 +572,7 @@ function ResultView({ result }: { result: ImportResult }) {
                 <div className="import-warnings">
                     {shown.map((line, i) => <div key={i} className="import-warning"><TriangleAlert size={12} /> {line}</div>)}
                     {warnings.length > 4 && (
-                        <button className="link-button" onClick={() => setAll(!all)}>{all ? '접기' : `${warnings.length - 4}개 더 보기`}</button>
+                        <button className="link-button" onClick={() => setAll(!all)}>{all ? t('접기') : t('{0}개 더 보기', warnings.length - 4)}</button>
                     )}
                 </div>
             )}

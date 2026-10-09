@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { quote } from './Fields';
+import { t } from './i18n';
 
 // 설치된 폰트 이름 (한국어 이름이 있으면 그것). 처음 한 번 편집기(src-tauri)에서 읽는다
 let fonts: Promise<string[]> | null = null;
@@ -55,7 +56,7 @@ export function FontList({ current, onPick }: { current?: string; onPick(name: s
     };
     return (
         <div className="font-list">
-            <input className="font-search" autoFocus placeholder="폰트 검색" value={query}
+            <input className="font-search" autoFocus placeholder={t('폰트 검색')} value={query}
                 onChange={(event) => { setQuery(event.target.value); setActive(event.target.value.trim() ? 0 : -1); }}
                 onKeyDown={(event) => {
                     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -67,15 +68,15 @@ export function FontList({ current, onPick }: { current?: string; onPick(name: s
                     }
                 }} />
             <div className="font-items" ref={items}>
-                {list === null && <div className="font-empty">폰트 목록을 읽는 중…</div>}
+                {list === null && <div className="font-empty">{t('폰트 목록을 읽는 중…')}</div>}
                 {shown.map((name, i) => (
                     <button key={name} className={'font-item' + (i === active ? ' active' : '') + (name === current ? ' current' : '')} title={name}
                         style={{ fontFamily: cssFont(name) }} onMouseEnter={() => setActive(i)} onClick={() => onPick(name)}>{name}</button>
                 ))}
-                {list !== null && matches.length > shownLimit && <div className="font-empty">{matches.length - shownLimit}개 더 있습니다. 검색어를 더 적어 주세요</div>}
+                {list !== null && matches.length > shownLimit && <div className="font-empty">{t('{0}개 더 있습니다. 검색어를 더 적어 주세요', matches.length - shownLimit)}</div>}
                 {list !== null && matches.length === 0 && query.trim() && (
                     <button className="font-item active" style={{ fontFamily: cssFont(query.trim()) }} onClick={() => onPick(query.trim())}>
-                        "{query.trim()}" 쓰기 <span className="muted">(이 컴퓨터에 없는 폰트)</span>
+                        {t('"{0}" 쓰기', query.trim())} <span className="muted">{t('(이 컴퓨터에 없는 폰트)')}</span>
                     </button>
                 )}
             </div>

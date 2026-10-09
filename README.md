@@ -133,7 +133,7 @@ npm run build:fast       # 빠른 실행 파일 (target/fast)
 npm run build            # release 실행 파일
 ```
 
-개발 중인 편집기는 저장소의 `cmake-build-release/templide(.exe)`를 컴파일러로 씁니다. 다른 컴파일러를 쓰려면 `TEMPLIDE_EXE` 환경 변수에 경로를 지정하세요.
+개발 중인 편집기는 저장소의 `cmake-build-release/templide(.exe)`를 컴파일러로 씁니다. 다른 컴파일러를 쓰려면 `TEMPLIDE_EXE` 환경 변수에 경로를 지정하세요. 편집기의 설정 창(로고를 누르면 열립니다)에서도 컴파일러 경로를 정할 수 있고, 설정에 적은 경로가 `TEMPLIDE_EXE`보다 먼저입니다. 설정 창에서는 언어(한국어, English), 단축키, 코드 편집기 모양도 바꿉니다.
 
 ## 구조
 

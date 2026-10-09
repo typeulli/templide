@@ -6,34 +6,151 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
-use std::process::{ChildStdin, Command, Stdio};
-use std::sync::Mutex;
+use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::{Emitter, Manager, State};
 
 mod mcp;
+mod settings;
 
+// 떠 있는 컴파일러(templide --serve). live가 꺼지면 그 컴파일러의 출력을 화면에 넘기지 않는다
+struct Running {
+    child: Child,
+    stdin: ChildStdin,
+    live: Arc<AtomicBool>,
+    path: PathBuf,
+    source: &'static str,
+}
+
+#[derive(Default)]
 struct Compiler {
-    stdin: Mutex<Option<ChildStdin>>,
+    running: Mutex<Option<Running>>,
+    startup_error: Mutex<Option<String>>, // 설정의 컴파일러를 실행하지 못해 기본 컴파일러로 시작했을 때의 이유
 }
 
 struct Started(Instant);
 
-// TEMPLIDE_EXE, 설치된 리소스 폴더의 컴파일러, 개발 중이면 저장소의 release 빌드 순서로 찾는다.
+// 설정의 경로(setting), TEMPLIDE_EXE, 설치된 리소스 폴더의 컴파일러, 개발 중이면 저장소의 release 빌드 순서로 찾는다.
 // 리소스 폴더는 Windows가 편집기 옆, macOS가 templide.app/Contents/Resources, Linux(deb)가 /usr/lib/templide 이다.
-// 컴파일러는 자기 옆의 packages, libs를 쓰므로 셋을 같은 폴더에 설치한다 (build.py)
-fn compiler_path(app: &tauri::AppHandle) -> PathBuf {
+// 컴파일러는 자기 옆의 packages, libs를 쓰므로 셋을 같은 폴더에 설치한다 (build.py).
+// 두 번째 값은 어디서 찾았는지: setting, env, installed, development
+fn locate_compiler(app: &tauri::AppHandle, setting: Option<&str>) -> (PathBuf, &'static str) {
     const NAME: &str = if cfg!(windows) { "templide.exe" } else { "templide" };
+    if let Some(path) = setting {
+        return (PathBuf::from(path), "setting");
+    }
     if let Ok(path) = std::env::var("TEMPLIDE_EXE") {
-        return PathBuf::from(path);
+        return (PathBuf::from(path), "env");
     }
     if let Ok(dir) = app.path().resource_dir() {
         let installed = dir.join(NAME);
         if installed.exists() {
-            return installed;
+            return (installed, "installed");
         }
     }
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cmake-build-release").join(NAME)
+    (PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cmake-build-release").join(NAME), "development")
+}
+
+// 컴파일러 확인용 요청의 id. 이 id의 응답은 화면에 넘기지 않는다
+const PROBE: &str = "templide-probe";
+
+// 컴파일러를 띄워 running에 넣는다. 이전 컴파일러가 있으면 끝낸다.
+// probe면 새 컴파일러가 initialize에 답하는지 먼저 확인하고, 답하지 않으면 이전 컴파일러를 그대로 둔다
+fn start_compiler(app: &tauri::AppHandle, path: &std::path::Path, source: &'static str, probe: bool) -> Result<(), String> {
+    let mut command = Command::new(path);
+    command.arg("--serve").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::inherit());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let mut child = command.spawn().map_err(|e| format!("cannot start {}: {e}", path.display()))?;
+    let mut stdin = child.stdin.take().unwrap();
+    let stdout = child.stdout.take().unwrap();
+    let live = Arc::new(AtomicBool::new(!probe));
+    let (answered, waiting) = std::sync::mpsc::channel::<()>();
+    let handle = app.clone();
+    let output = live.clone();
+    // 컴파일러의 메시지를 화면에 "lsp" 이벤트로 넘긴다
+    std::thread::spawn(move || {
+        let mut reader = BufReader::new(stdout);
+        while let Some(body) = read_message(&mut reader) {
+            if body.contains(PROBE) {
+                let _ = answered.send(());
+            } else if output.load(Ordering::Relaxed) {
+                let _ = handle.emit("lsp", body);
+            }
+        }
+    });
+    if probe {
+        let request = format!(r#"{{"jsonrpc":"2.0","id":"{PROBE}","method":"initialize","params":{{"processId":null,"rootUri":null,"capabilities":{{}}}}}}"#);
+        let answer = write!(stdin, "Content-Length: {}\r\n\r\n{}", request.len(), request)
+            .and_then(|_| stdin.flush())
+            .map_err(|e| e.to_string())
+            .and_then(|_| waiting.recv_timeout(Duration::from_secs(5)).map_err(|_| "it did not answer like a templide compiler".to_string()));
+        if let Err(error) = answer {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(format!("{}: {error}", path.display()));
+        }
+        live.store(true, Ordering::Relaxed);
+    }
+    let previous = app.state::<Compiler>().running.lock().map_err(|e| e.to_string())?.replace(Running { child, stdin, live, path: path.to_path_buf(), source });
+    if let Some(mut previous) = previous {
+        previous.live.store(false, Ordering::Relaxed);
+        let _ = previous.child.kill();
+        let _ = previous.child.wait();
+    }
+    Ok(())
+}
+
+// 지금 쓰는 컴파일러와, 설정이 없을 때 쓸 컴파일러(auto)의 경로. setting은 설정에 적힌 경로 (실행하지 못했으면 지금 쓰는 컴파일러와 다르고, 그 이유가 error)
+#[tauri::command]
+fn compiler_info(app: tauri::AppHandle, compiler: State<Compiler>) -> serde_json::Value {
+    let running = compiler.running.lock().ok();
+    let current = running.as_ref().and_then(|running| running.as_ref());
+    serde_json::json!({
+        "path": current.map(|running| running.path.display().to_string()),
+        "source": current.map(|running| running.source),
+        "auto": locate_compiler(&app, None).0.display().to_string(),
+        "setting": settings::compiler_path(&app),
+        "error": compiler.startup_error.lock().ok().and_then(|error| error.clone()),
+    })
+}
+
+// 컴파일러를 path로 바꿔 띄우고 설정에 적는다. path가 없으면 자동(설정을 지운다). 띄우지 못하면 이전 컴파일러와 설정을 그대로 둔다.
+// 성공하면 화면에 "compiler-restarted"를 보내 열린 문서를 새 컴파일러에 다시 올리게 한다
+#[tauri::command]
+async fn compiler_use(app: tauri::AppHandle, path: Option<String>) -> Result<serde_json::Value, String> {
+    let path = path.map(|path| path.trim().to_string()).filter(|path| !path.is_empty());
+    if let Some(path) = &path {
+        if !std::path::Path::new(path).is_file() {
+            return Err(format!("{path}: not a file"));
+        }
+    }
+    let started = app.clone();
+    let chosen = path.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let (found, source) = locate_compiler(&started, chosen.as_deref());
+        start_compiler(&started, &found, source, true)
+    }).await.map_err(|e| e.to_string())??;
+    app.state::<Compiler>().startup_error.lock().map_err(|e| e.to_string())?.take();
+    let mut stored = settings::load(&app);
+    if let Some(map) = stored.as_object_mut() {
+        match &path {
+            Some(path) => {
+                map.insert("compilerPath".into(), serde_json::Value::String(path.clone()));
+            }
+            None => {
+                map.remove("compilerPath");
+            }
+        }
+    }
+    settings::save(&app, &stored)?;
+    let _ = app.emit("compiler-restarted", ());
+    Ok(compiler_info(app.clone(), app.state::<Compiler>()))
 }
 
 // Content-Length 머리말이 붙은 메시지 하나. 끝나면 None
@@ -62,8 +179,8 @@ fn read_message(reader: &mut impl BufRead) -> Option<String> {
 
 #[tauri::command]
 fn lsp_send(compiler: State<Compiler>, body: String) -> Result<(), String> {
-    let mut stdin = compiler.stdin.lock().map_err(|e| e.to_string())?;
-    let stdin = stdin.as_mut().ok_or("the compiler is not running")?;
+    let mut running = compiler.running.lock().map_err(|e| e.to_string())?;
+    let stdin = &mut running.as_mut().ok_or("the compiler is not running")?.stdin;
     write!(stdin, "Content-Length: {}\r\n\r\n{}", body.len(), body).map_err(|e| e.to_string())?;
     stdin.flush().map_err(|e| e.to_string())
 }
@@ -135,10 +252,14 @@ struct Agents {
     runs: std::sync::atomic::AtomicU64,
 }
 
-// 실행할 프로그램의 경로. PATH에 있으면 그것을, 없으면 search의 폴더들(%LOCALAPPDATA% 같은 환경 변수를 쓸 수 있다)
+// 실행할 프로그램의 경로. program이 경로(설정에서 직접 지정)면 그 파일을, 이름이면 PATH에 있는 것을, 없으면 search의 폴더들(%LOCALAPPDATA% 같은 환경 변수를 쓸 수 있다)
 // 바로 아래 하위 폴더에서 가장 최근의 program.exe를 쓴다. 앱이 업데이트마다 폴더 이름을 바꾸는 경우(Codex 앱의 bin\<해시>) 때문이다.
 // 실행 파일의 이름과 수정 시각만 본다. 에이전트의 로그인 정보 같은 다른 파일은 읽지 않는다
 fn locate_program(program: &str, search: &[String]) -> Option<PathBuf> {
+    let direct = PathBuf::from(program);
+    if direct.is_absolute() {
+        return direct.is_file().then_some(direct);
+    }
     let names: Vec<String> = if cfg!(windows) {
         std::env::var("PATHEXT").unwrap_or(".EXE;.CMD;.BAT".into()).split(';').map(|ext| format!("{program}{}", ext.to_lowercase())).collect()
     } else {
@@ -590,31 +711,23 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .manage(Started(started))
         .manage(Pending(Mutex::new(single.map(|(_, files)| files).unwrap_or_default())))
-        .manage(Compiler { stdin: Mutex::new(None) })
+        .manage(Compiler::default())
         .manage(Agents::default())
         .manage(Watcher::default())
         .setup(move |app| {
             app.manage(mcp::start(app.handle().clone())?);
-            let compiler = compiler_path(app.handle());
-            let mut command = Command::new(&compiler);
-            command.arg("--serve").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::inherit());
-            #[cfg(windows)]
-            {
-                use std::os::windows::process::CommandExt;
-                command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-            }
-            let mut child = command.spawn().map_err(|e| format!("cannot start {}: {e}", compiler.display()))?;
-            *app.state::<Compiler>().stdin.lock().unwrap() = child.stdin.take();
-            let stdout = child.stdout.take().unwrap();
-            let handle = app.handle().clone();
-            // 컴파일러의 메시지를 화면에 "lsp" 이벤트로 넘긴다
-            std::thread::spawn(move || {
-                let mut reader = BufReader::new(stdout);
-                while let Some(body) = read_message(&mut reader) {
-                    let _ = handle.emit("lsp", body);
+            // 설정의 컴파일러를 띄우지 못하면(지워졌거나 실행할 수 없으면) 기본 컴파일러로 시작하고, 이유를 화면이 알리게 남긴다
+            let setting = settings::compiler_path(app.handle());
+            let (compiler, source) = locate_compiler(app.handle(), setting.as_deref());
+            if let Err(error) = start_compiler(app.handle(), &compiler, source, false) {
+                if setting.is_none() {
+                    return Err(error.into());
                 }
-                let _ = child.wait();
-            });
+                eprintln!("{error}");
+                *app.state::<Compiler>().startup_error.lock().unwrap() = Some(error);
+                let (compiler, source) = locate_compiler(app.handle(), None);
+                start_compiler(app.handle(), &compiler, source, false)?;
+            }
             // 편집기 창(main)은 tauri.conf.json에서 만들지 않고(create: false) 여기서 만든다. 내보내기, 불러오기면 그 창만 연다
             let window = if export_file().is_some() {
                 tauri::WebviewWindowBuilder::new(app, "export", tauri::WebviewUrl::App("export.html".into()))
@@ -646,7 +759,7 @@ fn main() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![lsp_send, read_text, write_text, open_files, export_file, import_files, open_in_editor, path_exists, mark, read_data_url, open_path, agent_start, agent_write, agent_resize, agent_stop, watch_file, unwatch_file, system_fonts, mcp::mcp_set_tools, mcp::mcp_reply, mcp::mcp_config])
+        .invoke_handler(tauri::generate_handler![lsp_send, compiler_info, compiler_use, settings::settings_load, settings::settings_save, settings::settings_path, read_text, write_text, open_files, export_file, import_files, open_in_editor, path_exists, mark, read_data_url, open_path, agent_start, agent_write, agent_resize, agent_stop, watch_file, unwatch_file, system_fonts, mcp::mcp_set_tools, mcp::mcp_reply, mcp::mcp_config])
         .build(tauri::generate_context!())
         .expect("error while running templide editor");
     app.run(move |_, event| {
