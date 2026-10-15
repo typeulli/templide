@@ -5,11 +5,14 @@ import { useSyncExternalStore } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { resolveLanguage, setLanguage, type LanguageSetting } from './i18n';
+import { isEncodingName } from './encodings';
 
 export type Settings = {
     language: LanguageSetting;
     general: {
         codePanelOpen: boolean; // 코드 패널을 펼친 채로 시작한다
+        defaultEncoding: string;     // BOM이 없는 파일을 열 때 쓰는 인코딩 (encodings.ts의 이름)
+        autoGuessEncoding: boolean;  // 켜면 BOM이 없는 파일의 인코딩을 추측한다
     };
     editor: {
         fontSize: number;
@@ -31,7 +34,7 @@ export type Settings = {
 
 export const defaultSettings: Settings = {
     language: 'system',
-    general: { codePanelOpen: true },
+    general: { codePanelOpen: true, defaultEncoding: 'UTF-8', autoGuessEncoding: false },
     editor: { fontSize: 14, wordWrap: false, minimap: false, lineNumbers: true, tabSize: 4 },
     show: { endScreen: true },
     agent: { default: 'claude-code', paths: {} },
@@ -59,6 +62,9 @@ function parse(stored: unknown): Settings {
     // 값을 정할 수 없는 모양은 직접 거른다
     if (!['system', 'ko', 'en'].includes(merged.language)) {
         merged.language = defaultSettings.language;
+    }
+    if (!isEncodingName(merged.general.defaultEncoding)) {
+        merged.general.defaultEncoding = defaultSettings.general.defaultEncoding;
     }
     const [minSize, maxSize] = editorLimits.fontSize;
     const [minTab, maxTab] = editorLimits.tabSize;

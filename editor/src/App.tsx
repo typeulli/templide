@@ -4,7 +4,7 @@ import { message, open as openDialog, save as saveDialog } from '@tauri-apps/plu
 import { emitTo, listen } from '@tauri-apps/api/event';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { lsp, pathToUri, type DeckResult, type Diagnostic, type Origin, type Range, type Schema, type TargetWarning } from './lsp';
+import { lsp, pathToUri, type DeckResult, type Diagnostic, type Origin, type Range, type Schema } from './lsp';
 import { SlideView, findElement, selectionIn, type EditingRun, type Point, type Resize } from './SlideView';
 import { FormatBar, IconButton, Thumbnail, fontToggles, type StyleProperty, type Toggle } from './Panels';
 import { ElementPanel, SlidePanel, type Pickers } from './Properties';
@@ -15,6 +15,9 @@ import { ExportDialog, type BuildResult, type ExportTarget } from './ExportDialo
 import type { EditorAccess } from './mcp';
 import { attachDocument } from './navigation';
 import { FontPopup } from './FontPicker';
+import { EncodingPopup } from './EncodingPopup';
+import { compilerReads, encodingLabel } from './encodings';
+import { readTextFile, writeTextFile, type TextFile } from './textFile';
 import logo from '../../assets/icon/templide.svg';
 import {
     Blend, Bot, ChevronDown, ChevronUp, CircleAlert, CircleCheck, CodeXml, Copy, FileOutput, FilePlus, Film, FolderOpen, Image as ImageIcon, Maximize, Minus,
@@ -49,6 +52,23 @@ function relativeTo(folder: string, file: string): string {
     const inside = file.toLowerCase().startsWith(prefix.toLowerCase()) || file.toLowerCase().startsWith(prefix.replace(/\\/g, '/').toLowerCase());
     return (inside ? file.slice(prefix.length) : file).replace(/\\/g, '/');
 }
+// 연 파일의 인코딩 (textFile.ts). BOM은 글에 들어 있지 않고 저장할 때 다시 붙는다.
+// lossy는 이 인코딩으로 읽을 수 없는 바이트가 깨진 글자(�)로 바뀐 파일이다
+type FileEncoding = { name: string; bom: boolean; lossy: boolean };
+
+// 단추가 둘(yes, no)이나 셋(yes, no, cancel)인 물음. 누른 단추를 돌려준다. 둘이면 둘째 단추와 창 닫기는 모두 cancel이다
+async function choose(text: string, title: string, buttons: { yes: string; no: string; cancel?: string }): Promise<'yes' | 'no' | 'cancel'> {
+    const three = buttons.cancel !== undefined;
+    const choice = await message(text, {
+        title, kind: 'warning',
+        buttons: three ? { yes: buttons.yes, no: buttons.no, cancel: buttons.cancel! } : { ok: buttons.yes, cancel: buttons.no },
+    });
+    if (choice === 'Yes' || choice === 'Ok' || choice === buttons.yes) {
+        return 'yes';
+    }
+    return three && (choice === 'No' || choice === buttons.no) ? 'no' : 'cancel';
+}
+
 type Editor = import('monaco-editor/editor/editor.api').editor.IStandaloneCodeEditor;
 type ServerEdit = { uri: string; range: Range; newText: string };
 
@@ -141,7 +161,15 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
     // 복사한 요소(id) 또는 잘라 낸 put 문장의 원문
     type Clip = { kind: 'copy'; id: string; page: number } | { kind: 'cut'; text: string };
     const clipboard = useRef<Clip | null>(null);
-    const openFileRef = useRef<(file: string) => Promise<void>>(async () => {}); // 아래에서 만드는 openFile
+    const openFileRef = useRef<(file: string, encoding?: string) => Promise<void>>(async () => {}); // 아래에서 만드는 openFile
+    const [fileEncoding, setFileEncoding] = useState<FileEncoding>({ name: 'UTF-8', bom: false, lossy: false });
+    const encodingRef = useRef(fileEncoding);
+    const applyEncoding = useCallback((next: FileEncoding) => {
+        encodingRef.current = next;
+        setFileEncoding(next);
+    }, []);
+    const [encodingMenu, setEncodingMenu] = useState<{ x: number; y: number; above: number } | null>(null); // 상태 표시줄의 인코딩을 눌러 연 창
+    const unreadableNoticed = useRef(new Set<string>()); // 컴파일러가 못 읽는 인코딩으로 저장한다고 이미 알린 파일과 인코딩
     const activeRef = useRef(active);
     activeRef.current = active;
     const onOpenRef = useRef(onOpen);
@@ -171,7 +199,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
     const deckRef = useRef<DeckResult | null>(null);
     const textRef = useRef('');
     const diagnosticsRef = useRef<Diagnostic[]>([]);
-    const warningsRef = useRef<TargetWarning[]>([]);
+    const warningsRef = useRef<Diagnostic[]>([]);
     const pathRef = useRef<string | null>(null);
     const dirtyRef = useRef(false);
     const mcpAccess = useRef<EditorAccess | null>(null); // AI 탭의 MCP 도구가 보는 지금 상태
@@ -190,7 +218,10 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
     diagnosticsRef.current = diagnostics;
     // 고른 target의 경고. 코드에 오류가 있으면 덱이 옛것이므로 보이지 않는다
     const warnings = deck && !deckError ? (deck.targetWarnings ?? []).filter((warning) => warning.uri === uri.current) : [];
-    warningsRef.current = warnings;
+    // html 미리보기가 그릴 수 없는 것. 위치가 이 파일에 있으면 target의 경고와 함께 코드에 노란 밑줄을 긋는다. 이것도 덱이 옛것이면 위치가 맞지 않으므로 보이지 않는다
+    const previewWarnings = deck && !deckError ? deck.warnings : [];
+    const previewMarks: Diagnostic[] = previewWarnings.flatMap((warning) => warning.range && warning.uri === uri.current ? [{ range: warning.range, message: warning.message, severity: 2 }] : []);
+    warningsRef.current = [...warnings, ...previewMarks];
     pathRef.current = path;
     dirtyRef.current = dirty;
 
@@ -682,7 +713,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
         let script: string | null = null;
         if (current.script) {
             try {
-                script = await invoke<string>('read_text', { path: current.script });
+                script = (await readTextFile(current.script)).text;
             } catch (error) {
                 showNotice(t('script를 읽을 수 없어 run 동작 없이 보여 줍니다: {0}', current.script));
             }
@@ -736,7 +767,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             `target out { path = "${name.replace(/"/g, '')}.pptx"; type = pptx; }`,
             '',
         ].join('\n');
-        await invoke('write_text', { path: file, text: content });
+        await writeTextFile(file, content, 'UTF-8', false);
         onOpenRef.current(file);
     }, []);
 
@@ -896,7 +927,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
         ]);
     }, []);
 
-    const warningKey = warnings.map((warning) => `${warning.range.start.line}:${warning.range.start.character}:${warning.message}`).join('\n');
+    const warningKey = warningsRef.current.map((warning) => `${warning.range.start.line}:${warning.range.start.character}:${warning.message}`).join('\n');
     useEffect(() => {
         setMarkers(diagnosticsRef.current, warningsRef.current);
     }, [warningKey, setMarkers]);
@@ -916,13 +947,15 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
     }, []);
 
     // 파일 내용으로 바꾼다. Ctrl+Z로 되돌릴 수 있게 Monaco의 편집으로 넣는다
-    const reloadFromDisk = useCallback((content: string) => {
+    const reloadFromDisk = useCallback((loaded: TextFile) => {
+        const content = loaded.text;
         diskText.current = content;
+        applyEncoding({ ...encodingRef.current, bom: loaded.bom, lossy: loaded.lossy });
         const instance = editor.current;
         const model = instance?.getModel();
         if (!instance || !model) {
             if (pathRef.current) {
-                openFileRef.current(pathRef.current);
+                openFileRef.current(pathRef.current, encodingRef.current.name);
             }
             return;
         }
@@ -931,7 +964,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
         model.pushEditOperations([], [{ range: model.getFullModelRange(), text: content }], () => null);
         instance.pushUndoStop();
         setDirty(false);
-    }, [resetIds]);
+    }, [resetIds, applyEncoding]);
 
     // AI 탭의 에이전트가 MCP로 코드를 고친다. 한 번의 실행 취소로 되돌릴 수 있고, 다시 컴파일될 때까지 기다린다
     const editDocument = useCallback(async (oldText: string, newText: string, all: boolean) => {
@@ -968,13 +1001,15 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
         return { count: offsets.length, renamed: lastRenamed.current };
     }, [sendChange]);
 
-    const save = useCallback(async (): Promise<boolean> => {
+    // 저장한다. target을 주면 그 인코딩으로 저장하고 이 파일의 인코딩도 그것으로 바뀐다
+    const persist = useCallback(async (target: { name: string; bom: boolean } | null): Promise<boolean> => {
         if (!pathRef.current || !editor.current) {
             return false;
         }
+        const file = pathRef.current;
         // VS Code처럼, 연 뒤에 다른 프로그램이 파일을 고쳤으면 덮어쓸지 묻는다
-        const disk = await invoke<string>('read_text', { path: pathRef.current }).catch(() => null);
-        if (disk !== null && diskText.current !== null && disk !== diskText.current) {
+        const disk = await readTextFile(file, encodingRef.current.name).catch(() => null);
+        if (disk !== null && diskText.current !== null && disk.text !== diskText.current) {
             const choice = await message(t('이 파일이 편집기 밖에서 바뀌었습니다. 편집기의 내용으로 덮어쓸까요?'), {
                 title: t('파일이 바뀌었습니다'), kind: 'warning', buttons: { yes: t('덮어쓰기'), no: t('파일 내용으로 되돌리기'), cancel: t('취소') },
             });
@@ -987,11 +1022,45 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             }
         }
         const content = editor.current.getValue();
-        await invoke('write_text', { path: pathRef.current, text: content });
+        let name = target?.name ?? encodingRef.current.name;
+        let bom = target ? target.bom : encodingRef.current.bom;
+        // 읽을 수 없던 바이트가 깨진 글자로 남아 있는 채로 저장하면 원래 내용을 되살릴 수 없다
+        if (encodingRef.current.lossy && content.includes('�')) {
+            const choice = await choose(t('이 파일에는 {0}(으)로 읽을 수 없는 바이트가 있어 깨진 글자(�)로 바뀌어 있습니다. 이대로 저장하면 원래 내용을 되살릴 수 없습니다.', encodingLabel(encodingRef.current.name)),
+                t('깨진 글자가 있습니다'), { yes: t('그래도 저장'), no: t('취소') });
+            if (choice !== 'yes') {
+                return false;
+            }
+        }
+        // 컴파일러가 직접 읽지 못하는 인코딩으로 저장하면 include나 명령줄에서 오류가 난다. 파일마다 한 번 알린다
+        const noticeKey = `${file}|${name}`;
+        if (!compilerReads(name) && !unreadableNoticed.current.has(noticeKey)) {
+            const choice = await choose(t('{0}은(는) 컴파일러가 직접 읽을 수 없는 인코딩입니다. 이 파일을 include하거나 명령줄로 컴파일하면 오류가 날 수 있습니다. 편집기에서 열고 내보내는 데는 문제가 없습니다.', encodingLabel(name, bom)),
+                t('컴파일러가 읽을 수 없는 인코딩'), { yes: t('그대로 저장'), no: t('UTF-8로 저장'), cancel: t('취소') });
+            if (choice === 'cancel') {
+                return false;
+            }
+            if (choice === 'no') {
+                name = 'UTF-8';
+                bom = false;
+            } else {
+                unreadableNoticed.current.add(noticeKey);
+            }
+        }
+        const result = await writeTextFile(file, content, name, bom);
+        if (!result.saved) {
+            // 그 인코딩으로 쓸 수 없는 글자가 있으면 파일은 그대로다. UTF-8로 저장할 수 있게 묻는다
+            const where = result.unmappable.map((each) => `${each.char} (${t('줄 {0}', each.line)})`).join(', ') + (result.total > result.unmappable.length ? ' …' : '');
+            const choice = await choose(t('{0}(으)로는 저장할 수 없는 글자가 {1}개 있습니다: {2}', encodingLabel(name, bom), result.total, where),
+                t('저장할 수 없습니다'), { yes: t('UTF-8로 저장'), no: t('취소') });
+            return choice === 'yes' ? persist({ name: 'UTF-8', bom: false }) : false;
+        }
+        applyEncoding({ name, bom, lossy: false });
         diskText.current = content;
         setDirty(false);
         return true;
-    }, [reloadFromDisk]);
+    }, [reloadFromDisk, applyEncoding]);
+    const save = useCallback(() => persist(null), [persist]);
 
     const loadMonaco = useCallback(async () => {
         if (monaco.current) {
@@ -1068,8 +1137,16 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
         await mark('monaco');
     }, [sendChange, flushChange, setMarkers, mark, save, retrackIds]);
 
-    const openFile = useCallback(async (file: string) => {
-        const content = await invoke<string>('read_text', { path: file });
+    // encoding을 주면 BOM과 추측보다 그 인코딩으로 읽는다 (인코딩으로 다시 열기)
+    const openFile = useCallback(async (file: string, encoding?: string) => {
+        const loaded = await readTextFile(file, encoding);
+        const content = loaded.text;
+        applyEncoding({ name: loaded.encoding, bom: loaded.bom, lossy: loaded.lossy });
+        if (loaded.lossy) {
+            showNotice(t('{0}(으)로 읽을 수 없는 바이트가 있어 깨진 글자로 보입니다. 오른쪽 위의 인코딩을 눌러 다른 인코딩으로 다시 열어 보세요', encodingLabel(loaded.encoding)));
+        } else if (loaded.guessed) {
+            showNotice(t('인코딩을 {0}(으)로 추측해서 열었습니다. 글자가 다르면 오른쪽 위의 인코딩을 눌러 다시 열어 보세요', encodingLabel(loaded.encoding)));
+        }
         if (uri.current) {
             lsp.notify('textDocument/didClose', { textDocument: { uri: uri.current } });
         }
@@ -1096,9 +1173,33 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
         diskText.current = content;
         invoke('watch_file', { path: file }).catch((error) => console.error('watch_file', error));
         await refreshDeck();
-    }, [refreshDeck, resetIds]);
+    }, [refreshDeck, resetIds, applyEncoding, showNotice]);
 
     openFileRef.current = openFile;
+
+    // 상태 표시줄에서 고른 인코딩으로 파일을 다시 읽는다. 저장하지 않은 변경은 버려지므로 먼저 묻는다
+    const reopenWithEncoding = useCallback(async (name: string) => {
+        setEncodingMenu(null);
+        if (!pathRef.current) {
+            return;
+        }
+        if (dirtyRef.current) {
+            const choice = await choose(t('저장하지 않은 변경이 사라집니다. 다른 인코딩으로 다시 열까요?'), t('다시 열기'), { yes: t('다시 열기'), no: t('취소') });
+            if (choice !== 'yes') {
+                return;
+            }
+        }
+        // 다시 열어도 보던 슬라이드를 그대로 보여 준다 (덱을 다시 만들면 그 슬라이드로 간다)
+        nextPage.current = pageRef.current;
+        await openFile(pathRef.current, name);
+        nextPage.current = null;
+    }, [openFile]);
+
+    // 상태 표시줄에서 고른 인코딩으로 저장한다
+    const saveWithEncoding = useCallback(async (name: string, bom: boolean) => {
+        setEncodingMenu(null);
+        await persist({ name, bom });
+    }, [persist]);
 
     // 고른 요소의 put 문장 시작에 장식을 둔다
     useEffect(() => {
@@ -1137,14 +1238,14 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             }
             window.clearTimeout(changeTimer);
             changeTimer = window.setTimeout(async () => {
-                const content = await invoke<string>('read_text', { path: payload }).catch(() => null);
-                if (content === null || content === diskText.current) {
+                const loaded = await readTextFile(payload, encodingRef.current.name).catch(() => null);
+                if (loaded === null || loaded.text === diskText.current) {
                     return;
                 }
                 if (dirtyRef.current) {
                     showNotice(t('파일이 편집기 밖에서 바뀌었습니다. 저장할 때 어떻게 할지 묻습니다'));
                 } else {
-                    reloadFromDisk(content);
+                    reloadFromDisk(loaded);
                 }
             }, 200);
         });
@@ -1312,7 +1413,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
     const errors = diagnostics.filter((diagnostic) => diagnostic.severity !== 2);
     const compileWarnings = diagnostics.filter((diagnostic) => diagnostic.severity === 2); // sRGB 밖의 색 등
     const errorCount = errors.length;
-    const warningCount = compileWarnings.length + warnings.length;
+    const warningCount = compileWarnings.length + warnings.length + previewWarnings.length;
     const ready = !!deck && monacoReady;
     const textSelected = !!selected && !!deck?.elements[selected]?.text;
     const fileName = path ? path.split(/[\\/]/).pop() : null;
@@ -1506,7 +1607,15 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
                         {notice
                             ? <span className="notice"><CircleAlert size={13} /> {notice}</span>
                             : deckError && deckError !== 'The document has errors' && <span className="error"><CircleAlert size={13} /> {deckError}</span>}
-                        {deck?.warnings.length ? <span className="warning" title={deck.warnings.join('\n')}>{t('html 미리보기 경고 {0}개', deck.warnings.length)}</span> : null}
+                        {path && (
+                            <button className={'encoding-button' + (fileEncoding.lossy ? ' lossy' : '')} title={fileEncoding.lossy ? t('읽을 수 없는 바이트가 있습니다. 인코딩 선택') : t('인코딩 선택')}
+                                onClick={(event) => {
+                                    const box = event.currentTarget.getBoundingClientRect();
+                                    setEncodingMenu({ x: box.left, y: box.bottom + 4, above: box.top - 4 });
+                                }}>
+                                {fileEncoding.lossy && <TriangleAlert size={13} />}{encodingLabel(fileEncoding.name, fileEncoding.bom)}
+                            </button>
+                        )}
                         <span className="timings">{timings.join(' · ')}</span>
                     </span>
                     <IconButton icon={codeOpen ? PanelBottomClose : PanelBottomOpen} title={codeOpen ? t('패널 접기') : t('패널 펼치기')} onClick={() => setCodeOpen((open) => !open)} />
@@ -1539,6 +1648,21 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
                                     <span className="problems-line">{t('줄 {0}', warning.range.start.line + 1)}</span>
                                 </button>
                             ))}
+                            {previewWarnings.map((warning, i) => {
+                                const range = warning.uri === uri.current ? warning.range : undefined;
+                                return range ? (
+                                    <button key={'p' + i} className="problems-item warning" title={t('html 미리보기 경고')} onClick={() => revealProblem({ range, message: warning.message, severity: 2 })}>
+                                        <TriangleAlert size={13} />
+                                        <span className="problems-message">{warning.message}</span>
+                                        <span className="problems-line">{t('줄 {0}', range.start.line + 1)}</span>
+                                    </button>
+                                ) : (
+                                    <div key={'p' + i} className="problems-item warning static" title={t('html 미리보기 경고')}>
+                                        <TriangleAlert size={13} />
+                                        <span className="problems-message">{warning.message}</span>
+                                    </div>
+                                );
+                            })}
                         </div>
                     )}
                 </div>
@@ -1554,6 +1678,9 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
                         instance.focus();
                     }
                 }} />
+            )}
+            {encodingMenu && path && (
+                <EncodingPopup x={encodingMenu.x} y={encodingMenu.y} above={encodingMenu.above} current={fileEncoding} onReopen={reopenWithEncoding} onSave={saveWithEncoding} onClose={() => setEncodingMenu(null)} />
             )}
             {/* 패널 경계. 끌면 크기가 바뀌고, 캔버스에는 적어도 200px을 남긴다 */}
             <Resizer area="slides" edge="right" value={sizes.slides} min={120}

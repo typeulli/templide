@@ -6,13 +6,19 @@
 
 <p align="center">A markup-based presentation language</p>
 
-templide는 `.tlide` 파일에 발표 자료를 쓰고 PowerPoint(`.pptx`)나 웹 페이지(`.html`)로 내보내는 도구입니다.
+templide는 `.tlide` 파일에 발표 자료를 쓰고 프레젠테이션(ex. `.pptx`, `.html`)이나 문서(ex. `.pdf`)로 내보내는 도구입니다.
 
 스타일과 템플릿을 한 번 정의해 두면 여러 슬라이드에서 다시 쓸 수 있어서, 비슷한 슬라이드를 계속 복사해 붙일 필요가 없습니다. 변수, `if`/`for`, f-string도 쓸 수 있습니다. HTML은 파일 하나로도, 폴더로도 내보낼 수 있습니다. PowerPoint 쪽은 화면 전환과 애니메이션, 도형, 이미지, 비디오와 오디오, 하이퍼링크, 발표자 메모, 숨긴 슬라이드 등을 지원합니다.
 
 편집기는 코드와 캔버스를 나란히 보여 줍니다. 캔버스에서 요소를 옮기거나 크기를 바꾸면 코드가 고쳐지고, 코드를 고치면 캔버스에 바로 반영됩니다. 오류와 경고는 `문제` 탭에 줄 번호와 함께 나옵니다. 편집기 안의 터미널에서는 AI 에이전트를 실행할 수 있고, 에이전트는 MCP로 지금 열려 있는 문서를 읽고 고칩니다.
 
-`#include <std/...>`로 불러 쓰는 표준 라이브러리에는 레이아웃과 flat, material, glassmorphism, neumorphism 같은 위젯 스타일이 들어 있습니다.
+Windows에서는 `.pptx`(`.pptm`, `.ppsx`, `.potx`) 파일을 오른쪽 클릭하고 `templide 불러오기`(영어로 설치하면 `Import with templide`)를 눌러 기존 PowerPoint 자료를 `.tlide`로 바꿀 수 있습니다. 창에서 가져올 슬라이드 마스터, 슬라이드, 요소, 애니메이션을 골라 저장하며, 표와 차트처럼 아직 지원하지 않는 요소는 회색으로 표시되어 고를 수 없습니다.
+
+그림, 비디오, 오디오는 `.tlide` 옆의 `.tasset` 파일에 담깁니다. `.tasset`은 이런 파일을 한데 모은 묶음(zip 형식)이고, 편집기로 넣는 그림과 미디어도 이 묶음에 들어갑니다. 코드에서는 `asset "pics.tasset";`로 불러온 뒤 `asset("logo")`로 쓰거나, `file("pics.tasset/logo.png")`처럼 경로로 바로 가리킵니다.
+
+설정 창(로고를 누르면 열립니다)에서 화면 언어(한국어, English), 단축키, 코드 편집기 모양을 바꿀 수 있습니다.
+
+`#include <std/...>`로 불러 쓰는 표준 라이브러리에는 flat, material, glassmorphism, neumorphism 같은 위젯 스타일이 들어 있습니다.
 
 ## 예제
 
@@ -78,13 +84,19 @@ target web { path = "hello.html"; type = html; }
 ```text
 templide hello.tlide                 # 모든 target을 만든다
 templide hello.tlide --target deck   # 지정한 target만 만든다
+templide hello.tlide --check         # 파일을 쓰지 않고 오류와 경고만 검사한다
+templide hello.tlide --watch         # 문서나 문서가 읽는 파일이 바뀔 때마다 다시 만든다
 templide hello.tlide --ir            # 분석 결과(IR)를 출력한다
 templide hello.tlide --ast           # 구문 트리(AST)를 출력한다
 ```
 
-`--target`은 여러 번 쓸 수 있습니다.
+`--target`은 여러 번 쓸 수 있습니다. `--check`는 오류가 있으면 종료 코드 1을 돌려주고, 경고만 있으면 0을 돌려줍니다. `--watch`는 Ctrl+C로 끝내며 `--check`와 함께 쓸 수도 있습니다.
+
+`type = pdf`인 target은 슬라이드를 Chrome이나 Edge(헤드리스)로 인쇄해 PDF를 만듭니다. 슬라이드 하나가 한 쪽이고, 전환과 애니메이션 없이 모든 개체가 보이며 숨긴 슬라이드는 빠집니다. 둘 중 하나가 설치되어 있어야 하고, 다른 위치에 있으면 `TEMPLIDE_BROWSER` 환경 변수에 실행 파일 경로를 적습니다.
 
 `#include <std/...>`는 컴파일러 옆의 `packages` 폴더에서, `#include "..."`는 `.tlide` 파일이 있는 폴더에서 파일을 찾습니다.
+
+컴파일러는 UTF-8(BOM이 있어도 됩니다)과 BOM이 있는 UTF-16으로 저장된 `.tlide`를 읽습니다. 다른 인코딩이면 오류로 알립니다. 편집기는 EUC-KR 같은 인코딩의 파일도 열고 저장할 수 있습니다. 코드 패널 오른쪽 위의 인코딩 표시에서 `인코딩으로 다시 열기`와 `인코딩으로 저장`을 고르고, 컴파일러가 읽지 못하는 파일은 `UTF-8`로 저장하면 됩니다.
 
 ## 소스에서 빌드
 
@@ -141,14 +153,16 @@ npm run build            # release 실행 파일
 |---|---|
 | `frontend/` | 렉서와 파서 (`.tlide` → AST) |
 | `middleend/` | 의미 분석, 템플릿 펼치기, 단위 변환 (AST → IR) |
-| `backend/` | PPTX, HTML 출력 |
+| `backend/` | PPTX, HTML, PDF 출력 |
+| `importer/` | PowerPoint 파일(`.pptx`) 가져오기 (→ `.tlide`, `.tasset`) |
 | `server/` | 편집기와 통신하는 언어 서버 (`templide --serve`) |
-| `packages/std/` | 표준 라이브러리 (`stddef`, 레이아웃, 위젯) |
-| `libs/` | HTML 출력에 사용되는 `templide.js`와 reveal.js |
+| `packages/std/` | 표준 라이브러리 (`stddef`, 위젯) |
+| `libs/` | HTML, PDF 출력에 사용되는 `templide.js`와 reveal.js |
 | `editor/` | 편집기 (Tauri + React + Monaco) |
-| `tools/` | 라이선스 목록 생성, 전환 효과 보정 도구 |
+| `examples/` | 예제 발표 자료 |
+| `tools/` | 버전 갱신, 라이선스 목록과 `templide.js` 데이터 생성, 전환·무늬 보정 도구 |
 | `assets/` | 아이콘과 설치 화면 이미지 |
 
 ## 라이선스
 
-[MIT License](LICENSE)입니다. 함께 쓰는 오픈소스 라이브러리의 라이선스는 편집기의 로고 메뉴 → `오픈소스 라이선스`에서 볼 수 있습니다.
+[MIT License](LICENSE)입니다. 함께 쓰는 오픈소스 라이브러리의 라이선스는 편집기의 설정 창(로고를 누르면 열립니다) → `정보` → `오픈소스 라이선스`에서 볼 수 있습니다.

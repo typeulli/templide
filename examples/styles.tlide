@@ -1,5 +1,5 @@
 /*
-libs/std/widget의 디자인 스타일을 한 장씩 보여 주는 발표 자료.
+packages/std/widget의 디자인 스타일을 한 장씩 보여 주는 발표 자료.
 글래스모피즘 페이지는 styles_bg.png를 배경으로 쓴다
 */
 #include <std/widget/flat>

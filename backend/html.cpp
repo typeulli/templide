@@ -238,8 +238,8 @@ namespace templide::backend::html {
 
         class Writer {
         public:
-            Writer(const ir::Document& document, const ir::Target& target, std::filesystem::path base_dir, std::filesystem::path libs_dir)
-                : document_(document), target_(target), base_dir_(std::move(base_dir)), libs_dir_(std::move(libs_dir)) {}
+            Writer(const ir::Document& document, const ir::Target& target, std::filesystem::path base_dir, std::filesystem::path libs_dir, bool dry_run = false)
+                : document_(document), target_(target), base_dir_(std::move(base_dir)), libs_dir_(std::move(libs_dir)), dry_run_(dry_run) {}
 
             std::vector<std::string> run() {
                 const std::string deck = build();
@@ -257,9 +257,30 @@ namespace templide::backend::html {
                 return deck;
             }
 
+            // PDF로 인쇄할 html. 슬라이드를 reveal.js 없이 Templide.print로 한 쪽씩 쌓아 그린다. 에러가 있으면 빈 문자열을 돌려준다
+            std::string run_print(std::vector<std::string>& errors) {
+                const std::string deck = build();
+                std::string page;
+                if (errors_.empty()) {
+                    if (const auto script = read_lib("templide.js")) {
+                        const std::string title = target_.title.empty() ? target_.name : target_.title;
+                        // JSON의 '<'는 모두 <로 바뀌어 있다
+                        page = "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"generator\" content=\"templide\">\n"
+                            "<title>" + escape_html(title) + "</title>\n</head>\n<body>\n"
+                            "<script>" + inline_script(*script) + "</script>\n"
+                            "<script type=\"application/json\" id=\"templide-deck\">" + deck + "</script>\n"
+                            "<script>Templide.print(document.body, JSON.parse(document.getElementById(\"templide-deck\").textContent));</script>\n"
+                            "</body>\n</html>\n";
+                    }
+                }
+                errors = errors_;
+                return page;
+            }
+
         private:
             std::string build() {
                 web_ = target_.type == "web";
+                print_ = target_.type == "pdf";
                 read_slide_size();
                 std::map<std::pair<std::size_t, std::size_t>, std::size_t> layout_numbers;
                 Array layouts;
@@ -322,7 +343,9 @@ namespace templide::backend::html {
             const ir::Target& target_;
             std::filesystem::path base_dir_;
             std::filesystem::path libs_dir_;
+            bool dry_run_; // 파일을 쓰지 않고 에러만 알아본다
             bool web_ = false;
+            bool print_ = false; // type = pdf. 전환과 애니메이션이 없는 정적 출력이다
             bool editor_ = false;
             double width_ = default_slide_width;
             double height_ = default_slide_height;
@@ -1047,9 +1070,12 @@ namespace templide::backend::html {
                 }
             }
 
-            // 모든 개체의 위치, 회전, 뒤집기, 링크와 실행 설정
+            // 모든 개체의 위치, 회전, 뒤집기, 링크와 실행 설정, 대체 텍스트
             void common_json(Object& result, const ir::Element& element, const Rect& rect) {
                 result.set("x", rect.x).set("y", rect.y).set("w", rect.width).set("h", rect.height);
+                if (const auto* alt = std::get_if<std::string>(find_property(element, "alt")); alt != nullptr && !alt->empty()) {
+                    result.set("alt", *alt);
+                }
                 if (const auto rotation = optional_number(element, "rotation")) {
                     const double degrees = std::fmod(std::fmod(*rotation, 360) + 360, 360);
                     result.set("r", degrees == 0 ? Json() : Json(degrees));
@@ -1412,8 +1438,8 @@ namespace templide::backend::html {
                 if (slide.transition) {
                     const ir::Transition& transition = *slide.transition;
                     const std::string name = transition.kind + (transition.option.empty() ? "" : "." + transition.option);
-                    if (unsupported_transitions.contains(transition.kind) || unsupported_transitions.contains(name)) {
-                        error(where + ": the html backend does not support transition " + name + "; it only renders in PowerPoint");
+                    if (!print_ && (unsupported_transitions.contains(transition.kind) || unsupported_transitions.contains(name))) {
+                        error(transition.where + ": the html backend does not support transition " + name + "; it only renders in PowerPoint");
                     }
                     result.set("tr", Object()
                                          .set("k", transition.kind)
@@ -1530,6 +1556,9 @@ namespace templide::backend::html {
                     + "<script type=\"application/json\" id=\"templide-deck\">" + deck + "</script>\n"
                     "<script>Templide.mount(document.querySelector(\".reveal\"), JSON.parse(document.getElementById(\"templide-deck\").textContent));</script>\n"
                     "</body>\n</html>\n";
+                if (dry_run_) {
+                    return;
+                }
                 const std::filesystem::path output = resolve(target_.path);
                 if (!web_) {
                     write_file(output, page);
@@ -1572,11 +1601,16 @@ namespace templide::backend::html {
     }
 
     std::vector<std::string> write(const ir::Document& document, const ir::Target& target, const std::filesystem::path& base_dir,
-                                   const std::filesystem::path& libs_dir) {
-        return Writer(document, target, base_dir, libs_dir).run();
+                                   const std::filesystem::path& libs_dir, bool dry_run) {
+        return Writer(document, target, base_dir, libs_dir, dry_run).run();
     }
 
     std::string deck_json(const ir::Document& document, const ir::Target& target, const std::filesystem::path& base_dir, std::vector<std::string>& errors) {
         return Writer(document, target, base_dir, {}).run_editor(errors);
+    }
+
+    std::string print_page(const ir::Document& document, const ir::Target& target, const std::filesystem::path& base_dir,
+                           const std::filesystem::path& libs_dir, std::vector<std::string>& errors) {
+        return Writer(document, target, base_dir, libs_dir).run_print(errors);
     }
 }

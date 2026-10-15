@@ -208,6 +208,8 @@ body.resizing-row, body.resizing-row * { cursor: row-resize !important; user-sel
 .problems-empty { display: flex; align-items: center; gap: 5px; padding: 6px 8px; color: var(--ok); }
 .problems-item { flex: none; display: flex; align-items: flex-start; gap: 6px; padding: 6px 8px; border: none; border-radius: 6px; background: transparent; color: var(--text); font-size: 12px; text-align: left; cursor: pointer; }
 .problems-item:hover { background: var(--hover); }
+.problems-item.static { cursor: default; }
+.problems-item.static:hover { background: transparent; }
 .problems-item svg { flex: none; margin-top: 2px; }
 .problems-item.error svg { color: var(--danger); }
 .problems-item.warning svg { color: var(--warning-text); }
@@ -232,8 +234,14 @@ body.resizing-row, body.resizing-row * { cursor: row-resize !important; user-sel
 .code-status span { display: inline-flex; align-items: center; gap: 5px; }
 .code-status .error { color: var(--danger); }
 .code-status .notice { color: #b26a00; }
-.code-status .warning { color: #b26a00; cursor: help; }
 .code-status .timings { color: #b0b0b8; }
+.code-status .encoding-button { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 6px; border: none; border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.code-status .encoding-button:hover { background: var(--hover); }
+.code-status .encoding-button.lossy { color: #b26a00; }
+.encoding-popup .encoding-menu { display: flex; flex-direction: column; gap: 1px; min-width: 180px; }
+.encoding-popup .encoding-menu button { height: 30px; padding: 0 10px; border: none; border-radius: 5px; background: transparent; text-align: left; font-size: 13px; cursor: pointer; }
+.encoding-popup .encoding-menu button:hover { background: var(--hover); }
+.encoding-list .font-item { font-size: 13px; }
 
 /* 애니메이션 창이 열리면 오른쪽에 한 칸 더 */
 

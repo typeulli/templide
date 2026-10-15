@@ -147,7 +147,7 @@ export type DeckResult = {
     target: string | null;
     width: number;
     height: number;
-    warnings: string[];
+    warnings: PreviewWarning[];      // html 미리보기가 그릴 수 없는 것
     targetWarnings: TargetWarning[]; // 고른 target이 빼고 만드는 것 (pptx의 run(...) 등)
     script: string | null;           // 슬라이드 쇼가 run(...)에 쓰는 script 파일의 경로
     slides: SlideInfo[];
@@ -181,3 +181,6 @@ export type Schema = {
 export type Diagnostic = { range: Range; message: string; severity: number };
 
 export type TargetWarning = Diagnostic & { uri: string };
+
+// 원문의 위치를 알면 uri와 range가 있다 (슬라이드 전환 등)
+export type PreviewWarning = { message: string; uri?: string; range?: Range };

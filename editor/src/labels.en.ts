@@ -17,7 +17,7 @@ export const propertyNames: Record<string, string> = {
     reflection_distance: 'Reflection distance', reflection_blur: 'Reflection blur', bevel: 'Bevel', bevel_width: 'Bevel width', bevel_height: 'Bevel height',
     depth: 'Depth', depth_color: 'Depth color', rotation_x: 'X rotation', rotation_y: 'Y rotation', perspective: 'Perspective', radius: 'Corner radius', flip: 'Flip',
     link: 'Link', action: 'On click', hover_action: 'On hover', action_sound: 'Click sound', hover_sound: 'Hover sound',
-    action_highlight: 'Highlight on click', hover_highlight: 'Highlight on hover',
+    action_highlight: 'Highlight on click', hover_highlight: 'Highlight on hover', alt: 'Alt text',
     padding: 'Padding', padding_left: 'Left padding', padding_top: 'Top padding', padding_right: 'Right padding', padding_bottom: 'Bottom padding',
     autofit: 'Autofit', wrap: 'Wrap text', text_direction: 'Text direction', columns: 'Columns', column_gap: 'Column spacing',
     start: 'Start playback', fullscreen: 'Full screen', loop: 'Loop', rewind: 'Rewind after playing', hide_when_stopped: 'Hide when not playing',

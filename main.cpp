@@ -1,10 +1,15 @@
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <map>
+#include <set>
 #include <sstream>
 #include <string>
 #include <system_error>
+#include <thread>
+#include <variant>
 #include <vector>
 
 #include "backend/backend.h"
@@ -12,6 +17,8 @@
 #include "frontend/parser.h"
 #include "middleend/analyzer.h"
 #include "middleend/library.h"
+#include "middleend/source_text.h"
+#include "middleend/tasset.h"
 #include "server/server.h"
 
 namespace {
@@ -358,14 +365,20 @@ namespace {
     }
 
     int dump_ast(const std::string& path) {
-        std::ifstream file(path, std::ios::binary);
+        std::ifstream file(templide::backend::utf8_path(path), std::ios::binary);
         if (!file) {
             std::cerr << "Cannot open file: " << path << std::endl;
             return 1;
         }
         std::stringstream buffer;
         buffer << file.rdbuf();
-        const std::string source = buffer.str();
+        std::string decode_error;
+        const auto decoded = templide::middleend::decode_source(buffer.str(), decode_error);
+        if (!decoded) {
+            std::cerr << path << ": error: file " << decode_error << std::endl;
+            return 1;
+        }
+        const std::string& source = *decoded;
 
         templide::lexor::Lexor lexer(source);
         templide::parser::Parser parser(path, lexer);
@@ -632,8 +645,8 @@ namespace {
         }
     }
 
-    // 고른 target들(없으면 전부)의 파일을 쓴다
-    int build(const ir::Document& document, const std::vector<std::string>& selected, const std::filesystem::path& base_dir, const std::filesystem::path& libs_dir) {
+    // 고른 target들(없으면 전부)의 파일을 쓴다. check면 파일을 쓰지 않고 에러와 경고만 알아본다
+    int build(const ir::Document& document, const std::vector<std::string>& selected, const std::filesystem::path& base_dir, const std::filesystem::path& libs_dir, bool check) {
         bool failed = false;
         for (const auto& name : selected) {
             const bool exists = std::any_of(document.targets.begin(), document.targets.end(), [&](const ir::Target& target) { return target.name == name; });
@@ -646,6 +659,10 @@ namespace {
             return 1;
         }
         if (document.targets.empty()) {
+            if (check) {
+                std::cout << "no target; only the document was checked\n";
+                return 0;
+            }
             std::cerr << "error: no target to build\n";
             return 1;
         }
@@ -654,7 +671,7 @@ namespace {
                 continue;
             }
             std::vector<std::string> warnings;
-            const auto errors = templide::backend::write_target(document, target, base_dir, libs_dir, warnings);
+            const auto errors = templide::backend::write_target(document, target, base_dir, libs_dir, warnings, check);
             for (const auto& message : warnings) {
                 std::cerr << message << '\n';
             }
@@ -662,68 +679,251 @@ namespace {
                 std::cerr << "error: target " << target.name << ": " << message << '\n';
             }
             if (errors.empty()) {
-                std::cout << target.name << ": wrote " << target.path << '\n';
+                std::cout << target.name << (check ? ": ok" : ": wrote " + target.path) << '\n';
             } else {
                 failed = true;
             }
         }
         return failed ? 1 : 0;
     }
+
+    // 문서가 있는 폴더. target의 상대 경로는 여기 기준이다
+    std::filesystem::path base_dir_of(const std::string& path) {
+        std::error_code error;
+        const auto document = templide::backend::utf8_path(path);
+        const auto absolute = std::filesystem::absolute(document, error);
+        return (error ? document : absolute).parent_path();
+    }
+
+    // 문서가 읽는 파일들. --watch가 바뀌었는지 보는 대상이다. .tasset 안의 파일은 그 묶음 파일로 본다
+    struct Dependencies {
+        std::filesystem::path base_dir;
+        std::set<std::filesystem::path> files;
+
+        void add(const std::filesystem::path& file) {
+            std::error_code error;
+            const auto absolute = std::filesystem::absolute(file, error);
+            files.insert((error ? file : absolute).lexically_normal());
+        }
+
+        // 문서에 적은 파일 경로. 상대 경로는 문서가 있는 폴더 기준이다
+        void add_written(const std::string& written) {
+            if (written.empty()) {
+                return;
+            }
+            std::filesystem::path file = templide::backend::utf8_path(written);
+            if (!file.is_absolute()) {
+                file = base_dir / file;
+            }
+            std::error_code error;
+            if (!std::filesystem::exists(file, error)) {
+                if (const auto inside = templide::tasset::split(file)) {
+                    file = inside->first;
+                }
+            }
+            add(file);
+        }
+
+        void add_value(const ir::Value& value) {
+            if (const auto* image = std::get_if<ir::Image>(&value)) {
+                add_written(image->path);
+            }
+        }
+
+        void add_elements(const std::vector<ir::Element>& elements) {
+            for (const auto& element : elements) {
+                for (const auto& property : element.properties) {
+                    add_value(property.value);
+                    if (property.name == "action_sound" || property.name == "hover_sound") {
+                        if (const auto* sound = std::get_if<std::string>(&property.value)) {
+                            add_written(*sound);
+                        }
+                    }
+                }
+                add_elements(element.children);
+            }
+        }
+
+        void add_document(const ir::Document& document) {
+            for (const auto& master : document.masters) {
+                for (const auto& layout : master.layouts) {
+                    if (layout.background) {
+                        add_value(*layout.background);
+                    }
+                    add_elements(layout.elements);
+                }
+            }
+            for (const auto& slide : document.slides) {
+                if (slide.background) {
+                    add_value(*slide.background);
+                }
+                if (slide.transition_sound) {
+                    add_written(*slide.transition_sound);
+                }
+                add_elements(slide.elements);
+            }
+            for (const auto& target : document.targets) {
+                add_written(target.script);
+            }
+        }
+    };
+
+    enum class Mode { BUILD, AST, IR };
+
+    // 문서 하나를 분석해 target 파일을 만들거나(--check면 검사만 한다) AST, IR을 출력한다.
+    // dependencies가 있으면 읽은 파일들을 거기에 모은다. 분석에 실패해도 읽은 .tlide 파일은 모은다
+    int compile(const std::string& path, Mode mode, const std::vector<std::string>& selected, bool check, const char* program, Dependencies* dependencies) {
+        if (mode == Mode::AST) {
+            return dump_ast(path);
+        }
+        const auto result = templide::middleend::analyze(templide::backend::utf8_path(path), templide::middleend::default_packages_dir(program));
+        if (dependencies != nullptr) {
+            for (const auto& [file, text] : result.sources) {
+                dependencies->add(templide::backend::utf8_path(file));
+            }
+            for (const auto& asset : result.symbols.assets) {
+                dependencies->add(templide::backend::utf8_path(asset.bundle));
+            }
+            if (result.document) {
+                dependencies->add_document(*result.document);
+            }
+        }
+        const auto report = [](const templide::middleend::Diagnostic& diagnostic, const char* kind) {
+            std::cerr << diagnostic.path;
+            if (diagnostic.line > 0) {
+                std::cerr << ':' << diagnostic.line << ':' << diagnostic.column;
+            }
+            std::cerr << ": " << kind << ": " << diagnostic.message << '\n';
+        };
+        for (const auto& diagnostic : result.diagnostics) {
+            report(diagnostic, "error");
+        }
+        for (const auto& diagnostic : result.warnings) {
+            report(diagnostic, "warning");
+        }
+        if (!result.document) {
+            return 1;
+        }
+        if (mode == Mode::IR) {
+            print_document(*result.document);
+            return 0;
+        }
+        return build(*result.document, selected, base_dir_of(path), templide::middleend::default_libs_dir(program), check);
+    }
+
+    // 파일의 크기와 수정 시각. 없는 파일은 exists가 false다
+    struct Stamp {
+        bool exists = false;
+        std::filesystem::file_time_type time{};
+        std::uintmax_t size = 0;
+        bool operator==(const Stamp&) const = default;
+    };
+
+    std::map<std::filesystem::path, Stamp> snapshot(const std::set<std::filesystem::path>& files) {
+        std::map<std::filesystem::path, Stamp> result;
+        for (const auto& file : files) {
+            std::error_code error;
+            Stamp stamp;
+            stamp.time = std::filesystem::last_write_time(file, error);
+            if (!error) {
+                stamp.exists = true;
+                stamp.size = std::filesystem::file_size(file, error);
+            }
+            result[file] = stamp;
+        }
+        return result;
+    }
+
+    // 문서와 그것이 읽는 파일이 바뀔 때마다 다시 만든다. Ctrl+C로 끝낸다. 저장이 끝날 때까지(수정이 멈출 때까지) 기다렸다가 만든다
+    int watch(const std::string& path, const std::vector<std::string>& selected, bool check, const char* program) {
+        std::set<std::filesystem::path> files;
+        const auto cycle = [&]() {
+            Dependencies dependencies{base_dir_of(path), {}};
+            dependencies.add(templide::backend::utf8_path(path));
+            compile(path, Mode::BUILD, selected, check, program, &dependencies);
+            files = std::move(dependencies.files);
+            std::cout << std::flush;
+            std::cerr << std::flush;
+        };
+        std::cout << "watching " << path << " (Ctrl+C to stop)\n" << std::flush;
+        cycle();
+        auto stamps = snapshot(files);
+        while (true) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+            auto now = snapshot(files);
+            if (now == stamps) {
+                continue;
+            }
+            std::vector<std::string> changed;
+            for (const auto& [file, stamp] : now) {
+                const auto before = stamps.find(file);
+                if (before == stamps.end() || !(before->second == stamp)) {
+                    changed.push_back(templide::backend::display(file.filename()));
+                }
+            }
+            do {
+                stamps = now;
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                now = snapshot(files);
+            } while (now != stamps);
+            std::cout << "changed:";
+            for (const auto& name : changed) {
+                std::cout << ' ' << name;
+            }
+            std::cout << '\n';
+            cycle();
+            stamps = snapshot(files);
+        }
+    }
 }
 
-// templide [--ast | --ir] [--target <name>]... [file]
+// templide [--ast | --ir | --check] [--watch] [--target <name>]... [file]
 // templide --serve
 // 기본은 target 파일을 만든다. --ast는 parser의 AST를, --ir은 middle end의 IR을 출력한다.
+// --check는 파일을 쓰지 않고 에러와 경고만 알아본다(에러가 있으면 종료 코드 1). --watch는 문서와 그것이 읽는 파일이 바뀔 때마다 다시 만든다.
 // --serve는 편집기와 stdin/stdout으로 대화하는 언어 서버다 (server/server.h)
 int main(int argc, char* argv[]) {
     if (argc == 2 && std::string(argv[1]) == "--serve") {
         return templide::server::serve(templide::middleend::default_packages_dir(argv[0]), templide::middleend::default_libs_dir(argv[0]));
     }
-    enum class Mode { BUILD, AST, IR } mode = Mode::BUILD;
+    templide::middleend::use_utf8_console();
+    Mode mode = Mode::BUILD;
+    bool check = false;
+    bool watching = false;
     std::vector<std::string> selected;
-    std::string path = "C:\\Users\\USER\\Desktop\\templide\\example.tlide";
-    for (int i = 1; i < argc; ++i) {
-        const std::string argument = argv[i];
+    std::string path;
+    const std::vector<std::string> arguments = templide::middleend::command_line_arguments(argc, argv);
+    for (std::size_t i = 1; i < arguments.size(); ++i) {
+        const std::string& argument = arguments[i];
         if (argument == "--ast") {
             mode = Mode::AST;
         } else if (argument == "--ir") {
             mode = Mode::IR;
+        } else if (argument == "--check") {
+            check = true;
+        } else if (argument == "--watch") {
+            watching = true;
         } else if (argument == "--target") {
-            if (i + 1 >= argc) {
+            if (i + 1 >= arguments.size()) {
                 std::cerr << "error: --target needs a target name\n";
                 return 1;
             }
-            selected.emplace_back(argv[++i]);
+            selected.push_back(arguments[++i]);
         } else {
             path = argument;
         }
     }
-    if (mode == Mode::AST) {
-        return dump_ast(path);
-    }
-
-    const auto result = templide::middleend::analyze(path, templide::middleend::default_packages_dir(argv[0]));
-    const auto report = [](const templide::middleend::Diagnostic& diagnostic, const char* kind) {
-        std::cerr << diagnostic.path;
-        if (diagnostic.line > 0) {
-            std::cerr << ':' << diagnostic.line << ':' << diagnostic.column;
-        }
-        std::cerr << ": " << kind << ": " << diagnostic.message << '\n';
-    };
-    for (const auto& diagnostic : result.diagnostics) {
-        report(diagnostic, "error");
-    }
-    for (const auto& diagnostic : result.warnings) {
-        report(diagnostic, "warning");
-    }
-    if (!result.document) {
+    if (path.empty()) {
+        std::cerr << "usage: templide [--ast | --ir | --check] [--watch] [--target <name>]... <file>\n"
+                  << "       templide --serve\n";
         return 1;
     }
-    if (mode == Mode::IR) {
-        print_document(*result.document);
-        return 0;
+    if ((check || watching) && mode != Mode::BUILD) {
+        std::cerr << "error: --check and --watch cannot be used with --ast or --ir\n";
+        return 1;
     }
-    std::error_code error;
-    const auto absolute = std::filesystem::absolute(path, error);
-    return build(*result.document, selected, (error ? std::filesystem::path(path) : absolute).parent_path(), templide::middleend::default_libs_dir(argv[0]));
+    if (watching) {
+        return watch(path, selected, check, argv[0]);
+    }
+    return compile(path, mode, selected, check, argv[0], nullptr);
 }

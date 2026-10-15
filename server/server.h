@@ -12,6 +12,7 @@
 //   deck은 templide.js가 그리는 JSON이고 element마다 "eid"에 id가 있다. elements는 id -> 출처와 지금 값이다.
 //   slides는 slide마다 블록의 출처, 재생 차례대로인 애니메이션, 전환, 속성(background 등), 발표자 메모, 검토 메모이고,
 //   document는 고른 target의 title, author, loop와 그 출처다.
+//   warnings는 html 미리보기가 그릴 수 없는 것 [{message, uri?, range?}]이다. 원문의 위치를 알면(슬라이드 전환 등) uri와 range가 있다.
 //   출처는 {kind: literal | block | locked, uri, range, unit, name, reason, integer, statement}이다. statement면 대입을 지울 수 있다.
 // templide/schema {uri} -> object, template, enum, 공통 속성, 전환, 애니메이션 목록, asset 문과 이름 붙인 그림/미디어 (마지막으로 분석에 성공한 문서의 것)
 // templide/edit {uri, target?, edits: [...]}

@@ -915,6 +915,18 @@ namespace templide::importer {
                 apply("a:hlinkHover", "hover_action", "hover_sound", "hover_highlight");
             }
 
+            // cNvPr의 대체 텍스트(descr)
+            static void add_description(Properties& props, const Shape& shape) {
+                for (const char* nv : {"p:nvSpPr", "p:nvPicPr", "p:nvCxnSpPr"}) {
+                    if (const auto* found = shape.node->path({nv, "p:cNvPr"})) {
+                        if (const std::string description = found->get("descr"); !description.empty()) {
+                            props.add("alt", quote(description));
+                        }
+                        return;
+                    }
+                }
+            }
+
             // ---- 글
 
             struct Piece {
@@ -1622,6 +1634,7 @@ namespace templide::importer {
                 add_paint(props, chain, scope, object, where);
                 add_effects(props, chain, scope, where);
                 add_actions(props, shape, scope, where);
+                add_description(props, shape);
                 add_animations(props.lines, shape.id, scope);
                 return block("put " + object + name_of(shape, scope), props.lines, indent);
             }
@@ -1659,6 +1672,7 @@ namespace templide::importer {
                 add_paint(props, chain, scope, "image", where);
                 add_effects(props, chain, scope, where);
                 add_actions(props, shape, scope, where);
+                add_description(props, shape);
                 add_animations(props.lines, shape.id, scope);
                 return block("put image" + name_of(shape, scope), props.lines, indent);
             }
@@ -1698,6 +1712,7 @@ namespace templide::importer {
                 Properties props;
                 props.add("data", media(relationship->target, video ? "video" : "audio"));
                 add_frame(props, frame);
+                add_description(props, shape);
                 if (video) {
                     if (const auto* blip = shape.node->path({"p:blipFill", "a:blip"})) {
                         if (const auto* poster = scope.part->rel(blip->get("r:embed")); poster != nullptr && !poster->external && supported_image(poster->target)) {
@@ -1797,6 +1812,7 @@ namespace templide::importer {
                 add_paint(props, chain, scope, "line", where);
                 add_effects(props, chain, scope, where);
                 add_actions(props, shape, scope, where);
+                add_description(props, shape);
                 add_animations(props.lines, shape.id, scope);
                 return block("put line" + name_of(shape, scope), props.lines, indent);
             }
@@ -1856,6 +1872,7 @@ namespace templide::importer {
                 add_paint(props, chain, scope, "connector", where);
                 add_effects(props, chain, scope, where);
                 add_actions(props, shape, scope, where);
+                add_description(props, shape);
                 add_animations(props.lines, shape.id, scope);
                 return block("put connector" + name_of(shape, scope), props.lines, indent);
             }
@@ -2054,6 +2071,7 @@ namespace templide::importer {
                 add_paint(props, chain, scope, "freeform", where);
                 add_effects(props, chain, scope, where);
                 add_actions(props, shape, scope, where);
+                add_description(props, shape);
                 add_animations(props.lines, shape.id, scope);
                 std::string result = block("put freeform" + name_of(shape, scope), props.lines, indent);
                 // 자유형에는 글이 없으므로 같은 자리에 글상자를 겹친다

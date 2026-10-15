@@ -333,8 +333,8 @@ namespace templide::backend::pptx {
 
         class Writer {
         public:
-            Writer(const ir::Document& document, const ir::Target& target, std::filesystem::path base_dir)
-                : document_(document), target_(target), base_dir_(std::move(base_dir)) {}
+            Writer(const ir::Document& document, const ir::Target& target, std::filesystem::path base_dir, bool dry_run)
+                : document_(document), target_(target), base_dir_(std::move(base_dir)), dry_run_(dry_run) {}
 
             std::vector<std::string> run() {
                 read_slide_size();
@@ -399,6 +399,7 @@ namespace templide::backend::pptx {
             const ir::Document& document_;
             const ir::Target& target_;
             std::filesystem::path base_dir_;
+            bool dry_run_; // 파일을 쓰지 않고 에러만 알아본다
             Emu slide_width_ = default_slide_width;
             Emu slide_height_ = default_slide_height;
             bool has_notes_ = false;
@@ -972,13 +973,19 @@ namespace templide::backend::pptx {
                 return xml;
             }
 
+            // 대체 텍스트(alt)를 cNvPr의 descr 속성으로. 없거나 비었으면 빈 문자열
+            std::string description_attribute(const ir::Element& element) {
+                const auto* alt = std::get_if<std::string>(find_property(element, "alt"));
+                return alt != nullptr && !alt->empty() ? attribute("descr", *alt) : "";
+            }
+
             // cNvPr. 이름을 붙이지 않았으면 PowerPoint처럼 "종류 번호"로 짓는다. 링크나 실행 설정이 있으면 누르거나 마우스를 올릴 때 그 일을 한다
             std::string cnvpr_xml(int id, const ir::Element& element, const std::string& label, const Common& common) {
                 const std::string name = element.name.empty() || element.generated_name ? label + " " + std::to_string(id - 1) : element.name;
                 const std::optional<ir::Action> click = common.link ? std::optional<ir::Action>(ir::Action{"link", *common.link, "", {}, ""}) : common.action;
                 const std::string link = interaction_xml("a:hlinkClick", click, common.action_sound, common.action_highlight, common.where + ", action_sound")
                     + interaction_xml("a:hlinkHover", common.hover_action, common.hover_sound, common.hover_highlight, common.where + ", hover_sound");
-                return "<p:cNvPr" + attribute("id", id) + attribute("name", name) + (link.empty() ? "/>" : ">" + link + "</p:cNvPr>");
+                return "<p:cNvPr" + attribute("id", id) + attribute("name", name) + description_attribute(element) + (link.empty() ? "/>" : ">" + link + "</p:cNvPr>");
             }
 
             // bodyPr. text_box는 PowerPoint의 글상자처럼 줄을 바꾸고 크기를 맞추지 않는다
@@ -1203,7 +1210,7 @@ namespace templide::backend::pptx {
                     extras += "<p14:fade" + (fade_in > 0 ? attribute("in", fade_in) : "") + (fade_out > 0 ? attribute("out", fade_out) : "") + "/>";
                 }
                 const std::string name = element.name.empty() || element.generated_name ? std::string(video ? "Video " : "Audio ") + std::to_string(id - 1) : element.name;
-                return "<p:pic><p:nvPicPr><p:cNvPr" + attribute("id", id) + attribute("name", name) + "><a:hlinkClick r:id=\"\" action=\"ppaction://media\"/></p:cNvPr>"
+                return "<p:pic><p:nvPicPr><p:cNvPr" + attribute("id", id) + attribute("name", name) + description_attribute(element) + "><a:hlinkClick r:id=\"\" action=\"ppaction://media\"/></p:cNvPr>"
                     "<p:cNvPicPr><a:picLocks noChangeAspect=\"1\"/></p:cNvPicPr><p:nvPr>" + (video ? "<a:videoFile" : "<a:audioFile") + attribute("r:link", link_id) + "/>"
                     "<p:extLst><p:ext uri=\"{DAA4B4D4-6D71-4841-9C94-3DE7FCFB9230}\"><p14:media" + attribute("xmlns:p14", extension_namespaces.at("p14")) + attribute("r:embed", media_id)
                     + (extras.empty() ? "/>" : ">" + extras + "</p14:media>") + "</p:ext></p:extLst></p:nvPr></p:nvPicPr>"
@@ -2675,6 +2682,10 @@ namespace templide::backend::pptx {
                     error("cannot create a zip archive");
                     return;
                 }
+                if (dry_run_) {
+                    mz_free(buffer);
+                    return;
+                }
 
                 const std::filesystem::path output = resolve(target_.path);
                 std::error_code error_code;
@@ -2691,7 +2702,7 @@ namespace templide::backend::pptx {
         };
     }
 
-    std::vector<std::string> write(const ir::Document& document, const ir::Target& target, const std::filesystem::path& base_dir) {
-        return Writer(document, target, base_dir).run();
+    std::vector<std::string> write(const ir::Document& document, const ir::Target& target, const std::filesystem::path& base_dir, bool dry_run) {
+        return Writer(document, target, base_dir, dry_run).run();
     }
 }

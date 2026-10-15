@@ -213,6 +213,7 @@ namespace templide::ir {
         std::string option; // 옵션이 없는 전환은 빈 문자열
         std::optional<Number> duration;
         Origin source;      // transition 문장(BLOCK)
+        std::string where;  // 전환 종류를 적은 곳(파일:줄:칸). backend가 이 전환을 그리지 못할 때 알리는 데 쓴다
     };
 
     // animate 문장 하나. category는 enter, emphasis, exit, move, media(play, pause, stop)

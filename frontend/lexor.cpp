@@ -119,7 +119,14 @@ namespace templide::lexor {
             case '>': return make_token(TokenType::GT);
             case '@': return make_token(TokenType::AT);
             case '#': return make_token(TokenType::HASH);
-            default: return make_token(TokenType::UNKNOWN);
+            default:
+                // 한글이나 이모지처럼 여러 바이트인 글자는 통째로 한 토큰으로 한다. 오류 메시지에 글자의 일부만 나오지 않게 한다
+                if (static_cast<unsigned char>(c) >= 0xC0) {
+                    while (!at_end() && (static_cast<unsigned char>(peek()) & 0xC0) == 0x80) {
+                        advance();
+                    }
+                }
+                return make_token(TokenType::UNKNOWN);
         }
     }
 

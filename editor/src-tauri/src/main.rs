@@ -12,6 +12,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::{Emitter, Manager, State};
 
+mod encoding;
 mod mcp;
 mod settings;
 
@@ -183,16 +184,6 @@ fn lsp_send(compiler: State<Compiler>, body: String) -> Result<(), String> {
     let stdin = &mut running.as_mut().ok_or("the compiler is not running")?.stdin;
     write!(stdin, "Content-Length: {}\r\n\r\n{}", body.len(), body).map_err(|e| e.to_string())?;
     stdin.flush().map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn read_text(path: String) -> Result<String, String> {
-    std::fs::read_to_string(&path).map_err(|e| format!("{path}: {e}"))
-}
-
-#[tauri::command]
-fn write_text(path: String, text: String) -> Result<(), String> {
-    std::fs::write(&path, text).map_err(|e| format!("{path}: {e}"))
 }
 
 // 그림 파일을 data URL로 (화면에서 크기를 잴 때 쓴다)
@@ -759,7 +750,7 @@ fn main() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![lsp_send, compiler_info, compiler_use, settings::settings_load, settings::settings_save, settings::settings_path, read_text, write_text, open_files, export_file, import_files, open_in_editor, path_exists, mark, read_data_url, open_path, agent_start, agent_write, agent_resize, agent_stop, watch_file, unwatch_file, system_fonts, mcp::mcp_set_tools, mcp::mcp_reply, mcp::mcp_config])
+        .invoke_handler(tauri::generate_handler![lsp_send, compiler_info, compiler_use, settings::settings_load, settings::settings_save, settings::settings_path, encoding::read_text, encoding::write_text, open_files, export_file, import_files, open_in_editor, path_exists, mark, read_data_url, open_path, agent_start, agent_write, agent_resize, agent_stop, watch_file, unwatch_file, system_fonts, mcp::mcp_set_tools, mcp::mcp_reply, mcp::mcp_config])
         .build(tauri::generate_context!())
         .expect("error while running templide editor");
     app.run(move |_, event| {

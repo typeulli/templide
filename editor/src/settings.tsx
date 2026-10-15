@@ -13,6 +13,7 @@ import logo from '../../assets/icon/templide.svg';
 import license from '../../LICENSE?raw';
 import { agents } from './Agents';
 import { languages, t, useLang, type LanguageSetting } from './i18n';
+import { encodingHint, encodingLabel, encodingNames } from './encodings';
 import { editorLimits, initSettings, resetSettings, updateSettings, useSettings } from './settings';
 import { ShortcutSettings } from './ShortcutSettings';
 import './styles.css';
@@ -74,6 +75,14 @@ function GeneralPage() {
             </Row>
             <Row title={t('코드 패널을 펼친 채로 시작')} hint={t('파일을 열 때 아래의 코드 패널을 펼쳐 둡니다.')}>
                 <Switch checked={settings.general.codePanelOpen} onChange={(checked) => updateSettings((next) => ({ ...next, general: { ...next.general, codePanelOpen: checked } }))} />
+            </Row>
+            <Row title={t('기본 인코딩')} hint={t('BOM이 없는 파일을 열 때 쓰는 인코딩입니다. 열린 파일의 인코딩은 코드 패널 오른쪽 위의 인코딩 표시를 눌러 바꿀 수 있습니다.')}>
+                <select value={settings.general.defaultEncoding} onChange={(event) => updateSettings((next) => ({ ...next, general: { ...next.general, defaultEncoding: event.target.value } }))}>
+                    {encodingNames.map((name) => <option key={name} value={name}>{`${encodingLabel(name)} (${encodingHint(name)})`}</option>)}
+                </select>
+            </Row>
+            <Row title={t('인코딩 자동 추측')} hint={t('BOM이 없고 UTF-8이 아닌 파일의 인코딩을 추측해서 엽니다. 추측이 틀릴 수 있으므로 열 때 알려 줍니다.')}>
+                <Switch checked={settings.general.autoGuessEncoding} onChange={(checked) => updateSettings((next) => ({ ...next, general: { ...next.general, autoGuessEncoding: checked } }))} />
             </Row>
         </>
     );

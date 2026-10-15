@@ -9,9 +9,10 @@
 
 namespace templide::backend {
     // target 하나의 결과 파일을 쓴다. 상대 경로는 base_dir 기준이다. libs_dir에는 html 출력에 넣는 templide.js와 reveal.js가 있다.
-    // 실패하면 에러 메시지를 돌려준다. 그 target에서 할 수 없어 빼고 만든 것은 warnings에 넣는다
+    // 실패하면 에러 메시지를 돌려준다. 그 target에서 할 수 없어 빼고 만든 것은 warnings에 넣는다.
+    // dry_run이면 파일을 쓰지 않고(pdf는 브라우저도 부르지 않고) 에러와 경고만 알아본다
     std::vector<std::string> write_target(const ir::Document& document, const ir::Target& target, const std::filesystem::path& base_dir,
-                                          const std::filesystem::path& libs_dir, std::vector<std::string>& warnings);
+                                          const std::filesystem::path& libs_dir, std::vector<std::string>& warnings, bool dry_run = false);
 
     // target이 할 수 없어 빼고 만드는 것. where는 원문 위치(파일:줄:칸)다
     struct Warning {

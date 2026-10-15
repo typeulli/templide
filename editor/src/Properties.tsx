@@ -42,6 +42,7 @@ const sections = (): [string, string[]][] => [
     [t('네온, 가장자리, 반사'), ['glow', 'glow_size', 'soft_edge', 'reflection', 'reflection_size', 'reflection_distance', 'reflection_blur']],
     [t('3차원'), ['bevel', 'bevel_width', 'bevel_height', 'depth', 'depth_color', 'rotation_x', 'rotation_y', 'perspective']],
     [t('링크와 실행 설정'), ['link', 'action', 'action_sound', 'action_highlight', 'hover_action', 'hover_sound', 'hover_highlight']],
+    [t('접근성'), ['alt']],
 ];
 
 // 세부값은 기본값(앞의 속성)이 있어야 쓸 수 있다 (컴파일러 규칙)
@@ -172,6 +173,9 @@ function PropertyList({ deck, schema, page, id, info, pickers, readSource, onSet
         }
         if (name === 'action_sound' || name === 'hover_sound') {
             return <FileField {...common} pick={pickers.sound} />;
+        }
+        if (name === 'alt') {
+            return <TextField {...common} multiline />;
         }
         switch (v.type) {
             case 'int':

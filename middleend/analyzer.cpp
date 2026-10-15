@@ -1,5 +1,6 @@
 #include "analyzer.h"
 #include "geometry.h"
+#include "source_text.h"
 #include "tasset.h"
 #include "color.h"
 
@@ -879,7 +880,7 @@ namespace templide::middleend {
                     builtin_names_.insert(name);
                 }
                 add_builtin_enum("font_weight", {"normal", "bold"});
-                add_builtin_enum("target_type", {"pptx", "html", "web"});
+                add_builtin_enum("target_type", {"pptx", "html", "web", "pdf"});
                 add_builtin_enum("angle_convention", {"powerpoint", "css"});
                 add_builtin_enum("text_align", {"left", "center", "right", "justify"});
                 add_builtin_enum("font_style", {"normal", "italic"});
@@ -971,6 +972,8 @@ namespace templide::middleend {
                     {"hover_sound", Type{Kind::Audio}, nullptr, true},
                     {"action_highlight", Type{Kind::Bool}, nullptr, true},
                     {"hover_highlight", Type{Kind::Bool}, nullptr, true},
+                    // 대체 텍스트. 화면 낭독기가 읽는다
+                    {"alt", Type{Kind::String}, nullptr, true},
                 };
                 for (int i = 1; i <= 8; ++i) {
                     common_properties_.push_back({"adj" + std::to_string(i), Type{Kind::Float}, nullptr, true});
@@ -1233,7 +1236,17 @@ namespace templide::middleend {
                     }
                     std::stringstream buffer;
                     buffer << file.rdbuf();
-                    text = buffer.str();
+                    std::string decode_error;
+                    auto decoded = decode_source(buffer.str(), decode_error);
+                    if (!decoded) {
+                        if (include != nullptr) {
+                            error(include->token, path.string() + " " + decode_error);
+                        } else {
+                            diagnostics_.push_back({path.string(), 0, 0, path.string() + " " + decode_error});
+                        }
+                        return;
+                    }
+                    text = std::move(*decoded);
                 }
                 const std::filesystem::path relative = key.lexically_relative(file_key(packages_dir_));
                 sources_.push_back({path.string(), std::move(text), !relative.empty() && *relative.begin() != "..", path});
@@ -3141,6 +3154,7 @@ namespace templide::middleend {
             ir::Transition build_transition(const ast::ASTTransition* node, const Env& env) {
                 const std::string& kind = node->kind->name;
                 ir::Transition transition{kind, node->option != nullptr ? node->option->name : transition_options().at(kind).front(), std::nullopt};
+                transition.where = where_of(node->kind->token);
                 if (node->duration != nullptr) {
                     transition.duration = as_number(evaluate(node->duration, env, Type{Kind::Float}));
                     check_number(*transition.duration, Rule{Measure::Duration, 0}, "'duration'", location(node->duration));

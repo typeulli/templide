@@ -9,7 +9,8 @@
 #include <vector>
 
 namespace templide::backend::pptx {
-    std::vector<std::string> write(const ir::Document& document, const ir::Target& target, const std::filesystem::path& base_dir);
+    // dry_run이면 파일을 쓰지 않고 에러만 알아본다
+    std::vector<std::string> write(const ir::Document& document, const ir::Target& target, const std::filesystem::path& base_dir, bool dry_run = false);
 
     // pattern(...)의 종류 -> PowerPoint의 무늬 이름과 앞색이 차지하는 비율. pptx 불러오기도 거꾸로 쓴다
     const std::map<std::string, std::pair<std::string, double>>& pattern_presets();

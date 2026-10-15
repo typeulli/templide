@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Lsp, pathToUri } from './lsp';
 import { initSettings } from './settings';
+import { readTextFile } from './textFile';
 import { ExportDialog, type BuildResult, type ExportTarget } from './ExportDialog';
 import './styles.css';
 import { t } from './i18n';
@@ -15,7 +16,7 @@ async function load(uri: string, path: string) {
     await lsp.start();
     await lsp.request('initialize', { processId: null, rootUri: null, capabilities: {} });
     lsp.notify('initialized', {});
-    const text = await invoke<string>('read_text', { path });
+    const { text } = await readTextFile(path);
     lsp.notify('textDocument/didOpen', { textDocument: { uri, languageId: 'tlide', version: 1, text } });
     return lsp.request<{ targets?: ExportTarget[]; error?: string }>('templide/targets', { uri });
 }

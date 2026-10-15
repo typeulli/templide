@@ -1,6 +1,7 @@
 #include "backend.h"
 
 #include "html.h"
+#include "pdf.h"
 #include "pptx.h"
 #include "../middleend/tasset.h"
 
@@ -12,15 +13,18 @@
 
 namespace templide::backend {
     std::vector<std::string> write_target(const ir::Document& document, const ir::Target& target, const std::filesystem::path& base_dir,
-                                          const std::filesystem::path& libs_dir, std::vector<std::string>& warnings) {
+                                          const std::filesystem::path& libs_dir, std::vector<std::string>& warnings, bool dry_run) {
         for (const auto& warning : target_warnings(document, target)) {
             warnings.push_back(warning.where + ": warning: " + warning.message);
         }
         if (target.type == "pptx") {
-            return pptx::write(document, target, base_dir);
+            return pptx::write(document, target, base_dir, dry_run);
         }
         if (target.type == "html" || target.type == "web") {
-            return html::write(document, target, base_dir, libs_dir);
+            return html::write(document, target, base_dir, libs_dir, dry_run);
+        }
+        if (target.type == "pdf") {
+            return pdf::write(document, target, base_dir, libs_dir, dry_run);
         }
         return {"Unsupported target type: " + target.type};
     }
@@ -28,14 +32,16 @@ namespace templide::backend {
     std::vector<Warning> target_warnings(const ir::Document& document, const ir::Target& target) {
         std::vector<Warning> result;
         const bool pptx = target.type == "pptx";
+        // pdf는 JS 함수를 부르는 곳이 없는 정적 출력이라 pptx처럼 run(...)과 script를 쓰지 못한다
+        const bool no_script = pptx || target.type == "pdf";
         const auto add = [&](const std::string& where, const std::string& message) {
             if (std::none_of(result.begin(), result.end(), [&](const Warning& each) { return each.where == where && each.message == message; })) {
                 result.push_back({where, message});
             }
         };
         const auto check = [&](const ir::Action& action) {
-            if (pptx && action.kind == "run") {
-                add(action.where, "run(\"" + action.target + "\") calls a JS function, which only works in html and web; the pptx target '" + target.name + "' ignores it");
+            if (no_script && action.kind == "run") {
+                add(action.where, "run(\"" + action.target + "\") calls a JS function, which only works in html and web; the " + target.type + " target '" + target.name + "' ignores it");
             } else if (!pptx && (action.kind == "program" || action.kind == "macro")) {
                 add(action.where, action.kind + "(\"" + action.target + "\") only works in PowerPoint; the " + target.type + " target '" + target.name + "' ignores it");
             }
@@ -63,8 +69,8 @@ namespace templide::backend {
                 check_elements(element.children);
             }
         };
-        if (pptx && !target.script.empty()) {
-            add(target.script_where, "script is only loaded by html and web targets; the pptx target '" + target.name + "' ignores it");
+        if (no_script && !target.script.empty()) {
+            add(target.script_where, "script is only loaded by html and web targets; the " + target.type + " target '" + target.name + "' ignores it");
         }
         for (const std::size_t index : target.masters) {
             for (const auto& layout : document.masters.at(index).layouts) {

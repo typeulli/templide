@@ -18,7 +18,7 @@ export const propertyNames: Record<string, string> = {
     reflection_distance: '반사 거리', reflection_blur: '반사 흐림', bevel: '입체 테두리', bevel_width: '테두리 너비', bevel_height: '테두리 높이',
     depth: '깊이', depth_color: '깊이 색', rotation_x: 'X 회전', rotation_y: 'Y 회전', perspective: '원근', radius: '모서리 반지름', flip: '뒤집기',
     link: '링크', action: '누를 때', hover_action: '마우스를 올릴 때', action_sound: '누를 때 소리', hover_sound: '올릴 때 소리',
-    action_highlight: '누를 때 강조', hover_highlight: '올릴 때 강조',
+    action_highlight: '누를 때 강조', hover_highlight: '올릴 때 강조', alt: '대체 텍스트',
     padding: '안쪽 여백', padding_left: '왼쪽 여백', padding_top: '위 여백', padding_right: '오른쪽 여백', padding_bottom: '아래 여백',
     autofit: '자동 맞춤', wrap: '줄 바꿈', text_direction: '글자 방향', columns: '단 수', column_gap: '단 간격',
     start: '재생 시작', fullscreen: '전체 화면', loop: '반복', rewind: '끝나면 되감기', hide_when_stopped: '재생하지 않을 때 숨기기',

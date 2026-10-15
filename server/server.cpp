@@ -708,21 +708,44 @@ namespace templide::server {
                 return range_of(compiled, {diagnostic.path, begin, end});
             }
 
+            // "파일:줄:칸"으로 적은 위치를 진단으로. 그 모양이 아니면 nullopt
+            static std::optional<middleend::Diagnostic> diagnostic_at(const std::string& where, const std::string& message) {
+                const std::size_t column = where.rfind(':');
+                const std::size_t line = column == std::string::npos || column == 0 ? std::string::npos : where.rfind(':', column - 1);
+                if (line == std::string::npos) {
+                    return std::nullopt;
+                }
+                try {
+                    return middleend::Diagnostic{where.substr(0, line), std::stoul(where.substr(line + 1, column - line - 1)), std::stoul(where.substr(column + 1)), message};
+                } catch (const std::exception&) {
+                    return std::nullopt;
+                }
+            }
+
             // 고른 target이 빼고 만드는 것. 경고의 위치(파일:줄:칸)를 LSP 범위로 바꾼다
             json warnings_json(const Compiled& compiled, const ir::Document& document, const ir::Target& target) const {
                 json result = json::array();
                 for (const auto& warning : backend::target_warnings(document, target)) {
-                    middleend::Diagnostic diagnostic{warning.where, 0, 0, warning.message};
-                    const std::size_t column = warning.where.rfind(':');
-                    const std::size_t line = column == std::string::npos || column == 0 ? std::string::npos : warning.where.rfind(':', column - 1);
-                    if (line != std::string::npos) {
-                        try {
-                            diagnostic = {warning.where.substr(0, line), std::stoul(warning.where.substr(line + 1, column - line - 1)), std::stoul(warning.where.substr(column + 1)), warning.message};
-                        } catch (const std::exception&) {
-                            // 위치를 읽을 수 없으면 파일 처음을 가리킨다
-                        }
-                    }
+                    // 위치를 읽을 수 없으면 파일 처음을 가리킨다
+                    const middleend::Diagnostic diagnostic = diagnostic_at(warning.where, warning.message).value_or(middleend::Diagnostic{warning.where, 0, 0, warning.message});
                     result.push_back({{"uri", uri_of(diagnostic.path)}, {"range", diagnostic_range(compiled, diagnostic)}, {"severity", 2}, {"message", warning.message}});
+                }
+                return result;
+            }
+
+            // html 미리보기가 그릴 수 없는 것. 글이 "파일:줄:칸: 내용"으로 시작하면 위치(uri, range)를 붙이고 내용만 남긴다
+            json preview_warnings_json(const Compiled& compiled, const std::vector<std::string>& warnings) const {
+                json result = json::array();
+                for (const auto& warning : warnings) {
+                    // 위치의 파일 경로에는 ": "가 없으므로 처음 나오는 ": " 앞이 위치다
+                    const std::size_t split = warning.find(": ");
+                    const std::string message = split == std::string::npos ? warning : warning.substr(split + 2);
+                    const auto diagnostic = split == std::string::npos ? std::nullopt : diagnostic_at(warning.substr(0, split), message);
+                    if (diagnostic && diagnostic->line > 0) {
+                        result.push_back({{"message", message}, {"uri", uri_of(diagnostic->path)}, {"range", diagnostic_range(compiled, *diagnostic)}});
+                    } else {
+                        result.push_back({{"message", warning}});
+                    }
                 }
                 return result;
             }
@@ -1024,7 +1047,7 @@ namespace templide::server {
                     {"target", target != nullptr ? json(target->name) : json()},
                     {"width", size.width},
                     {"height", size.height},
-                    {"warnings", warnings},
+                    {"warnings", preview_warnings_json(compiled, warnings)},
                     {"targetWarnings", target != nullptr ? warnings_json(compiled, document, *target) : json::array()},
                     // 슬라이드 쇼가 run(...)에 쓰는 script의 경로. 고른 target에 없으면 script가 있는 첫 target의 것이다
                     {"script", script_path(document, target, main.parent_path())},

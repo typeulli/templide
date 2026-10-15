@@ -3,9 +3,9 @@
 // font("...")의 글자는 그 폰트로 보이고, 옆의 ▾를 누르면 폰트를 고른다.
 // 다른 파일(include한 파일, 패키지)의 정의는 편집기를 바꾸지 않고 읽기 전용 미리보기(peek)로 보여 준다.
 // 탭마다 편집기가 있으므로 제공자는 한 번만 등록하고, 물어 온 모델로 그 탭의 문서를 찾는다
-import { invoke } from '@tauri-apps/api/core';
 import type * as Monaco from 'monaco-editor/editor/editor.api';
 import { uriToPath, type Lsp, type Range } from './lsp';
+import { readTextFile } from './textFile';
 import { t } from './i18n';
 
 type Location = { uri: string; range: Range };
@@ -127,7 +127,7 @@ function register(m: typeof Monaco, lsp: Lsp) {
     // 마우스를 올릴 때와 누를 때 요청이 겹치므로 같은 파일은 한 번만 읽는다
     const load = async (uri: string) => {
         try {
-            const text = await invoke<string>('read_text', { path: uriToPath(uri) });
+            const { text } = await readTextFile(uriToPath(uri));
             const resource = m.Uri.parse(uri);
             const existing = m.editor.getModel(resource);
             if (existing) {

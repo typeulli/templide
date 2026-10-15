@@ -35,6 +35,8 @@ add_executable(templide main.cpp
         middleend/analyzer.cpp
         middleend/library.h
         middleend/library.cpp
+        middleend/source_text.h
+        middleend/source_text.cpp
         middleend/geometry.h
         middleend/geometry.cpp
         middleend/tasset.h
@@ -47,6 +49,8 @@ add_executable(templide main.cpp
         backend/pptx.cpp
         backend/html.h
         backend/html.cpp
+        backend/pdf.h
+        backend/pdf.cpp
         backend/pptx_animations.h
         backend/pptx_animations.cpp
         backend/raster.h
