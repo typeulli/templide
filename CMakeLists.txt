@@ -51,6 +51,12 @@ add_executable(templide main.cpp
         backend/html.cpp
         backend/pdf.h
         backend/pdf.cpp
+        backend/png.h
+        backend/png.cpp
+        backend/browser.h
+        backend/browser.cpp
+        backend/table.h
+        backend/table.cpp
         backend/pptx_animations.h
         backend/pptx_animations.cpp
         backend/raster.h
@@ -66,6 +72,7 @@ add_executable(templide main.cpp
         importer/pptx_convert.cpp
         server/edits.h
         server/edits.cpp
+        server/table_edits.cpp
         server/completion.h
         server/completion.cpp
         server/navigation.h

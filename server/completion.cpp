@@ -10,7 +10,7 @@
 namespace templide::server {
     namespace {
         // LSP CompletionItemKind
-        enum Kind { FUNCTION = 3, VARIABLE = 6, CLASS = 7, MODULE = 9, PROPERTY = 10, VALUE = 12, KEYWORD = 14, SNIPPET = 15, COLOR = 16, FILE = 17, ENUM_MEMBER = 20, STRUCT = 22 };
+        enum Kind { FUNCTION = 3, VARIABLE = 6, CLASS = 7, MODULE = 9, PROPERTY = 10, VALUE = 12, KEYWORD = 14, SNIPPET = 15, COLOR = 16, FILE = 17, FOLDER = 19, ENUM_MEMBER = 20, STRUCT = 22 };
 
         bool is_word(char c) {
             return std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-' || static_cast<unsigned char>(c) >= 0x80;
@@ -36,11 +36,23 @@ namespace templide::server {
             std::size_t statement = 0; // 지금 쓰는 문장의 시작
         };
 
+        // text[begin, end)가 '#include ...'로 시작하는 문장인가
+        bool is_include(const std::string& text, std::size_t begin, std::size_t end) {
+            const auto first = text.find_first_not_of(" \t\r\n", begin);
+            return first != std::string::npos && first < end && text.compare(first, 8, "#include") == 0;
+        }
+
         Context scan(const std::string& text, std::size_t offset) {
             Context context;
             std::size_t i = 0;
             while (i < offset) {
                 const char c = text[i];
+                // #include는 ;로 끝나지 않으므로 줄바꿈이 문장의 끝이다. 이어 붙으면 뒤의 블록 머리글이 '#include ... slide'로 읽힌다
+                if (c == '\n' && context.opens.empty() && is_include(text, context.statement, i)) {
+                    context.statement = i + 1;
+                    ++i;
+                    continue;
+                }
                 if (c == '/' && i + 1 < text.size() && text[i + 1] == '*') {
                     const auto end = text.find("*/", i + 2);
                     if (end == std::string::npos || end + 2 > offset) {
@@ -122,6 +134,9 @@ namespace templide::server {
             if (var.type == "bool") {
                 return "${" + n + "|true,false|}";
             }
+            if (var.type.starts_with("list<")) {
+                return "[${" + n + "}]";
+            }
             return "${" + n + "}";
         }
 
@@ -162,6 +177,7 @@ namespace templide::server {
             static const std::vector<middleend::SymbolVar> target = {
                 {"path", "string", "", true}, {"type", "target_type", "", true}, {"width", "float"}, {"height", "float"},
                 {"title", "string"}, {"author", "string"}, {"loop", "bool"}, {"angles", "angle_convention"}, {"script", "string"},
+                {"scale", "float"}, {"transparent", "bool"},
             };
             static const std::vector<middleend::SymbolVar> review = {{"text", "text", "", true}, {"author", "string"}, {"x", "int"}, {"y", "int"}};
             if (kind == "put") {
@@ -203,6 +219,9 @@ namespace templide::server {
             }
             if (kind == "case") {
                 return {{"background", "color, gradient, pattern or image"}};
+            }
+            if (kind == "cell") {
+                return symbols.cell_properties;
             }
             return {};
         }
@@ -291,6 +310,12 @@ namespace templide::server {
                 add(completion, "font(...)", FUNCTION, "폰트", "font(\"${1:맑은 고딕}\")", true, "0");
                 add(completion, "theme.heading_font", VARIABLE, "테마의 제목 폰트", "theme.heading_font", false, "1");
                 add(completion, "theme.body_font", VARIABLE, "테마의 본문 폰트", "theme.body_font", false, "1");
+            } else if (type.starts_with("list<")) {
+                if (type == "list<list<text>>") {
+                    add(completion, "[[...], [...]]", SNIPPET, "행마다 칸의 글", "[\n\t[\"${1}\", \"${2}\"],\n\t[\"${3}\", \"${4}\"]\n]", true, "0");
+                } else {
+                    add(completion, "[...]", SNIPPET, type, "[${1}]", true, "0");
+                }
             } else if (type == "text") {
                 add(completion, "style(...)", FUNCTION, "이 글자에만 쓰는 서식", "(style(${1:font-weight = bold}) \"${2}\")", true, "0");
                 for (const char* list : {"bullets", "numbers", "dashes", "paragraphs"}) {
@@ -378,6 +403,10 @@ namespace templide::server {
             if (kind == "put" || kind == "group") {
                 keyword("animate", "이 개체의 애니메이션", "animate ${1|enter,emphasis,exit,move,media|} ${2:fade};", "3");
             }
+            // 표의 칸 하나를 병합하거나 따로 꾸민다
+            if (kind == "put" && name == "table") {
+                keyword("cell", "표의 칸 하나 (병합, 서식). 행과 열은 1부터", "cell(${1:1}, ${2:1}) {\n\t$0\n}", "3");
+            }
             if (kind == "master") {
                 keyword("case", "layout", "case ${1:name} {\n\t$0\n}");
                 keyword("theme", "이 master의 theme", "theme = ${1};");
@@ -408,9 +437,34 @@ namespace templide::server {
                 }
             }
         }
+
+        // #include "경로"의 경로를 한 단계씩 완성한다. typed는 여는 따옴표 뒤부터 커서까지, typed_begin은 그 시작(바이트).
+        // 하위 폴더는 name/, 파일은 .tlide를 뗀 name이고 닫는 따옴표가 아직 없으면 붙인다
+        void complete_relative(Completion& completion, const std::string& typed, std::size_t typed_begin, bool closed, const std::filesystem::path& document) {
+            const auto slash = typed.rfind('/');
+            const std::string folder = slash == std::string::npos ? "" : typed.substr(0, slash + 1);
+            completion.replace_from = typed_begin + folder.size();
+            const std::filesystem::path base = document.parent_path() / std::filesystem::path(std::u8string(folder.begin(), folder.end()));
+            std::error_code error;
+            for (auto it = std::filesystem::directory_iterator(base, error); !error && it != std::filesystem::directory_iterator(); it.increment(error)) {
+                const auto filename = it->path().filename().u8string();
+                const std::string name(filename.begin(), filename.end());
+                if (name.empty() || name[0] == '.') {
+                    continue;
+                }
+                std::error_code status;
+                if (it->is_directory(status)) {
+                    add(completion, name + "/", FOLDER, "folder", name + "/", false, "0");
+                } else if (it->path().extension() == ".tlide" && !std::filesystem::equivalent(it->path(), document, status)) {
+                    const auto stem = it->path().stem().u8string();
+                    const std::string label(stem.begin(), stem.end());
+                    add(completion, label, FILE, "file", label + (closed ? "" : "\""), false, "1");
+                }
+            }
+        }
     }
 
-    Completion complete(const middleend::Symbols& symbols, const std::string& text, std::size_t offset, const std::filesystem::path& packages_dir) {
+    Completion complete(const middleend::Symbols& symbols, const std::string& text, std::size_t offset, const std::filesystem::path& packages_dir, const std::filesystem::path& document) {
         Completion completion;
         offset = std::min(offset, text.size());
         // 바꿀 범위는 커서 앞의 낱말
@@ -419,19 +473,44 @@ namespace templide::server {
             --completion.replace_from;
         }
         const Context context = scan(text, offset);
-        if (context.in_comment || context.in_string) {
+        if (context.in_comment) {
             return completion;
         }
         const std::string statement = text.substr(context.statement, offset - context.statement);
         // 앞 공백만 뗀다. 뒤 공백은 'put '처럼 다음 낱말을 기다리는 자리를 알려 준다
         const auto first = statement.find_first_not_of(" \t\r\n");
         const std::string prefix = first == std::string::npos ? "" : statement.substr(first);
+        const bool include = prefix.rfind("#include", 0) == 0;
+
+        // #include "...: 이 문서가 있는 폴더 안의 파일
+        if (context.in_string) {
+            if (const auto quote = statement.rfind('"'); include && quote != std::string::npos) {
+                // 커서 뒤에 이어지는 경로도 같이 바꾼다 (닫는 따옴표는 남긴다)
+                std::size_t end = offset;
+                while (end < text.size() && text[end] != '"' && text[end] != '\n') {
+                    ++end;
+                }
+                const bool closed = end < text.size() && text[end] == '"';
+                completion.replace_to = end;
+                complete_relative(completion, statement.substr(quote + 1), context.statement + quote + 1, closed, document);
+            }
+            return completion;
+        }
 
         // #include <...
-        if (const auto include = prefix.rfind("#include"); include == 0) {
+        if (include) {
             const auto open = statement.rfind('<');
             if (open != std::string::npos) {
                 completion.replace_from = context.statement + open + 1;
+                // 커서 뒤에 이어지는 이름과 닫는 >도 같이 바꾼다 (고르는 이름이 >까지 넣는다)
+                std::size_t end = offset;
+                while (end < text.size() && (is_word(text[end]) || text[end] == '/')) {
+                    ++end;
+                }
+                if (end < text.size() && text[end] == '>') {
+                    ++end;
+                }
+                completion.replace_to = end;
                 complete_packages(completion, packages_dir);
             }
             return completion;
@@ -525,9 +604,10 @@ namespace templide::server {
                 }
             }
         } else if (std::regex_match(prefix, var_type)) {
-            for (const char* type : {"int", "float", "string", "text", "color", "bool", "ref", "image", "video", "audio", "font"}) {
+            for (const char* type : {"int", "float", "string", "text", "color", "bool", "ref", "image", "video", "audio", "font", "fill"}) {
                 add(completion, type, KEYWORD, "타입", "", false, "0");
             }
+            add(completion, "list<...>", KEYWORD, "타입. 같은 타입의 값을 [a, b]로 나열한다", "list<${1:text}>", true, "0");
             for (const auto& [enumeration, members] : symbols.enums) {
                 add(completion, enumeration, VARIABLE, "enum", "", false, "1");
             }

@@ -21,9 +21,11 @@ namespace templide::server {
     };
 
     struct Completion {
-        std::size_t replace_from = 0; // 바꿀 범위의 시작(바이트). 끝은 커서다
+        std::size_t replace_from = 0; // 바꿀 범위의 시작(바이트)
+        std::size_t replace_to = std::string::npos; // 바꿀 범위의 끝(바이트). npos면 커서다
         std::vector<CompletionItem> items;
     };
 
-    Completion complete(const middleend::Symbols& symbols, const std::string& text, std::size_t offset, const std::filesystem::path& packages_dir);
+    // document는 편집 중인 문서의 경로다. #include "..."의 상대 경로를 그 폴더에서 찾는 데 쓴다
+    Completion complete(const middleend::Symbols& symbols, const std::string& text, std::size_t offset, const std::filesystem::path& packages_dir, const std::filesystem::path& document);
 }

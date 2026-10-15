@@ -72,6 +72,7 @@ namespace {
             case ast::ListKind::NUMBERS: return "numbers";
             case ast::ListKind::DASHES: return "dashes";
             case ast::ListKind::PARAGRAPHS: return "paragraphs";
+            case ast::ListKind::PLAIN: return "plain";
         }
         return "";
     }
@@ -176,6 +177,17 @@ namespace {
                 const auto* put = static_cast<const ast::ASTPut*>(node);
                 print_line(depth, "Put " + put->name + (put->alias != nullptr ? " as " + put->alias->name : ""));
                 print_all(put->body, depth + 1);
+                for (const auto* cell : put->cells) {
+                    print(cell, depth + 1);
+                }
+                break;
+            }
+            case ast::CELL: {
+                const auto* cell = static_cast<const ast::ASTCell*>(node);
+                print_line(depth, "Cell");
+                print(cell->row, depth + 1);
+                print(cell->column, depth + 1);
+                print_all(cell->body, depth + 1);
                 break;
             }
             case ast::GROUP: {
@@ -521,15 +533,42 @@ namespace {
         }
     }
 
+    void print_list(const ir::List& list, int depth) {
+        for (const auto& item : list.items) {
+            if (const auto* nested = std::get_if<ir::List>(&item)) {
+                print_line(depth, "List");
+                print_list(*nested, depth + 1);
+            } else if (const auto* text = std::get_if<ir::Text>(&item)) {
+                print_line(depth, "Text");
+                print_text(*text, depth + 1);
+            } else {
+                print_line(depth, "Item " + format_inline(item));
+            }
+        }
+    }
+
+    void print_property(const ir::Property& property, int depth) {
+        if (const auto* text = std::get_if<ir::Text>(&property.value)) {
+            print_line(depth, property.name + ":");
+            print_text(*text, depth + 1);
+        } else if (const auto* list = std::get_if<ir::List>(&property.value)) {
+            print_line(depth, property.name + ":");
+            print_list(*list, depth + 1);
+        } else {
+            print_line(depth, property.name + ": " + format_inline(property.value));
+        }
+    }
+
     void print_elements(const std::vector<ir::Element>& elements, int depth) {
         for (const auto& element : elements) {
             print_line(depth, "Element " + element.object + (element.name.empty() ? "" : " as " + element.name));
             for (const auto& property : element.properties) {
-                if (const auto* text = std::get_if<ir::Text>(&property.value)) {
-                    print_line(depth + 1, property.name + ":");
-                    print_text(*text, depth + 2);
-                } else {
-                    print_line(depth + 1, property.name + ": " + format_inline(property.value));
+                print_property(property, depth + 1);
+            }
+            for (const auto& cell : element.cell_styles) {
+                print_line(depth + 1, "cell(" + std::to_string(cell.row) + ", " + std::to_string(cell.column) + ")");
+                for (const auto& property : cell.properties) {
+                    print_property(property, depth + 2);
                 }
             }
             print_elements(element.children, depth + 1);
@@ -642,6 +681,12 @@ namespace {
             if (target.angles != "powerpoint") {
                 print_line(2, "angles: " + target.angles);
             }
+            if (target.scale != 1) {
+                print_line(2, "scale: " + ir::format_scalar(target.scale));
+            }
+            if (target.transparent) {
+                print_line(2, "transparent: true");
+            }
         }
     }
 
@@ -679,7 +724,13 @@ namespace {
                 std::cerr << "error: target " << target.name << ": " << message << '\n';
             }
             if (errors.empty()) {
-                std::cout << target.name << (check ? ": ok" : ": wrote " + target.path) << '\n';
+                // png는 슬라이드마다 파일 하나다 (slides.png -> slides-<n>.png)
+                std::string written = target.path;
+                if (target.type == "png") {
+                    const std::size_t dot = written.rfind('.');
+                    written = written.substr(0, dot) + "-<n>" + (dot == std::string::npos ? "" : written.substr(dot));
+                }
+                std::cout << target.name << (check ? ": ok" : ": wrote " + written) << '\n';
             } else {
                 failed = true;
             }

@@ -6,19 +6,19 @@
 
 <p align="center">A markup-based presentation language</p>
 
-templide는 `.tlide` 파일에 발표 자료를 쓰고 프레젠테이션(ex. `.pptx`, `.html`)이나 문서(ex. `.pdf`)로 내보내는 도구입니다.
+templide는 `.tlide` 파일에 발표 자료를 쓰고 프레젠테이션(ex. `.pptx`, `.html`), 문서(ex. `.pdf`), 슬라이드 그림(ex. `.png`)으로 내보내는 도구입니다.
 
-스타일과 템플릿을 한 번 정의해 두면 여러 슬라이드에서 다시 쓸 수 있어서, 비슷한 슬라이드를 계속 복사해 붙일 필요가 없습니다. 변수, `if`/`for`, f-string도 쓸 수 있습니다. HTML은 파일 하나로도, 폴더로도 내보낼 수 있습니다. PowerPoint 쪽은 화면 전환과 애니메이션, 도형, 이미지, 비디오와 오디오, 하이퍼링크, 발표자 메모, 숨긴 슬라이드 등을 지원합니다.
+스타일과 템플릿을 한 번 정의해 두면 여러 슬라이드에서 다시 쓸 수 있어서, 비슷한 슬라이드를 계속 복사해 붙일 필요가 없습니다. 변수, `if`/`for`, f-string도 쓸 수 있습니다. HTML은 파일 하나로도, 폴더로도 내보낼 수 있습니다. PowerPoint 쪽은 화면 전환과 애니메이션, 도형, 표, 이미지, 비디오와 오디오, 하이퍼링크, 발표자 메모, 숨긴 슬라이드 등을 지원합니다.
 
 편집기는 코드와 캔버스를 나란히 보여 줍니다. 캔버스에서 요소를 옮기거나 크기를 바꾸면 코드가 고쳐지고, 코드를 고치면 캔버스에 바로 반영됩니다. 오류와 경고는 `문제` 탭에 줄 번호와 함께 나옵니다. 편집기 안의 터미널에서는 AI 에이전트를 실행할 수 있고, 에이전트는 MCP로 지금 열려 있는 문서를 읽고 고칩니다.
 
-Windows에서는 `.pptx`(`.pptm`, `.ppsx`, `.potx`) 파일을 오른쪽 클릭하고 `templide 불러오기`(영어로 설치하면 `Import with templide`)를 눌러 기존 PowerPoint 자료를 `.tlide`로 바꿀 수 있습니다. 창에서 가져올 슬라이드 마스터, 슬라이드, 요소, 애니메이션을 골라 저장하며, 표와 차트처럼 아직 지원하지 않는 요소는 회색으로 표시되어 고를 수 없습니다.
+Windows에서는 `.pptx`(`.pptm`, `.ppsx`, `.potx`) 파일을 오른쪽 클릭하고 `templide 불러오기`(영어로 설치하면 `Import with templide`)를 눌러 기존 PowerPoint 자료를 `.tlide`로 바꿀 수 있습니다. 창에서 가져올 슬라이드 마스터, 슬라이드, 요소, 애니메이션을 골라 저장하며, 차트와 SmartArt처럼 아직 지원하지 않는 요소는 회색으로 표시되어 고를 수 없습니다.
 
 그림, 비디오, 오디오는 `.tlide` 옆의 `.tasset` 파일에 담깁니다. `.tasset`은 이런 파일을 한데 모은 묶음(zip 형식)이고, 편집기로 넣는 그림과 미디어도 이 묶음에 들어갑니다. 코드에서는 `asset "pics.tasset";`로 불러온 뒤 `asset("logo")`로 쓰거나, `file("pics.tasset/logo.png")`처럼 경로로 바로 가리킵니다.
 
 설정 창(로고를 누르면 열립니다)에서 화면 언어(한국어, English), 단축키, 코드 편집기 모양을 바꿀 수 있습니다.
 
-`#include <std/...>`로 불러 쓰는 표준 라이브러리에는 flat, material, glassmorphism, neumorphism 같은 위젯 스타일이 들어 있습니다.
+`#include <std/...>`로 불러 쓰는 표준 라이브러리에는 flat, material, glassmorphism, neumorphism 같은 위젯 스타일이 들어 있습니다. `std/styles`에는 `bold`, `italic`, `underline` 같은 기본 글자 style과 `red`, `navy`처럼 web(CSS) 기본 색 이름이 들어 있습니다.
 
 ## 예제
 
@@ -46,6 +46,27 @@ slide {
 
 target deck { path = "hello.pptx"; type = pptx; }
 target web { path = "hello.html"; type = html; }
+```
+
+표는 `cells`에 행마다 칸의 글을 늘어놓습니다. 머리글과 줄무늬, 열 너비, 선과 여백은 표 속성이고, 칸을 병합하거나 한 칸만 꾸밀 때는 `cell(행, 열) { ... }`을 씁니다 (행과 열 번호는 1부터입니다. 병합에 가려지는 칸은 `""`로 비워 둡니다).
+
+```tlide
+#include <std/stddef>
+#include <std/styles>
+
+slide {
+    put table {
+        x = 80px; y = 120px; width = 1120px; height = 240px;
+        cells = [
+            ["이름", "1분기", "2분기"],
+            ["서울", "10", bold "20"],
+            ["합계", "", ""]
+        ];
+        header_rows = 1;
+        banded_rows = true;
+        cell(3, 2) { col_span = 2; fill = hex(FFE699); }
+    }
+}
 ```
 
 더 큰 예제는 [`examples/`](examples)에서 볼 수 있습니다.
@@ -93,6 +114,12 @@ templide hello.tlide --ast           # 구문 트리(AST)를 출력한다
 `--target`은 여러 번 쓸 수 있습니다. `--check`는 오류가 있으면 종료 코드 1을 돌려주고, 경고만 있으면 0을 돌려줍니다. `--watch`는 Ctrl+C로 끝내며 `--check`와 함께 쓸 수도 있습니다.
 
 `type = pdf`인 target은 슬라이드를 Chrome이나 Edge(헤드리스)로 인쇄해 PDF를 만듭니다. 슬라이드 하나가 한 쪽이고, 전환과 애니메이션 없이 모든 개체가 보이며 숨긴 슬라이드는 빠집니다. 둘 중 하나가 설치되어 있어야 하고, 다른 위치에 있으면 `TEMPLIDE_BROWSER` 환경 변수에 실행 파일 경로를 적습니다.
+
+`type = png`인 target은 슬라이드를 같은 방식으로(Chrome이나 Edge, 전환과 애니메이션 없이 모든 개체가 보이고 숨긴 슬라이드는 빠집니다) 그려 슬라이드마다 그림 파일 하나를 만듭니다. `path = "slides.png"`이면 `slides-1.png`, `slides-2.png`, ...가 만들어지고, 번호는 만드는 차례입니다. 그림 크기는 슬라이드 크기이고, `scale = 2;`로 배율을 곱하며(0.1 ~ 10), `transparent = true;`면 슬라이드 배경을 그리지 않아 배경이 투명한 그림이 됩니다.
+
+```tlide
+target shots { path = "out/slides.png"; type = png; scale = 2; transparent = true; }
+```
 
 `#include <std/...>`는 컴파일러 옆의 `packages` 폴더에서, `#include "..."`는 `.tlide` 파일이 있는 폴더에서 파일을 찾습니다.
 
@@ -145,6 +172,16 @@ npm run build:fast       # 빠른 실행 파일 (target/fast)
 npm run build            # release 실행 파일
 ```
 
+컴파일러를 고친 뒤에는 테스트를 돌려 이전 동작이 그대로인지 봅니다. Python 3.10 이상만 있으면 됩니다.
+
+```bash
+python test/run.py                 # 모든 케이스
+python test/run.py table png       # 이름에 table이나 png가 든 케이스만
+python test/run.py --update 이름    # 의도한 변경이면 기대 파일을 다시 쓴다
+```
+
+컴파일러는 `cmake-build-release`에서 찾고, 다른 곳의 것을 쓰려면 `--exe 경로`(또는 `TEMPLIDE_EXE`)로 알립니다. 케이스를 더하고 기대 파일을 고치는 법은 `test/run.py` 맨 위의 설명에 있습니다.
+
 개발 중인 편집기는 저장소의 `cmake-build-release/templide(.exe)`를 컴파일러로 씁니다. 다른 컴파일러를 쓰려면 `TEMPLIDE_EXE` 환경 변수에 경로를 지정하세요. 편집기의 설정 창(로고를 누르면 열립니다)에서도 컴파일러 경로를 정할 수 있고, 설정에 적은 경로가 `TEMPLIDE_EXE`보다 먼저입니다. 설정 창에서는 언어(한국어, English), 단축키, 코드 편집기 모양도 바꿉니다.
 
 ## 구조
@@ -153,13 +190,14 @@ npm run build            # release 실행 파일
 |---|---|
 | `frontend/` | 렉서와 파서 (`.tlide` → AST) |
 | `middleend/` | 의미 분석, 템플릿 펼치기, 단위 변환 (AST → IR) |
-| `backend/` | PPTX, HTML, PDF 출력 |
+| `backend/` | PPTX, HTML, PDF, PNG 출력 |
 | `importer/` | PowerPoint 파일(`.pptx`) 가져오기 (→ `.tlide`, `.tasset`) |
 | `server/` | 편집기와 통신하는 언어 서버 (`templide --serve`) |
-| `packages/std/` | 표준 라이브러리 (`stddef`, 위젯) |
-| `libs/` | HTML, PDF 출력에 사용되는 `templide.js`와 reveal.js |
+| `packages/std/` | 표준 라이브러리 (`stddef`, `styles`, 위젯) |
+| `libs/` | HTML, PDF, PNG 출력에 사용되는 `templide.js`와 reveal.js |
 | `editor/` | 편집기 (Tauri + React + Monaco) |
 | `examples/` | 예제 발표 자료 |
+| `test/` | 컴파일러의 스냅샷 테스트와 오류/경고 테스트 (`python test/run.py`) |
 | `tools/` | 버전 갱신, 라이선스 목록과 `templide.js` 데이터 생성, 전환·무늬 보정 도구 |
 | `assets/` | 아이콘과 설치 화면 이미지 |
 

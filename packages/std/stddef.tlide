@@ -1,18 +1,3 @@
-
-color yellow rgb(255, 255, 0);
-
-style bold {
-    font-weight = bold;
-}
-style reset {
-    font-weight = normal;
-    color = hex(000);
-}
-
-style brgap(int gap) {
-    line-height = gap;
-}
-
 /* 상자 안에서 글자를 세로로 놓는 위치 */
 enum text_anchor { top, middle, bottom }
 
@@ -190,4 +175,32 @@ object audio {
     var float trim_end = 0s;
     var float fade_in = 0s;
     var float fade_out = 0s;
+}
+
+/*
+표. cells는 행마다 칸의 글을 늘어놓은 list<list<text>>이고, 모든 행의 칸 수가 같아야 한다.
+width, height 안에서 열과 행은 col_widths, row_heights의 비율로 나뉜다(비우면 똑같이). 글이 길면 PowerPoint와 웹에서 행이 저절로 늘어난다.
+header_rows, header_cols는 머리글로 쓰는 첫 행과 첫 열의 수다. 머리글 칸은 header_fill로 칠하고 글을 굵게 쓴다.
+banded_rows, banded_cols는 본문의 첫 행, 첫 열부터 한 줄씩 건너 band_fill로 칠한다. fill은 나머지 칸의 바탕이다.
+테두리는 line_color, line_width, line_dash로 정한다(안 쓰면 1px 회색 실선). padding은 칸 안쪽 여백, anchor는 칸 안에서 글의 세로 위치, align은 가로 위치다.
+칸 하나만 다르게 하거나 병합하려면 put 안에 cell(행, 열) { col_span = 2; fill = ...; }을 쓴다. 행과 열 번호는 1부터다.
+병합한 칸에 가려지는 칸은 ""로 비워 둔다
+*/
+object table {
+    var list<list<text>> cells;
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var list<float> col_widths = [];
+    var list<float> row_heights = [];
+    var int header_rows = 0;
+    var int header_cols = 0;
+    var bool banded_rows = false;
+    var bool banded_cols = false;
+    var fill header_fill = hex(F2F2F2);
+    var fill band_fill = hex(F7F7F7);
+    var float padding = 8px;
+    var text_anchor anchor = middle;
+    var text_align align = left;
 }

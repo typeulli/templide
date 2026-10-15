@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { DeckResult, ElementInfo, Origin } from './lsp';
 import { t } from './i18n';
+import { TableLayer, cellAt, cellsLock, measureTable, rectOf, tableOf, type Cell, type CellAction, type CellSel, type TableGeometry } from './Table';
 
 type Box = { x: number; y: number; w: number; h: number };
 export type Resize = { x?: number; y?: number; width?: number; height?: number };
@@ -104,11 +105,12 @@ const handles = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 
 type Drag =
     | { kind: 'move'; id: string; startX: number; startY: number; dx: number; dy: number; nodes: HTMLElement[] }
-    | { kind: 'resize'; id: string; handle: string; startX: number; startY: number; box: Box; current: Box };
+    | { kind: 'resize'; id: string; handle: string; startX: number; startY: number; box: Box; current: Box }
+    | { kind: 'cells'; id: string; grid: HTMLElement; anchor: Cell }; // 표의 칸을 끌어 범위로 고르는 중
 
 export type Point = { x: number; y: number };
 
-export function SlideView({ deck, index, selected, editable, editing, zoom, onZoom, onSelect, onPaint, onMove, onResize, onText, onNotice, stale, preview, onPreviewEnd, drawing, onDraw }: {
+export function SlideView({ deck, index, selected, editable, editing, zoom, onZoom, onSelect, onPaint, onMove, onResize, onText, onNotice, stale, preview, onPreviewEnd, drawing, onDraw, connecting, cells, focusSignal, onCells, onCellText, onTableSizes, onCellAction, onCellMenu }: {
     deck: DeckResult;
     index: number;
     selected: string | null;
@@ -129,6 +131,15 @@ export function SlideView({ deck, index, selected, editable, editing, zoom, onZo
     // 자유형 그리기. 누를 때마다 점을 찍고, 두 번 누르거나 Enter로 끝낸다. Esc는 취소(null)
     drawing: boolean;
     onDraw(points: Point[] | null): void;
+    // 표. 연결선의 다른 개체를 고르는 중이면 표의 칸이 아니라 표 전체를 누른 것으로 본다
+    connecting: boolean;
+    cells: CellSel | null;
+    focusSignal: number; // 바뀌면 칸 입력창에 포커스를 돌려준다 (메뉴나 툴바로 칸 명령을 한 뒤)
+    onCells(sel: CellSel | null): void;
+    onCellText(id: string, row: number, column: number, text: string): Promise<boolean>;
+    onTableSizes(id: string, axis: 'columns' | 'rows', values: number[], height: number | null): Promise<boolean>;
+    onCellAction(action: CellAction): void;
+    onCellMenu(point: Point): void;
 }) {
     const host = useRef<HTMLDivElement>(null);
     const frame = useRef<HTMLDivElement>(null);
@@ -142,6 +153,9 @@ export function SlideView({ deck, index, selected, editable, editing, zoom, onZo
     const pointsRef = useRef<Point[]>([]);
     pointsRef.current = points;
     const [cursor, setCursor] = useState<Point | null>(null);
+    const [tableGeo, setTableGeo] = useState<{ id: string; geometry: TableGeometry } | null>(null);
+    const [editToken, setEditToken] = useState(0);   // 표 칸의 글 고치기를 여는 신호
+    const [focusToken, setFocusToken] = useState(0); // 표 칸 입력창에 포커스를 돌려주는 신호
 
     useLayoutEffect(() => {
         const resize = () => {
@@ -205,7 +219,8 @@ export function SlideView({ deck, index, selected, editable, editing, zoom, onZo
             return;
         }
         const outer = frame.current!.getBoundingClientRect();
-        const boxes = nodes.map((node) => node.getBoundingClientRect());
+        // 표는 글이 길면 행이 늘어나므로 그려진 표의 상자를 따른다
+        const boxes = nodes.map((node) => (deck.elements[selected!].object === 'table' ? node.querySelector('.tl-table') ?? node : node).getBoundingClientRect());
         const left = Math.min(...boxes.map((box) => box.left));
         const top = Math.min(...boxes.map((box) => box.top));
         const right = Math.max(...boxes.map((box) => box.right));
@@ -213,6 +228,27 @@ export function SlideView({ deck, index, selected, editable, editing, zoom, onZo
         setOutline({ x: (left - outer.left) / scale, y: (top - outer.top) / scale, w: (right - left) / scale, h: (bottom - top) / scale });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selected, deck, index, scale]);
+
+    // 고른 표의 칸 위치. 글이 길어 행이 늘어나면 다시 잰다
+    useLayoutEffect(() => {
+        const table = tableOf(selected ? deck.elements[selected] : undefined);
+        if (!selected || !table || preview || !frame.current) {
+            setTableGeo(null);
+            return;
+        }
+        const measure = () => {
+            const geometry = measureTable(frame.current!, selected, scale, table);
+            setTableGeo(geometry ? { id: selected, geometry } : null);
+        };
+        measure();
+        const grid = frame.current.querySelector(`[data-src="${CSS.escape(selected)}"] .tl-table`);
+        if (!grid) {
+            return;
+        }
+        const observer = new ResizeObserver(measure);
+        observer.observe(grid);
+        return () => observer.disconnect();
+    }, [selected, deck, index, scale, preview]);
 
     const info = selected ? deck.elements[selected] : undefined;
     const lock = info ? moveLock(info) : null;
@@ -239,9 +275,25 @@ export function SlideView({ deck, index, selected, editable, editing, zoom, onZo
             .filter((node, _, all) => !all.some((parent) => parent !== node && parent.contains(node)));
     };
 
+    const startMove = (event: { clientX: number; clientY: number }, id: string) => {
+        drag.current = { kind: 'move', id, startX: event.clientX, startY: event.clientY, dx: 0, dy: 0, nodes: nodesToMove(id) };
+    };
+
+    // 눌린 곳이 표의 칸이면 그 표와 칸. 표 밖이거나 칸을 고를 수 없는 때는 null
+    const cellTarget = (target: HTMLElement) => {
+        const node = target.closest<HTMLElement>('.tl-cell');
+        const id = node?.closest<HTMLElement>('[data-src]')?.dataset.src;
+        const table = id ? tableOf(deck.elements[id]) : undefined;
+        if (!node || !id || !table || connecting || drawing || preview) {
+            return null;
+        }
+        const [row, column] = node.dataset.cell!.split(',').map(Number);
+        return { id, table, grid: node.closest<HTMLElement>('.tl-table')!, hit: { row, column } };
+    };
+
     const onPointerDown = (event: React.PointerEvent) => {
         const target = event.target as HTMLElement;
-        if (target.isContentEditable || event.button !== 0) {
+        if (target.isContentEditable || event.button !== 0 || target.closest('.cell-proxy')) {
             return;
         }
         if (drawing) {
@@ -261,6 +313,16 @@ export function SlideView({ deck, index, selected, editable, editing, zoom, onZo
             drag.current = { kind: 'resize', id: selected, handle, startX: event.clientX, startY: event.clientY, box, current: { ...box } };
             return;
         }
+        // 표의 칸을 누르면 표와 칸을 고르고, 끌면 범위를 고른다 (표는 왼쪽 위 손잡이로 옮긴다). shift를 누르면 범위를 늘린다
+        const cell = cellTarget(target);
+        if (cell) {
+            onSelect(cell.id);
+            const extend = event.shiftKey && cells?.id === cell.id;
+            const anchor = extend ? cells!.anchor : cell.hit;
+            onCells({ id: cell.id, anchor, focus: cell.hit });
+            drag.current = { kind: 'cells', id: cell.id, grid: cell.grid, anchor };
+            return;
+        }
         const node = target.closest<HTMLElement>('[data-src]');
         const id = node?.dataset.src ?? null;
         onSelect(id);
@@ -272,13 +334,20 @@ export function SlideView({ deck, index, selected, editable, editing, zoom, onZo
             return;
         }
         // preventDefault를 하면 dblclick이 오지 않으므로, 끄는 동안 글자가 선택되는 것은 CSS(user-select)로 막는다
-        drag.current = { kind: 'move', id, startX: event.clientX, startY: event.clientY, dx: 0, dy: 0, nodes: nodesToMove(id) };
+        startMove(event, id);
     };
 
     useEffect(() => {
         const move = (event: PointerEvent) => {
             const current = drag.current;
             if (!current) {
+                return;
+            }
+            if (current.kind === 'cells') {
+                const hit = cellAt(current.grid, event.clientX, event.clientY);
+                if (hit) {
+                    onCells({ id: current.id, anchor: current.anchor, focus: hit });
+                }
                 return;
             }
             const dx = (event.clientX - current.startX) / scale;
@@ -318,6 +387,10 @@ export function SlideView({ deck, index, selected, editable, editing, zoom, onZo
             if (!current) {
                 return;
             }
+            if (current.kind === 'cells') {
+                setFocusToken((token) => token + 1); // 입력창이 포커스를 받아야 글자를 칠 수 있다
+                return;
+            }
             if (current.kind === 'move') {
                 const dx = Math.round(current.dx);
                 const dy = Math.round(current.dy);
@@ -353,7 +426,7 @@ export function SlideView({ deck, index, selected, editable, editing, zoom, onZo
             window.removeEventListener('pointermove', move);
             window.removeEventListener('pointerup', up);
         };
-    }, [scale, onMove, onResize, deck]);
+    }, [scale, onMove, onResize, onCells, deck]);
 
     useEffect(() => {
         const element = host.current!;
@@ -376,6 +449,11 @@ export function SlideView({ deck, index, selected, editable, editing, zoom, onZo
             const finished = points.length >= 2 ? points : null;
             setPoints([]);
             onDraw(finished);
+            return;
+        }
+        // 표의 칸을 두 번 누르면 그 칸의 글을 고친다
+        if (cellTarget(event.target as HTMLElement)) {
+            setEditToken((token) => token + 1);
             return;
         }
         const node = (event.target as HTMLElement).closest<HTMLElement>('[data-src]');
@@ -435,10 +513,30 @@ export function SlideView({ deck, index, selected, editable, editing, zoom, onZo
         editing.current = { id, paragraph: paragraphIndex, run: runIndex, node: run, original, cancel: () => finish(false) };
     };
 
+    // 표의 칸에서 오른쪽 단추를 누르면 칸 메뉴. 이미 고른 범위 안이면 그 범위를 그대로 두고, 아니면 그 칸 하나를 고른다
+    const onContextMenu = (event: React.MouseEvent) => {
+        const cell = cellTarget(event.target as HTMLElement);
+        if (!cell) {
+            return;
+        }
+        event.preventDefault();
+        onSelect(cell.id);
+        const inside = cells?.id === cell.id && (() => {
+            const rect = rectOf(cell.table, cells);
+            return cell.hit.row >= rect.r1 && cell.hit.row <= rect.r2 && cell.hit.column >= rect.c1 && cell.hit.column <= rect.c2;
+        })();
+        if (!inside) {
+            onCells({ id: cell.id, anchor: cell.hit, focus: cell.hit });
+        }
+        onCellMenu({ x: event.clientX, y: event.clientY });
+    };
+
     const shown = dragBox ?? outline;
     const resizing = drag.current?.kind === 'resize';
+    const layerTable = tableOf(info);
+    const layerGeometry = layerTable && tableGeo && tableGeo.id === selected && !preview && !drawing ? tableGeo.geometry : null;
     return (
-        <div ref={host} className={'slide-host' + (zoom !== null && zoom > fit ? ' zoomed' : '') + (drawing ? ' drawing' : '')} onPointerDown={onPointerDown} onDoubleClick={onDoubleClick}
+        <div ref={host} className={'slide-host' + (zoom !== null && zoom > fit ? ' zoomed' : '') + (drawing ? ' drawing' : '')} onPointerDown={onPointerDown} onDoubleClick={onDoubleClick} onContextMenu={onContextMenu}
             onPointerMove={drawing ? (event) => setCursor(slidePoint(event)) : undefined}>
             <div className="slide-stage">
             <div className="slide-box" style={{ width: deck.width * scale, height: deck.height * scale }}>
@@ -457,6 +555,13 @@ export function SlideView({ deck, index, selected, editable, editing, zoom, onZo
                         ))}
                         {lock && <div className="lock" style={{ fontSize: 12 / scale, padding: `${2 / scale}px ${6 / scale}px`, top: -22 / scale }}>{t('🔒 옮길 수 없음: {0}', lock)}</div>}
                     </div>
+                )}
+                {selected && info && layerTable && layerGeometry && (
+                    <TableLayer id={selected} table={layerTable} geometry={layerGeometry} frame={frame.current!} scale={scale} sel={cells && cells.id === selected ? cells : null}
+                        editable={editable} lock={cellsLock(info, lockOf)} moveLock={lock} height={el?.h ?? layerGeometry.box.h} editToken={editToken} focusToken={focusToken + focusSignal}
+                        onSel={onCells} onCommit={(row, column, text) => onCellText(selected, row, column, text)}
+                        onSizes={(axis, values, height) => onTableSizes(selected, axis, values, height)} onAction={onCellAction} onNotice={onNotice}
+                        onGrip={(event) => startMove(event, selected)} />
                 )}
             </div>
             </div>

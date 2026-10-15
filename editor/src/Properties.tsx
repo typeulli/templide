@@ -3,9 +3,10 @@ import { useState, type ReactNode } from 'react';
 import { ChevronDown, ChevronUp, ChevronsDown, ChevronsUp, Film, List, ListOrdered, Minus, Pilcrow, Play, Plus, Trash2 } from 'lucide-react';
 import type { DeckResult, ElementInfo, Origin, Schema, SchemaVar, SlideInfo, Value } from './lsp';
 import {
-    ActionField, BoolField, ColorField, EnumField, FileField, FontField, NumberField, PaintField, RefField, Row, Section, TextField, NumberInput,
+    ActionField, BoolField, ColorField, EnumField, FileField, FontField, NumberField, PaintField, RefField, Row, Section, StepperField, TextField, NumberInput,
     lockReason, type Measure, type SetValue,
 } from './Fields';
+import { CellSection, type CellControls, type TableState } from './TableUi';
 import { label, objectNames, propertyNames, shapeKindNames, transitionNames, transitionOrder, optionNames, pptxOnlyTransitions } from './labels';
 import { ObjectAnimations, animationsOf, type AnimationOp } from './Animations';
 import { lockOf } from './SlideView';
@@ -45,6 +46,17 @@ const sections = (): [string, string[]][] => [
     [t('접근성'), ['alt']],
 ];
 
+// 표(table)의 묶음. 칸 목록과 행, 열 크기는 캔버스에서 고치므로 여기서는 요약만 보인다
+const tableSections = (): [string, string[]][] => [
+    [t('배치'), ['x', 'y', 'width', 'height']],
+    [t('표'), ['cells', 'col_widths', 'row_heights', 'header_rows', 'header_cols', 'banded_rows', 'banded_cols', 'header_fill', 'band_fill']],
+    [t('칸 모양'), ['padding', 'padding_left', 'padding_top', 'padding_right', 'padding_bottom', 'anchor', 'align']],
+    [t('채우기'), ['fill']],
+    [t('선'), ['line_color', 'line_width', 'line_dash']],
+    [t('링크와 실행 설정'), ['link', 'action', 'action_sound', 'action_highlight', 'hover_action', 'hover_sound', 'hover_highlight']],
+    [t('접근성'), ['alt']],
+];
+
 // 세부값은 기본값(앞의 속성)이 있어야 쓸 수 있다 (컴파일러 규칙)
 const needs: Record<string, string> = {
     shadow_blur: 'shadow', shadow_distance: 'shadow', shadow_angle: 'shadow', inner_shadow_blur: 'inner_shadow', inner_shadow_distance: 'inner_shadow',
@@ -62,6 +74,10 @@ function unusable(object: string, kind: string, name: string): boolean {
         return true;
     }
     if (object === 'backdrop' && name === 'fill') {
+        return true;
+    }
+    // 표가 쓸 수 없는 속성 (컴파일러 규칙): 회전, 뒤집기, 모서리, 투명도, 그림자, 네온, 반사, 입체, 선 끝 모양 등
+    if (object === 'table' && /^(rotation|flip|radius|opacity|shadow|inner_shadow|glow|soft_edge|reflection|bevel|depth|perspective|line_cap|line_join|line_compound|adj\d)/.test(name)) {
         return true;
     }
     return name === 'radius' && !(['shape', 'backdrop', 'image'].includes(object) && roundedKinds.includes(kind));
@@ -85,6 +101,8 @@ type ElementProps = {
     onOrder(direction: string): void;
     onAnimation(op: AnimationOp): void;
     onPreview(): void;
+    // 표를 골랐을 때: 고른 칸과 칸을 고치는 방법
+    table?: { state: TableState | null; controls: CellControls };
 };
 
 // 적지 않은 속성은 그 put 블록에 넣는다. template이 만든 element는 넣을 수 없다
@@ -114,7 +132,7 @@ export function ElementPanel(props: ElementProps) {
     );
 }
 
-function PropertyList({ deck, schema, page, id, info, pickers, readSource, onSet, onUnset, onOrder }: ElementProps) {
+function PropertyList({ deck, schema, page, id, info, pickers, readSource, onSet, onUnset, onOrder, table }: ElementProps) {
     const sourceLock = lockOf(info.source);
     if (!schema) {
         return <div className="props-empty">{t('속성 목록을 불러오는 중입니다')}</div>;
@@ -128,7 +146,8 @@ function PropertyList({ deck, schema, page, id, info, pickers, readSource, onSet
     const adjustments = info.object === 'shape' || info.object === 'backdrop' || info.object === 'image' ? window.Templide.adjustments(kind || 'rect') : [];
     // 조정값이 하나인 도형은 PowerPoint에서 이름이 adj이므로 순서로 맞춘다 (adj1 = 첫 조정값)
     const hidden = (name: string) => (/^adj\d$/.test(name) && Number(name.slice(3)) > adjustments.length) || unusable(info.object, kind, name);
-    const used = new Set(sections().flatMap(([, names]) => names));
+    const list = info.object === 'table' ? tableSections() : sections();
+    const used = new Set(list.flatMap(([, names]) => names));
     const rest = vars.map((each) => each.name).filter((name) => !used.has(name));
     const names = Object.values(deck.elements).map((each) => each.name).filter((name): name is string => !!name);
 
@@ -149,6 +168,24 @@ function PropertyList({ deck, schema, page, id, info, pickers, readSource, onSet
         };
         if (name === 'text') {
             return <TextInfo key={name} origin={common.origin} readSource={readSource} onSet={common.onSet} />;
+        }
+        if (info.object === 'table') {
+            const rows = info.table?.rows ?? 1;
+            const columns = info.table?.columns ?? 1;
+            if (name === 'cells') {
+                return <Row key={name} label={t('칸')} lock={lockReason(common.origin)}><span className="muted small">{t('{0}행 × {1}열. 캔버스에서 고칩니다', rows, columns)}</span></Row>;
+            }
+            if (name === 'col_widths' || name === 'row_heights') {
+                const sizes = Array.isArray(common.value) ? (common.value as unknown as number[]).map((size) => Math.round(size)).join(', ') : '';
+                return (
+                    <Row key={name} label={common.label} lock={lockReason(common.origin)} origin={common.origin} onUnset={common.onUnset}>
+                        <span className="muted small" title={sizes}>{sizes ? `${sizes} px` : t('모두 같게')}</span>
+                    </Row>
+                );
+            }
+            if (name === 'header_rows' || name === 'header_cols') {
+                return <StepperField {...common} min={0} max={name === 'header_rows' ? rows : columns} />;
+            }
         }
         if (name === 'kind' && v.type === 'shape_kind') {
             const all = schema.enums.shape_kind ?? [];
@@ -205,13 +242,16 @@ function PropertyList({ deck, schema, page, id, info, pickers, readSource, onSet
         }
     };
 
+    const restFields = rest.map(field).filter(Boolean);
     return (
         <div className="property-list">
-            {sections().map(([title, list]) => {
-                const fields = list.map(field).filter(Boolean);
+            {table?.state && <CellSection state={table.state} controls={table.controls} schema={schema} pickers={pickers} />}
+            {info.object === 'table' && !table?.state && <div className="muted small table-hint">{t('표의 칸을 누르면 그 칸의 서식을 여기서 바꿀 수 있습니다')}</div>}
+            {list.map(([title, names]) => {
+                const fields = names.map(field).filter(Boolean);
                 return fields.length > 0 && <Section key={title} title={title}>{fields}</Section>;
             })}
-            {rest.length > 0 && <Section title={t('그 밖의 속성')}>{rest.map(field)}</Section>}
+            {restFields.length > 0 && <Section title={t('그 밖의 속성')}>{restFields}</Section>}
             <Section title={t('순서')} lock={sourceLock}>
                 <div className="order">
                     <button disabled={!!sourceLock} onClick={() => onOrder('back')} title={t('맨 뒤로')}><ChevronsDown size={15} /> {t('맨 뒤')}</button>

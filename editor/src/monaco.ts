@@ -24,6 +24,8 @@ monaco.languages.setMonarchTokensProvider('tlide', {
     tokenizer: {
         root: [
             [/\/\*/, 'comment', '@comment'],
+            // #include <std/stddef>의 경로는 "..."처럼 글로 칠한다. 닫히지 않은 <는 아래 규칙이 키워드만 칠한다
+            [/(#include)(\s*)(<[^>\n]*>)/, ['keyword', '', 'string']],
             [/#include/, 'keyword'],
             [/@[a-zA-Z_]\w*/, 'variable.predefined'],
             // image, video, audio, font는 타입 자리(image 이름 = ...;, var font 이름;, (image 이름))에서만 타입이다.

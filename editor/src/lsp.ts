@@ -93,12 +93,38 @@ export type PaintValue = string
     | { image: string };
 export type Value = number | string | boolean | PaintValue | { link: LinkValue } | { action: ActionValue };
 
+// 표의 칸 하나. 병합과 서식을 풀어 낸 지금 값이다. border는 왼쪽, 위, 오른쪽, 아래 순서이고 선이 없으면 null
+export type TableCellInfo = {
+    text?: string;
+    runs?: Origin[][];
+    origin?: Origin;
+    covered: boolean;
+    rowSpan: number;
+    columnSpan: number;
+    header: boolean;
+    fill?: PaintValue;
+    anchor: string;
+    align: string;
+    padding: number[];
+    border: ({ color: string; width: number; dash: string } | null)[];
+};
+
+// 표 편집에 필요한 것 (server의 table_info). 행과 열 번호는 0부터이고, editable이 false면 칸 목록을 고칠 수 없다
+export type TableInfo = {
+    rows?: number;
+    columns?: number;
+    editable?: boolean;
+    cells?: TableCellInfo[][];
+    cellStyles?: { row: number; column: number; source: Origin; properties: Record<string, Origin>; values: Record<string, Value> }[];
+};
+
 export type ElementInfo = {
     object: string;
     name?: string; // put ... as 이름
     source: Origin;
     fromTemplate: boolean;
     properties: Record<string, Origin>;
+    table?: TableInfo;
     text?: Origin[][];
     instance?: Record<string, Origin>;
     instanceValues?: Record<string, number>; // template을 넣은 put의 x, y, width, height (px)
@@ -172,6 +198,8 @@ export type Schema = {
     textProperties: SchemaVar[];
     styleProperties: SchemaVar[];
     slideProperties: SchemaVar[];
+    cellProperties: SchemaVar[];       // put table 안 cell(행, 열) 블록의 속성
+    files: { path: string; package: boolean }[]; // 분석기가 읽은 파일(문서, #include한 파일). package는 표준 라이브러리
     transitions: Record<string, string[]>;
     animations: Record<string, string[]>; // "종류.효과" -> 옵션 (첫 옵션이 기본값)
     endlessAnimations: string[];

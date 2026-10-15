@@ -572,11 +572,8 @@ namespace templide::server {
                     id = static_cast<int>(index.symbols.size()) - 1;
                     files.emplace(path, id);
                 }
-                // '#include' 뒤의 <...>나 "..." 부분
-                const std::string span(node->span);
-                const auto open = span.find_first_of("<\"", 1);
-                const std::size_t begin = offset(node->span) + (open == std::string::npos ? 0 : open);
-                index.occurrences.push_back({source->path, begin, offset(node->span) + span.size(), id, false, ""});
+                // '#include'부터 <...>나 "..."까지 문장 전체. 어디에 놓아도 그 파일의 정보와 정의가 나온다
+                index.occurrences.push_back({source->path, offset(node->span), offset(node->span) + node->span.size(), id, false, ""});
             }
 
             // slide, template, case처럼 put이 들어가는 블록. 그 안의 as 이름을 먼저 모은다
@@ -736,6 +733,16 @@ namespace templide::server {
                 for (const auto* animation : node->animations) {
                     animate(animation, scope);
                 }
+                for (const auto* cell : node->cells) {
+                    expression(cell->row, scope, "int");
+                    expression(cell->column, scope, "int");
+                    for (const auto* inner : cell->body) {
+                        const auto* assign = static_cast<const ast::ASTAssign*>(inner);
+                        static const std::map<std::string, std::string> types = {{"align", "text_align"}, {"anchor", "text_anchor"}, {"line_dash", "dash_style"}};
+                        const auto type = types.find(assign->name->name);
+                        expression(assign->expression, scope, type != types.end() ? type->second : "");
+                    }
+                }
             }
 
             void animate(const ast::ASTAnimate* node, const Scope& scope) {
@@ -833,11 +840,16 @@ namespace templide::server {
                             expression(part, scope, "text");
                         }
                         break;
-                    case ast::LIST:
-                        for (const auto* item : static_cast<const ast::ASTList*>(node)->items) {
-                            expression(item, scope, "text");
+                    case ast::LIST: {
+                        // [a, b]는 list<T>의 T 자리, bullets [...] 같은 목록은 글 자리다
+                        const auto* list = static_cast<const ast::ASTList*>(node);
+                        const std::string element = list->kind != ast::ListKind::PLAIN ? "text"
+                            : expected.starts_with("list<") && expected.ends_with(">") ? expected.substr(5, expected.size() - 6) : "";
+                        for (const auto* item : list->items) {
+                            expression(item, scope, element);
                         }
                         break;
+                    }
                     case ast::FSTRING:
                         for (const auto* part : static_cast<const ast::ASTFString*>(node)->parts) {
                             expression(part, scope, "");

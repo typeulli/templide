@@ -1,0 +1,2680 @@
+-- animations_inline.tlide --
+/* put과 group 블록 안의 animate. 개체 이름을 쓰지 않고, 이름이 없으면 컴파일러가 이름을 붙인다(IR에서는 $ID로 보인다).
+   order로 slide 바로 안의 animate와 재생 차례를 섞는다 */
+object label { var text text; }
+
+slide {
+    put label as first {
+        text = "첫째";
+        animate enter fade 0.5s;
+    }
+    put label as second {
+        text = "둘째";
+        animate enter fly.up 1s with_previous;
+        animate emphasis spin delay 0.5s;
+    }
+    put label {
+        text = "이름 없는 개체";
+        animate enter appear;
+    }
+    group as box {
+        put label { text = "그룹 안"; }
+        animate enter zoom.in 1s;
+    }
+    group {
+        put label { text = "이름 없는 그룹"; }
+        animate exit fade;
+    }
+    animate first exit fade order 1;
+    put label as late {
+        text = "순서를 당긴다";
+        animate enter appear order 2;
+    }
+}
+-- animations_inline.ir --
+Document
+  Slide 1
+    Element label as first
+      text:
+        Paragraph
+          Run "첫째"
+    Element label as second
+      text:
+        Paragraph
+          Run "둘째"
+    Element label as label $ID
+      text:
+        Paragraph
+          Run "이름 없는 개체"
+    Element group as box
+      Element label
+        text:
+          Paragraph
+            Run "그룹 안"
+    Element group as group $ID
+      Element label
+        text:
+          Paragraph
+            Run "이름 없는 그룹"
+    Element label as late
+      text:
+        Paragraph
+          Run "순서를 당긴다"
+    animate first exit fade on_click
+    animate late enter appear on_click
+    animate first enter fade 0.5s on_click
+    animate second enter fly.up 1s with_previous
+    animate second emphasis spin on_click delay 0.5s
+    animate label $ID enter appear on_click
+    animate box enter zoom.in 1s on_click
+    animate group $ID exit fade on_click
+-- animations_slide.tlide --
+/* slide 바로 안의 animate. 효과의 옵션(.), 길이, 시작 방식, delay, 경로 이동, order로 재생 차례를 바꾼다 */
+object label { var text text; }
+
+slide {
+    put label as a { text = "A"; }
+    put label as b { text = "B"; }
+    put label as c { text = "C"; }
+
+    animate a enter fade 0.5s;
+    animate a enter fly.left 1s with_previous delay 0.2s;
+    animate b emphasis spin after_previous;
+    animate b exit wipe.up 400ms on_click;
+    animate b move path "M 0 0 L 100 0 L 100 100";
+    animate c move circle 2s;
+    animate c enter zoom;
+    animate c enter appear order 1;
+    animate a exit fade order 1;
+    animate b emphasis growShrink order 2;
+}
+-- animations_slide.ir --
+Document
+  Slide 1
+    Element label as a
+      text:
+        Paragraph
+          Run "A"
+    Element label as b
+      text:
+        Paragraph
+          Run "B"
+    Element label as c
+      text:
+        Paragraph
+          Run "C"
+    animate c enter appear on_click
+    animate a exit fade on_click
+    animate b emphasis growShrink on_click
+    animate a enter fade 0.5s on_click
+    animate a enter fly.left 1s with_previous delay 0.2s
+    animate b emphasis spin after_previous
+    animate b exit wipe.up 400ms on_click
+    animate b move path "M 0 0 L 100 0 L 100 100" on_click
+    animate c move circle 2s on_click
+    animate c enter zoom.in on_click
+-- asset_bundle/main.tlide --
+/* asset "묶음.tasset"으로 묶음을 불러와 asset("이름")으로 쓴다. 이름은 확장자를 빼도 되고, by { ... }로 이름을 붙이거나 * as 이름으로 한꺼번에 가리킨다.
+   file("묶음.tasset/파일")로 경로를 바로 쓸 수도 있다 */
+#include <std/stddef>
+
+asset "pics.tasset";
+asset "pics.tasset" by { "images/photo" as pic, * as p };
+
+slide {
+    put image { data = asset("logo"); x = 0px; y = 0px; width = 10px; height = 10px; }
+    put image { data = asset("logo.png"); x = 0px; y = 10px; width = 10px; height = 10px; }
+    put image { data = asset("images/photo"); x = 0px; y = 20px; width = 10px; height = 10px; }
+    put image { data = asset("pic"); x = 0px; y = 30px; width = 10px; height = 10px; }
+    put image { data = asset("p.logo"); x = 0px; y = 40px; width = 10px; height = 10px; }
+    put image { data = file("pics.tasset/logo.png"); x = 0px; y = 50px; width = 10px; height = 10px; }
+}
+-- asset_bundle/main.ir --
+Document
+  Slide 1
+    Element image
+      data: image("pics.tasset/logo.png")
+      x: 0px
+      y: 0px
+      width: 10px
+      height: 10px
+      fit: stretch
+      crop_left: 0%
+      crop_top: 0%
+      crop_right: 0%
+      crop_bottom: 0%
+      kind: rect
+    Element image
+      data: image("pics.tasset/logo.png")
+      x: 0px
+      y: 10px
+      width: 10px
+      height: 10px
+      fit: stretch
+      crop_left: 0%
+      crop_top: 0%
+      crop_right: 0%
+      crop_bottom: 0%
+      kind: rect
+    Element image
+      data: image("pics.tasset/images/photo.png")
+      x: 0px
+      y: 20px
+      width: 10px
+      height: 10px
+      fit: stretch
+      crop_left: 0%
+      crop_top: 0%
+      crop_right: 0%
+      crop_bottom: 0%
+      kind: rect
+    Element image
+      data: image("pics.tasset/images/photo.png")
+      x: 0px
+      y: 30px
+      width: 10px
+      height: 10px
+      fit: stretch
+      crop_left: 0%
+      crop_top: 0%
+      crop_right: 0%
+      crop_bottom: 0%
+      kind: rect
+    Element image
+      data: image("pics.tasset/logo.png")
+      x: 0px
+      y: 40px
+      width: 10px
+      height: 10px
+      fit: stretch
+      crop_left: 0%
+      crop_top: 0%
+      crop_right: 0%
+      crop_bottom: 0%
+      kind: rect
+    Element image
+      data: image("pics.tasset/logo.png")
+      x: 0px
+      y: 50px
+      width: 10px
+      height: 10px
+      fit: stretch
+      crop_left: 0%
+      crop_top: 0%
+      crop_right: 0%
+      crop_bottom: 0%
+      kind: rect
+-- asset_bundle/pics.tasset (base64) --
+UEsDBBQAAAAAAAAAIQBtxNgoRQAAAEUAAAAIAAAAbG9nby5wbmeJUE5HDQoaCgAAAA1JSERSAAAA
+AQAAAAEIAgAAAJB3U94AAAAMSURBVHjaY/jPwAAAAwEBAPcDQUMAAAAASUVORK5CYIJQSwMEFAAA
+AAAAAAAhAGqoPUNGAAAARgAAABAAAABpbWFnZXMvcGhvdG8ucG5niVBORw0KGgoAAAANSUhEUgAA
+AAIAAAABCAIAAAB7QOjdAAAADUlEQVR42mNgYPgPRAAFAgH/HnWEjwAAAABJRU5ErkJgglBLAQIU
+ABQAAAAAAAAAIQBtxNgoRQAAAEUAAAAIAAAAAAAAAAAAAACAAQAAAABsb2dvLnBuZ1BLAQIUABQA
+AAAAAAAAIQBqqD1DRgAAAEYAAAAQAAAAAAAAAAAAAACAAWsAAABpbWFnZXMvcGhvdG8ucG5nUEsF
+BgAAAAACAAIAdAAAAN8AAAAAAA==
+-- colors_gamut_warning.tlide --
+/* sRGB 밖의 색은 가장 가까운 색으로 맞추고 경고한다. 경고는 IR 맨 앞의 # stderr: 줄에 남는다.
+   lab, lch, oklab, oklch만 sRGB 밖일 수 있고, 같은 색을 다시 써도 경고는 자리마다 하나씩이다 */
+object swatch { var color c; }
+
+template glow {
+    var color c;
+    put swatch { c = c; }
+}
+
+slide {
+    put swatch { c = oklch(70%, 0.4, 150deg); }
+    put swatch { c = lab(50, 100, 0); }
+    put swatch { c = lch(50, 130, 40deg); }
+    put swatch { c = oklab(60%, 0.2, -0.3); }
+    put swatch { c = oklch(70%, 0.1, 150deg); }
+    put glow { c = oklch(65%, 0.35, 330deg); }
+    put glow { c = oklch(65%, 0.35, 330deg); }
+}
+-- colors_gamut_warning.ir --
+# stderr: colors_gamut_warning.tlide:11:22: warning: This oklch color is outside the sRGB range that pptx and html can show; using the nearest color hex(00C248)
+# stderr: colors_gamut_warning.tlide:12:22: warning: This lab color is outside the sRGB range that pptx and html can show; using the nearest color hex(EE007D)
+# stderr: colors_gamut_warning.tlide:13:22: warning: This lch color is outside the sRGB range that pptx and html can show; using the nearest color hex(F50021)
+# stderr: colors_gamut_warning.tlide:14:22: warning: This oklab color is outside the sRGB range that pptx and html can show; using the nearest color hex(A91FFF)
+# stderr: colors_gamut_warning.tlide:16:20: warning: This oklch color is outside the sRGB range that pptx and html can show; using the nearest color hex(EE00E7)
+# stderr: colors_gamut_warning.tlide:17:20: warning: This oklch color is outside the sRGB range that pptx and html can show; using the nearest color hex(EE00E7)
+Document
+  Slide 1
+    Element swatch
+      c: rgba(0, 194, 72, 1)
+    Element swatch
+      c: rgba(238, 0, 125, 1)
+    Element swatch
+      c: rgba(245, 0, 33, 1)
+    Element swatch
+      c: rgba(169, 31, 255, 1)
+    Element swatch
+      c: rgba(111, 176, 125, 1)
+    Element swatch
+      c: rgba(238, 0, 231, 1)
+    Element swatch
+      c: rgba(238, 0, 231, 1)
+-- colors_literals.tlide --
+/* 색을 쓰는 방법. 모두 sRGB 안의 색이라 경고가 없고, 같은 주황 계열을 여러 방식으로 쓴다 */
+object swatch { var color c; }
+
+slide {
+    put swatch { c = hex(F80); }
+    put swatch { c = hex(F80C); }
+    put swatch { c = hex(FF8800); }
+    put swatch { c = hex(ff880080); }
+    put swatch { c = rgb(255, 136, 0); }
+    put swatch { c = rgba(255, 136, 0, 0.5); }
+    put swatch { c = hsl(32deg, 100%, 50%); }
+    put swatch { c = hsl(32, 100%, 50%, 0.5); }
+    put swatch { c = hsla(32deg, 100%, 50%, 25%); }
+    put swatch { c = hwb(32deg, 0%, 0%); }
+    put swatch { c = lab(70, 30, 60); }
+    put swatch { c = lch(70, 60, 60deg); }
+    put swatch { c = oklab(75%, 0.06, 0.15); }
+    put swatch { c = oklch(75%, 0.16, 65deg); }
+    put swatch { c = oklch(0.75, 0.16, 65, 50%); }
+    put swatch { c = hex(000); }
+    put swatch { c = hex(FFF); }
+}
+-- colors_literals.ir --
+Document
+  Slide 1
+    Element swatch
+      c: rgba(255, 136, 0, 1)
+    Element swatch
+      c: rgba(255, 136, 0, 0.8)
+    Element swatch
+      c: rgba(255, 136, 0, 1)
+    Element swatch
+      c: rgba(255, 136, 0, 0.501960784313725)
+    Element swatch
+      c: rgba(255, 136, 0, 1)
+    Element swatch
+      c: rgba(255, 136, 0, 0.5)
+    Element swatch
+      c: rgba(255, 136, 0, 1)
+    Element swatch
+      c: rgba(255, 136, 0, 0.5)
+    Element swatch
+      c: rgba(255, 136, 0, 0.25)
+    Element swatch
+      c: rgba(255, 136, 0, 1)
+    Element swatch
+      c: rgba(239, 148, 58, 1)
+    Element swatch
+      c: rgba(238, 148, 76, 1)
+    Element swatch
+      c: rgba(239, 151, 16, 1)
+    Element swatch
+      c: rgba(242, 149, 32, 1)
+    Element swatch
+      c: rgba(242, 149, 32, 0.5)
+    Element swatch
+      c: rgba(0, 0, 0, 1)
+    Element swatch
+      c: rgba(255, 255, 255, 1)
+-- colors_theme.tlide --
+/* theme.accent1 같은 테마 색은 IR에서 theme.이름으로 남고, theme 선언의 값은 master가 쓴다 */
+object swatch { var color c; }
+
+theme brand {
+    dark1 = hex(111111);
+    accent1 = hex(E4572E);
+    accent2 = oklch(65%, 0.1, 200deg);
+    hyperlink = rgb(0, 0, 238);
+    heading_font = font("Georgia");
+    body_font = font("Verdana");
+}
+
+master deck {
+    theme = brand;
+    case plain { background = theme.light2; }
+    case tinted { background = linear(90, theme.accent1, theme.accent2); }
+}
+
+slide {
+    layout = deck.plain;
+    put swatch { c = theme.accent1; }
+    put swatch { c = theme.dark1; }
+    put swatch { c = theme.light1; }
+    put swatch { c = theme.dark2; }
+    put swatch { c = theme.light2; }
+    put swatch { c = theme.accent6; }
+    put swatch { c = theme.hyperlink; }
+    put swatch { c = theme.followed_hyperlink; }
+}
+
+slide {
+    layout = deck.tinted;
+    put swatch { c = theme.accent2; }
+}
+-- colors_theme.ir --
+Document
+  Master deck
+    theme brand: accent1=rgba(228, 87, 46, 1) accent2=rgba(43, 161, 167, 1) dk1=rgba(17, 17, 17, 1) hlink=rgba(0, 0, 238, 1) heading_font="Georgia" body_font="Verdana"
+    Layout plain
+      background: theme.lt2
+    Layout tinted
+      background: linear(90, theme.accent1, theme.accent2)
+  Slide 1 layout deck.plain
+    Element swatch
+      c: theme.accent1
+    Element swatch
+      c: theme.dk1
+    Element swatch
+      c: theme.lt1
+    Element swatch
+      c: theme.dk2
+    Element swatch
+      c: theme.lt2
+    Element swatch
+      c: theme.accent6
+    Element swatch
+      c: theme.hlink
+    Element swatch
+      c: theme.folHlink
+  Slide 2 layout deck.tinted
+    Element swatch
+      c: theme.accent2
+-- control_flow.tlide --
+/* for와 if. slide 바로 안에는 쓸 수 없으므로 template이나 group 안에서 쓴다 */
+enum mode { fast, slow }
+object label { var text text; var int x = 0; }
+
+template rows {
+    var int n;
+    var mode mode = fast;
+    for (int i in 1..n) {
+        put label { text = f"{mode} 행 {i}"; x = i * 10px; }
+    }
+    if (mode == slow) {
+        put label { text = "느린 모드"; }
+    } else if (n == 3) {
+        put label { text = "세 줄"; }
+    } else {
+        put label { text = "그 밖"; }
+    }
+}
+
+slide {
+    put rows { n = 2; }
+    put rows { n = 3; }
+    put rows { n = 1; mode = slow; }
+    group {
+        for (string name in ["가", "나", "다"]) {
+            put label { text = name; }
+        }
+        for (int i in 3..2) {
+            put label { text = "범위가 비어서 실행하지 않는다"; }
+        }
+        for (int i in 0..1) {
+            for (int j in 1..2) {
+                put label { text = f"{i},{j}"; }
+            }
+        }
+        for (color c in [hex(F00), hex(0F0)]) {
+            put label { text = "색 목록"; x = 1; }
+        }
+        if (1 == 1) { put label { text = "참"; } }
+        if (1 == 2) { put label { text = "거짓"; } }
+        if ("a" == "a") { put label { text = "문자열 같음"; } }
+        if (2px + 3px == 5px) { put label { text = "5px와 5px는 같다"; } }
+        if (1in == 96px) { put label { text = "1in과 96px는 같다"; } }
+        if (hex(F00) == rgb(255, 0, 0)) { put label { text = "색 같음"; } }
+    }
+}
+-- control_flow.ir --
+Document
+  Slide 1
+    Element label
+      text:
+        Paragraph
+          Run "fast 행 1"
+      x: 10px
+    Element label
+      text:
+        Paragraph
+          Run "fast 행 2"
+      x: 20px
+    Element label
+      text:
+        Paragraph
+          Run "그 밖"
+      x: 0
+    Element label
+      text:
+        Paragraph
+          Run "fast 행 1"
+      x: 10px
+    Element label
+      text:
+        Paragraph
+          Run "fast 행 2"
+      x: 20px
+    Element label
+      text:
+        Paragraph
+          Run "fast 행 3"
+      x: 30px
+    Element label
+      text:
+        Paragraph
+          Run "세 줄"
+      x: 0
+    Element label
+      text:
+        Paragraph
+          Run "slow 행 1"
+      x: 10px
+    Element label
+      text:
+        Paragraph
+          Run "느린 모드"
+      x: 0
+    Element group
+      Element label
+        text:
+          Paragraph
+            Run "가"
+        x: 0
+      Element label
+        text:
+          Paragraph
+            Run "나"
+        x: 0
+      Element label
+        text:
+          Paragraph
+            Run "다"
+        x: 0
+      Element label
+        text:
+          Paragraph
+            Run "0,1"
+        x: 0
+      Element label
+        text:
+          Paragraph
+            Run "0,2"
+        x: 0
+      Element label
+        text:
+          Paragraph
+            Run "1,1"
+        x: 0
+      Element label
+        text:
+          Paragraph
+            Run "1,2"
+        x: 0
+      Element label
+        text:
+          Paragraph
+            Run "색 목록"
+        x: 1
+      Element label
+        text:
+          Paragraph
+            Run "색 목록"
+        x: 1
+      Element label
+        text:
+          Paragraph
+            Run "참"
+        x: 0
+      Element label
+        text:
+          Paragraph
+            Run "문자열 같음"
+        x: 0
+      Element label
+        text:
+          Paragraph
+            Run "5px와 5px는 같다"
+        x: 0
+      Element label
+        text:
+          Paragraph
+            Run "1in과 96px는 같다"
+        x: 0
+      Element label
+        text:
+          Paragraph
+            Run "색 같음"
+        x: 0
+-- encoding_crlf.tlide --
+/* 인코딩 시험: 한글과 이모지가 든 문서 */
+object label { var text text; }
+slide {
+    put label { text = "한글 😀 end"; }
+}
+-- encoding_crlf.ir --
+Document
+  Slide 1
+    Element label
+      text:
+        Paragraph
+          Run "한글 😀 end"
+-- encoding_utf16be_bom.tlide (base64) --
+/v8ALwAqACDHeM9UtSkAIMLc1dgAOgAg1VyuAKz8ACDHdLqoycCsAAAgtOAAILs4wRwAIAAqAC8A
+CgBvAGIAagBlAGMAdAAgAGwAYQBiAGUAbAAgAHsAIAB2AGEAcgAgAHQAZQB4AHQAIAB0AGUAeAB0
+ADsAIAB9AAoAcwBsAGkAZABlACAAewAKACAAIAAgACAAcAB1AHQAIABsAGEAYgBlAGwAIAB7ACAA
+dABlAHgAdAAgAD0AIAAi1VyuAAAg2D3eAAAgAGUAbgBkACIAOwAgAH0ACgB9AAo=
+-- encoding_utf16be_bom.ir --
+Document
+  Slide 1
+    Element label
+      text:
+        Paragraph
+          Run "한글 😀 end"
+-- encoding_utf16le_bom.tlide (base64) --
+//4vACoAIAB4x1TPKbUgANzC2NU6ACAAXNUArvysIAB0x6i6wMkArCAA4LQgADi7HMEgACoALwAK
+AG8AYgBqAGUAYwB0ACAAbABhAGIAZQBsACAAewAgAHYAYQByACAAdABlAHgAdAAgAHQAZQB4AHQA
+OwAgAH0ACgBzAGwAaQBkAGUAIAB7AAoAIAAgACAAIABwAHUAdAAgAGwAYQBiAGUAbAAgAHsAIAB0
+AGUAeAB0ACAAPQAgACIAXNUAriAAPdgA3iAAZQBuAGQAIgA7ACAAfQAKAH0ACgA=
+-- encoding_utf16le_bom.ir --
+Document
+  Slide 1
+    Element label
+      text:
+        Paragraph
+          Run "한글 😀 end"
+-- encoding_utf8_bom.tlide --
+﻿/* 인코딩 시험: 한글과 이모지가 든 문서 */
+object label { var text text; }
+slide {
+    put label { text = "한글 😀 end"; }
+}
+-- encoding_utf8_bom.ir --
+Document
+  Slide 1
+    Element label
+      text:
+        Paragraph
+          Run "한글 😀 end"
+-- enums_vars.tlide --
+/* enum 선언, var의 기본값과 필수 var. enum 값은 var 타입이 알려 주므로 이름만 적는다 */
+enum align { left, center, right }
+enum size { small, medium, large }
+
+object card {
+    var text title;
+    var align align = left;
+    var size size = medium;
+    var bool pinned = false;
+    var int count = 1;
+    var float ratio = 50%;
+    var string note = "";
+    var color tint = hex(EEE);
+}
+
+slide {
+    put card { title = "기본값만"; }
+    put card { title = "전부 지정"; align = right; size = large; pinned = true; count = 3; ratio = 25%; note = "메모"; tint = hex(F00); }
+    put card { title = "enum만"; size = small; align = center; }
+}
+-- enums_vars.ir --
+Document
+  Slide 1
+    Element card
+      title:
+        Paragraph
+          Run "기본값만"
+      align: left
+      size: medium
+      pinned: false
+      count: 1
+      ratio: 50%
+      note: ""
+      tint: rgba(238, 238, 238, 1)
+    Element card
+      title:
+        Paragraph
+          Run "전부 지정"
+      align: right
+      size: large
+      pinned: true
+      count: 3
+      ratio: 25%
+      note: "메모"
+      tint: rgba(255, 0, 0, 1)
+    Element card
+      title:
+        Paragraph
+          Run "enum만"
+      align: center
+      size: small
+      pinned: false
+      count: 1
+      ratio: 50%
+      note: ""
+      tint: rgba(238, 238, 238, 1)
+-- fields.tlide --
+/* PowerPoint가 채우는 필드: @slide.number(쪽 번호)와 @date(오늘 날짜, 비교할 때는 $DATE로 바꾼다). 필드는 run과 따로 Field로 나온다 */
+object label { var text text; }
+
+slide {
+    put label { text = "쪽 " @slide.number " / 날짜 " @date; }
+    put label { text = style(font-weight = bold) @slide.number; }
+}
+slide {
+    put label { text = @slide.number; }
+}
+-- fields.ir --
+Document
+  Slide 1
+    Element label
+      text:
+        Paragraph
+          Run "쪽 "
+          Field slidenum "1"
+          Run " / 날짜 "
+          Field datetime1 "$DATE"
+    Element label
+      text:
+        Paragraph
+          Field slidenum "1" [font-weight: bold]
+  Slide 2
+    Element label
+      text:
+        Paragraph
+          Field slidenum "2"
+-- include_relative/main.tlide --
+/* #include "경로"는 이 파일이 있는 폴더 기준이고 .tlide는 붙이지 않는다. 같은 파일을 여러 번 불러도 한 번만 읽고 (_a와 _b가 모두 _common을 부른다),
+   패키지(#include <std/stddef>)와 하위 폴더(lib/_shapes)도 같다 */
+#include <std/stddef>
+#include "_a"
+#include "_b"
+#include "lib/_shapes"
+#include <std/stddef>
+
+slide {
+    put badge { label = "포함한 template"; }
+    put dot { x = 10px; y = 20px; }
+    put text_box { text = accent "stddef도 쓴다"; x = 0px; y = 100px; width = 200px; height = 30px; }
+}
+-- include_relative/main.ir --
+Document
+  Slide 1
+    Element text_box
+      text:
+        Paragraph
+          Run "포함한 template" [color: rgba(18, 52, 86, 1)]
+      x: 0px
+      y: 0px
+      width: 200px
+      height: 30px
+      anchor: top
+    Element dot
+      x: 10px
+      y: 20px
+    Element text_box
+      text:
+        Paragraph
+          Run "stddef도 쓴다" [font-weight: bold]
+      x: 0px
+      y: 100px
+      width: 200px
+      height: 30px
+      anchor: top
+-- include_relative/_a.tlide --
+#include <std/stddef>
+#include "_common"
+
+style accent { font-weight = bold; }
+-- include_relative/_b.tlide --
+#include "_common"
+
+template badge {
+    var text label;
+    put text_box { text = brand label; x = 0px; y = 0px; width = 200px; height = 30px; }
+}
+-- include_relative/_common.tlide --
+style brand { color = hex(123456); }
+-- include_relative/lib/_shapes.tlide --
+object dot {
+    var int x;
+    var int y;
+}
+-- links.tlide --
+/* 개체의 link와 text 안의 link(...). 대상은 주소, 슬라이드 번호, 이동 이름이다.
+   action은 IR 출력에 내용이 찍히지 않으므로 pptx와 html 케이스에서 본다 */
+object tile { var text text; }
+object label { var text text; }
+
+slide {
+    put tile { text = "주소"; link = "https://example.com/a?b=1"; }
+    put tile { text = "슬라이드"; link = slide(2); }
+    put tile { text = "다음"; link = next_slide; }
+    put tile { text = "이전"; link = previous_slide; }
+    put tile { text = "처음"; link = first_slide; }
+    put tile { text = "끝"; link = end_show; }
+    put label { text = "앞 " link("https://example.org") "링크 글자" " 뒤"; }
+    put label { text = "앞 " link(slide(2)) "슬라이드 링크"; }
+    put label { text = link(last_slide) "마지막 슬라이드" style(color = hex(00F)) " 파란 글자"; }
+}
+
+slide {
+    put label { text = "둘째 슬라이드"; }
+}
+-- links.ir --
+Document
+  Slide 1
+    Element tile
+      text:
+        Paragraph
+          Run "주소"
+      link: "https://example.com/a?b=1"
+    Element tile
+      text:
+        Paragraph
+          Run "슬라이드"
+      link: slide(2)
+    Element tile
+      text:
+        Paragraph
+          Run "다음"
+      link: next_slide
+    Element tile
+      text:
+        Paragraph
+          Run "이전"
+      link: previous_slide
+    Element tile
+      text:
+        Paragraph
+          Run "처음"
+      link: first_slide
+    Element tile
+      text:
+        Paragraph
+          Run "끝"
+      link: end_show
+    Element label
+      text:
+        Paragraph
+          Run "앞 "
+          Run "링크 글자" [link: "https://example.org"]
+          Run " 뒤" [link: "https://example.org"]
+    Element label
+      text:
+        Paragraph
+          Run "앞 "
+          Run "슬라이드 링크" [link: slide(2)]
+    Element label
+      text:
+        Paragraph
+          Run "마지막 슬라이드" [link: last_slide]
+          Run " 파란 글자" [color: rgba(0, 0, 255, 1), link: last_slide]
+  Slide 2
+    Element label
+      text:
+        Paragraph
+          Run "둘째 슬라이드"
+-- master_layouts.tlide --
+/* master와 case(layout). layout의 개체 틀(placeholder)은 slide의 title, subtitle, body로 채우고, layout이 없는 slide도 있다 */
+#include <std/stddef>
+
+theme calm {
+    accent1 = hex(2E86AB);
+    heading_font = font("Georgia");
+}
+
+master deck {
+    theme = calm;
+    case cover {
+        background = hex(F5F5F5);
+        put placeholder { role = title; x = 100px; y = 200px; width = 1080px; height = 120px; text = "제목을 입력"; }
+        put placeholder { role = subtitle; x = 100px; y = 340px; width = 1080px; height = 60px; }
+    }
+    case content {
+        put placeholder { role = title; x = 60px; y = 30px; width = 1160px; height = 80px; }
+        put placeholder { role = body; x = 60px; y = 130px; width = 1160px; height = 520px; anchor = top; }
+        put text_box { text = @slide.number; x = 1180px; y = 680px; width = 60px; height = 30px; }
+    }
+}
+
+slide {
+    layout = deck.cover;
+    title = "표지 제목";
+    subtitle = style(color = hex(777)) "부제";
+}
+
+slide {
+    layout = deck.content;
+    title = "본문 제목";
+    body = bullets ["첫째", "둘째"];
+}
+
+slide {
+    layout = deck.content;
+}
+
+slide {
+    put text_box { text = "layout 없는 슬라이드"; x = 10px; y = 10px; width = 300px; height = 40px; }
+}
+-- master_layouts.ir --
+Document
+  Master deck
+    theme calm: accent1=rgba(46, 134, 171, 1) heading_font="Georgia"
+    Layout cover
+      background: rgba(245, 245, 245, 1)
+      Element placeholder
+        role: title
+        x: 100px
+        y: 200px
+        width: 1080px
+        height: 120px
+        text:
+          Paragraph
+            Run "제목을 입력"
+        anchor: top
+      Element placeholder
+        role: subtitle
+        x: 100px
+        y: 340px
+        width: 1080px
+        height: 60px
+        text:
+        anchor: top
+    Layout content
+      Element placeholder
+        role: title
+        x: 60px
+        y: 30px
+        width: 1160px
+        height: 80px
+        text:
+        anchor: top
+      Element placeholder
+        role: body
+        x: 60px
+        y: 130px
+        width: 1160px
+        height: 520px
+        text:
+        anchor: top
+      Element text_box
+        text:
+          Paragraph
+            Field slidenum "‹#›"
+        x: 1180px
+        y: 680px
+        width: 60px
+        height: 30px
+        anchor: top
+  Slide 1 layout deck.cover
+    subtitle:
+      Paragraph
+        Run "부제" [color: rgba(119, 119, 119, 1)]
+    title:
+      Paragraph
+        Run "표지 제목"
+  Slide 2 layout deck.content
+    body:
+      Paragraph bullets level 0
+        Run "첫째"
+      Paragraph bullets level 0
+        Run "둘째"
+    title:
+      Paragraph
+        Run "본문 제목"
+  Slide 3 layout deck.content
+  Slide 4
+    Element text_box
+      text:
+        Paragraph
+          Run "layout 없는 슬라이드"
+      x: 10px
+      y: 10px
+      width: 300px
+      height: 40px
+      anchor: top
+-- master_params.tlide --
+/* 매개변수가 있는 master. 같은 값으로 쓰면 master 하나를 함께 쓰고, 값이 다르면 master가 따로 생긴다 */
+object label { var text text; }
+
+master brand(color accent, string name) {
+    case cover {
+        background = accent;
+        put label { text = name; }
+    }
+    case body {
+        put label { text = f"{name} 본문"; }
+    }
+}
+
+master plain {
+    case blank { }
+}
+
+slide { layout = brand(hex(F00), "붉은").cover; }
+slide { layout = brand(hex(F00), "붉은").body; }
+slide { layout = brand(hex(00F), "푸른").cover; }
+slide { layout = plain.blank; }
+slide { layout = brand(hex(F00), "붉은").cover; }
+-- master_params.ir --
+Document
+  Master plain
+    Layout blank
+  Master brand(rgba(255, 0, 0, 1), "붉은")
+    Layout cover
+      background: rgba(255, 0, 0, 1)
+      Element label
+        text:
+          Paragraph
+            Run "붉은"
+    Layout body
+      Element label
+        text:
+          Paragraph
+            Run "붉은 본문"
+  Master brand(rgba(0, 0, 255, 1), "푸른")
+    Layout cover
+      background: rgba(0, 0, 255, 1)
+      Element label
+        text:
+          Paragraph
+            Run "푸른"
+    Layout body
+      Element label
+        text:
+          Paragraph
+            Run "푸른 본문"
+  Slide 1 layout brand(rgba(255, 0, 0, 1), "붉은").cover
+  Slide 2 layout brand(rgba(255, 0, 0, 1), "붉은").body
+  Slide 3 layout brand(rgba(0, 0, 255, 1), "푸른").cover
+  Slide 4 layout plain.blank
+  Slide 5 layout brand(rgba(255, 0, 0, 1), "붉은").cover
+-- media_decls.tlide --
+/* image, video, audio로 이름 붙인 파일. 이름, file(...), image(...), 문자열 경로 어느 것으로 써도 같은 경로가 된다 (파일은 IR에서 읽지 않는다) */
+#include <std/stddef>
+
+image logo = file("pics/logo.png");
+image wall = image("pics/wall.jpg");
+video intro = file("clips/intro.mp4");
+audio beep = file("beep.wav");
+
+slide {
+    background = wall;
+    put image { data = logo; x = 10px; y = 10px; width = 100px; height = 50px; }
+    put image { data = file("pics/other.png"); x = 10px; y = 80px; width = 100px; height = 50px; fit = cover; crop_left = 10%; crop_bottom = 25%; }
+    put image { data = "pics/string.png"; x = 10px; y = 150px; width = 100px; height = 50px; kind = ellipse; }
+    put video { data = intro; x = 200px; y = 10px; width = 320px; height = 180px; poster = logo; start = auto; loop = true; volume = 50%; trim_start = 1s; }
+    put audio { data = beep; x = 600px; y = 10px; }
+}
+
+slide {
+    background = image("pics/second.png");
+    transition_sound = "beep.wav";
+}
+-- media_decls.ir --
+Document
+  Slide 1
+    background: image("pics/wall.jpg")
+    Element image
+      data: image("pics/logo.png")
+      x: 10px
+      y: 10px
+      width: 100px
+      height: 50px
+      fit: stretch
+      crop_left: 0%
+      crop_top: 0%
+      crop_right: 0%
+      crop_bottom: 0%
+      kind: rect
+    Element image
+      data: image("pics/other.png")
+      x: 10px
+      y: 80px
+      width: 100px
+      height: 50px
+      fit: cover
+      crop_left: 10%
+      crop_top: 0%
+      crop_right: 0%
+      crop_bottom: 25%
+      kind: rect
+    Element image
+      data: image("pics/string.png")
+      x: 10px
+      y: 150px
+      width: 100px
+      height: 50px
+      fit: stretch
+      crop_left: 0%
+      crop_top: 0%
+      crop_right: 0%
+      crop_bottom: 0%
+      kind: ellipse
+    Element video as video $ID
+      data: "clips/intro.mp4"
+      x: 200px
+      y: 10px
+      width: 320px
+      height: 180px
+      poster: image("pics/logo.png")
+      start: auto
+      fullscreen: false
+      loop: true
+      rewind: false
+      hide_when_stopped: false
+      volume: 50%
+      trim_start: 1s
+      trim_end: 0s
+      fade_in: 0s
+      fade_out: 0s
+    Element audio as audio $ID
+      data: "beep.wav"
+      x: 600px
+      y: 10px
+      width: 48
+      height: 48
+      start: click_sequence
+      across_slides: false
+      loop: false
+      rewind: false
+      hide_icon: false
+      volume: 100%
+      trim_start: 0s
+      trim_end: 0s
+      fade_in: 0s
+      fade_out: 0s
+    animate video $ID media play after_previous
+    animate audio $ID media play on_click
+  Slide 2
+    background: image("pics/second.png")
+    transition_sound: "beep.wav"
+-- sections_notes.tlide --
+/* section은 뒤따르는 slide들을 묶고, comment는 발표자 메모(여러 개는 문단으로 이어진다), review는 검토 메모, hidden은 숨긴 슬라이드 */
+section "시작";
+
+slide {
+    comment "첫 메모";
+    comment "둘째 문단" " 이어 붙인 글";
+    comment bullets ["메모 목록 1", "메모 목록 2"];
+}
+
+slide {
+    hidden = true;
+    advance_after = 3s;
+}
+
+section f"본문 {1 + 1}";
+
+slide {
+    hidden = false;
+    review { text = "검토 의견"; author = "김"; x = 10px; y = 20px; }
+    review { text = f"쪽 {@slide.page}"; }
+    review { text = "위치만"; x = 50%; y = 25%; }
+}
+
+slide { }
+-- sections_notes.ir --
+Document
+  Slide 1
+    notes:
+      Paragraph
+        Run "첫 메모"
+      Paragraph
+        Run "둘째 문단"
+        Run " 이어 붙인 글"
+      Paragraph bullets level 0
+        Run "메모 목록 1"
+      Paragraph bullets level 0
+        Run "메모 목록 2"
+    section: "시작"
+  Slide 2
+    section: "시작"
+    hidden: true
+    advance_after: 3s
+  Slide 3
+    section: "본문 2"
+    review "검토 의견" by "김" at 10px, 20px
+    review "쪽 3" by "templide" at 0, 0
+    review "위치만" by "templide" at 50%, 25%
+  Slide 4
+    section: "본문 2"
+-- self_name.tlide --
+/* @self.name은 그 put의 속성 값 안에서 put ... as 이름의 이름이 된다. 이름이 없는 put에서는 쓸 수 없다 (error 쪽에서 본다) */
+object label { var text text; var string id = ""; }
+
+template tagged {
+    var string id;
+    put label { text = f"id: {id}"; }
+}
+
+slide {
+    put label as title { text = f"이름: {@self.name}"; id = @self.name; }
+    put label as subtitle { text = "이름" ; id = f"{@self.name}-2"; }
+    put tagged as card { id = @self.name; }
+}
+-- self_name.ir --
+Document
+  Slide 1
+    Element label as title
+      text:
+        Paragraph
+          Run "이름: title"
+      id: "title"
+    Element label as subtitle
+      text:
+        Paragraph
+          Run "이름"
+      id: "subtitle-2"
+    Element group as card
+      Element label
+        text:
+          Paragraph
+            Run "id: card"
+        id: ""
+-- slide_context.tlide --
+/* @slide.page는 정수, @slide.count는 전체 슬라이드 수, @slide.number는 PowerPoint가 채우는 필드. master에서는 page를 쓸 수 없다 */
+object label { var text text; var int x = 0; }
+
+template footer {
+    put label { text = f"{@slide.page} / {@slide.count}"; x = @slide.page * 100px; }
+    put label { text = "쪽 " @slide.number; }
+}
+
+master deck {
+    case plain {
+        put label { text = @slide.number " of " f"{@slide.count}"; }
+    }
+}
+
+slide { put footer { } }
+slide { layout = deck.plain; put footer { } }
+slide { put footer { } }
+-- slide_context.ir --
+Document
+  Master deck
+    Layout plain
+      Element label
+        text:
+          Paragraph
+            Field slidenum "‹#›"
+            Run " of "
+            Run "3"
+        x: 0
+  Slide 1
+    Element label
+      text:
+        Paragraph
+          Run "1 / 3"
+      x: 100px
+    Element label
+      text:
+        Paragraph
+          Run "쪽 "
+          Field slidenum "1"
+      x: 0
+  Slide 2 layout deck.plain
+    Element label
+      text:
+        Paragraph
+          Run "2 / 3"
+      x: 200px
+    Element label
+      text:
+        Paragraph
+          Run "쪽 "
+          Field slidenum "2"
+      x: 0
+  Slide 3
+    Element label
+      text:
+        Paragraph
+          Run "3 / 3"
+      x: 300px
+    Element label
+      text:
+        Paragraph
+          Run "쪽 "
+          Field slidenum "3"
+      x: 0
+-- std_styles.tlide --
+/* #include <std/styles>가 주는 글자 style과 색 이름. style은 글 끝까지 이어지므로 이름마다 괄호로 묶어 하나씩 본다 */
+#include <std/stddef>
+#include <std/styles>
+
+slide {
+    put text_box {
+        x = 0px; y = 0px; width = 600px; height = 400px;
+        text = (bold "굵게") (italic "기울임") (underline "밑줄") (double_underline "겹밑줄") (strike "취소선")
+            (uppercase "upper") (small_caps "small") (superscript "위") (subscript "아래");
+    }
+    put text_box {
+        x = 0px; y = 0px; width = 600px; height = 400px;
+        text = (align_left "왼쪽") (align_center "가운데") (align_right "오른쪽") (align_justify "양쪽");
+    }
+    put text_box {
+        x = 0px; y = 0px; width = 600px; height = 400px;
+        text = (bold red "굵은 빨강" (reset "초기화")) (brgap(2) "줄 간격");
+    }
+    put text_box {
+        x = 0px; y = 0px; width = 600px; height = 400px;
+        text = (black "a") (silver "b") (gray "c") (white "d") (maroon "e") (red "f") (purple "g") (fuchsia "h") (green "i") (lime "j") (olive "k")
+            (yellow "l") (navy "m") (blue "n") (teal "o") (aqua "p") (orange "q") (pink "r") (brown "s") (gold "t") (cyan "u") (magenta "v");
+    }
+}
+-- std_styles.ir --
+Document
+  Slide 1
+    Element text_box
+      text:
+        Paragraph
+          Run "굵게" [font-weight: bold]
+          Run "기울임" [font-style: italic]
+          Run "밑줄" [text-decoration: underline]
+          Run "겹밑줄" [text-decoration: double_underline]
+          Run "취소선" [text-decoration: line_through]
+          Run "upper" [text-transform: uppercase]
+          Run "small" [text-transform: small_caps]
+          Run "위" [vertical-align: super]
+          Run "아래" [vertical-align: sub]
+      x: 0px
+      y: 0px
+      width: 600px
+      height: 400px
+      anchor: top
+    Element text_box
+      text:
+        Paragraph
+          Run "왼쪽" [text-align: left]
+          Run "가운데" [text-align: center]
+          Run "오른쪽" [text-align: right]
+          Run "양쪽" [text-align: justify]
+      x: 0px
+      y: 0px
+      width: 600px
+      height: 400px
+      anchor: top
+    Element text_box
+      text:
+        Paragraph
+          Run "굵은 빨강" [color: rgba(255, 0, 0, 1), font-weight: bold]
+          Run "초기화" [color: rgba(0, 0, 0, 1), font-weight: normal]
+          Run "줄 간격" [line-height: 2]
+      x: 0px
+      y: 0px
+      width: 600px
+      height: 400px
+      anchor: top
+    Element text_box
+      text:
+        Paragraph
+          Run "a" [color: rgba(0, 0, 0, 1)]
+          Run "b" [color: rgba(192, 192, 192, 1)]
+          Run "c" [color: rgba(128, 128, 128, 1)]
+          Run "d" [color: rgba(255, 255, 255, 1)]
+          Run "e" [color: rgba(128, 0, 0, 1)]
+          Run "f" [color: rgba(255, 0, 0, 1)]
+          Run "g" [color: rgba(128, 0, 128, 1)]
+          Run "h" [color: rgba(255, 0, 255, 1)]
+          Run "i" [color: rgba(0, 128, 0, 1)]
+          Run "j" [color: rgba(0, 255, 0, 1)]
+          Run "k" [color: rgba(128, 128, 0, 1)]
+          Run "l" [color: rgba(255, 255, 0, 1)]
+          Run "m" [color: rgba(0, 0, 128, 1)]
+          Run "n" [color: rgba(0, 0, 255, 1)]
+          Run "o" [color: rgba(0, 128, 128, 1)]
+          Run "p" [color: rgba(0, 255, 255, 1)]
+          Run "q" [color: rgba(255, 165, 0, 1)]
+          Run "r" [color: rgba(255, 192, 203, 1)]
+          Run "s" [color: rgba(165, 42, 42, 1)]
+          Run "t" [color: rgba(255, 215, 0, 1)]
+          Run "u" [color: rgba(0, 255, 255, 1)]
+          Run "v" [color: rgba(255, 0, 255, 1)]
+      x: 0px
+      y: 0px
+      width: 600px
+      height: 400px
+      anchor: top
+-- stddef_objects.tlide --
+/* std/stddef의 개체들: text_box, shape, line, connector, freeform, backdrop. 채우기와 선, 그림자 같은 공통 속성도 함께 쓴다 */
+#include <std/stddef>
+
+slide {
+    background = linear(90, hex(FFF), hex(DDD));
+    put text_box { text = "글상자"; x = 40px; y = 30px; width = 400px; height = 60px; anchor = middle; }
+    put shape as left {
+        kind = roundRect;
+        x = 40px; y = 120px; width = 160px; height = 100px;
+        radius = 12px;
+        fill = hex(3498DB);
+        line_color = hex(2C3E50);
+        line_width = 2px;
+        line_dash = dash;
+        text = "도형";
+    }
+    put shape as right {
+        kind = star5;
+        x = 300px; y = 120px; width = 100px; height = 100px;
+        fill = radial(hex(F1C40F), hex(E67E22));
+        shadow = rgba(0, 0, 0, 0.4);
+        shadow_blur = 6px;
+        shadow_distance = 4px;
+        shadow_angle = 45;
+        rotation = 15;
+    }
+    put shape { kind = rect; x = 40px; y = 260px; width = 100px; height = 60px; fill = pattern(diagonal_cross, hex(000), hex(FFF)); flip = horizontal; }
+    put shape { kind = triangle; x = 160px; y = 260px; width = 100px; height = 60px; fill = hex(E74C3C) ; opacity = 0.5; adj1 = 0.3; }
+    put line { x1 = 40px; y1 = 350px; x2 = 440px; y2 = 350px; end_arrow = triangle; line_color = hex(333); line_width = 3px; }
+    put connector { from = left; to = right; kind = elbow; end_arrow = arrow; }
+    put freeform { x = 500px; y = 100px; path = "M 0 0 L 100 0 L 50 80 Z"; fill = hex(9B59B6); }
+    put backdrop { kind = roundRect; x = 600px; y = 300px; width = 200px; height = 100px; blur = 12px; radius = 16px; }
+}
+-- stddef_objects.ir --
+Document
+  Slide 1
+    background: linear(90, rgba(255, 255, 255, 1), rgba(221, 221, 221, 1))
+    Element text_box
+      text:
+        Paragraph
+          Run "글상자"
+      x: 40px
+      y: 30px
+      width: 400px
+      height: 60px
+      anchor: middle
+    Element shape as left
+      kind: roundRect
+      x: 40px
+      y: 120px
+      width: 160px
+      height: 100px
+      text:
+        Paragraph
+          Run "도형"
+      anchor: middle
+      fill: rgba(52, 152, 219, 1)
+      line_color: rgba(44, 62, 80, 1)
+      line_width: 2px
+      radius: 12px
+      line_dash: dash
+    Element shape as right
+      kind: star5
+      x: 300px
+      y: 120px
+      width: 100px
+      height: 100px
+      text:
+      anchor: middle
+      rotation: 15
+      fill: radial(rgba(241, 196, 15, 1), rgba(230, 126, 34, 1))
+      shadow: rgba(0, 0, 0, 0.4)
+      shadow_blur: 6px
+      shadow_distance: 4px
+      shadow_angle: 45
+    Element shape
+      kind: rect
+      x: 40px
+      y: 260px
+      width: 100px
+      height: 60px
+      text:
+      anchor: middle
+      fill: pattern(diagonal_cross, rgba(0, 0, 0, 1), rgba(255, 255, 255, 1))
+      flip: horizontal
+    Element shape
+      kind: triangle
+      x: 160px
+      y: 260px
+      width: 100px
+      height: 60px
+      text:
+      anchor: middle
+      fill: rgba(231, 76, 60, 1)
+      opacity: 0.5
+      adj1: 0.3
+    Element line
+      x1: 40px
+      y1: 350px
+      x2: 440px
+      y2: 350px
+      start_arrow: none
+      end_arrow: triangle
+      line_color: rgba(51, 51, 51, 1)
+      line_width: 3px
+    Element connector
+      from: "left"
+      to: "right"
+      kind: elbow
+      from_side: auto
+      to_side: auto
+      start_arrow: none
+      end_arrow: arrow
+    Element freeform
+      x: 500px
+      y: 100px
+      path: "M 0 0 L 100 0 L 50 80 Z"
+      fill: rgba(155, 89, 182, 1)
+    Element backdrop
+      kind: roundRect
+      x: 600px
+      y: 300px
+      width: 200px
+      height: 100px
+      blur: 12px
+      radius: 16px
+-- syntax_misc.tlide --
+/* 문법의 자잘한 부분.
+   블록 주석은 여러 줄이어도 되고 토큰 사이 어디에나 둘 수 있다. 빈 ';'는 건너뛰고, 빈 블록도 된다 */
+; ;
+style  empty_style  { }
+object Thing_2 { var text Text; var float ratio = -0.5; }
+template empty_template { }
+object empty_object { }
+
+slide {
+    ;
+    put /* 이름 앞 주석 */ Thing_2 /* 뒤 주석 */ {
+        Text = "대소문자와 밑줄, 숫자가 든 이름";   /* 줄 끝 주석 */
+        ;
+        ratio = 0.50;
+    }
+    put
+        Thing_2
+        {
+            Text
+                =
+                "줄을 바꿔 쓴 문장"
+                ;
+        }
+    put empty_template { }
+    put empty_object { }
+    put Thing_2 { Text = "음수 실수"; ratio = -1.25; }
+}
+
+slide { }
+slide{put Thing_2{Text="공백 없이";}}
+-- syntax_misc.ir --
+Document
+  Slide 1
+    Element Thing_2
+      Text:
+        Paragraph
+          Run "대소문자와 밑줄, 숫자가 든 이름"
+      ratio: 0.5
+    Element Thing_2
+      Text:
+        Paragraph
+          Run "줄을 바꿔 쓴 문장"
+      ratio: -0.5
+    Element empty_object
+    Element Thing_2
+      Text:
+        Paragraph
+          Run "음수 실수"
+      ratio: -1.25
+  Slide 2
+  Slide 3
+    Element Thing_2
+      Text:
+        Paragraph
+          Run "공백 없이"
+      ratio: -0.5
+-- table_basic.tlide --
+/* table. cells는 list<list<text>>이고 칸마다 글이다. 표 속성과 cell(행, 열) 블록의 값이 IR에 그대로 나온다 (행과 열은 1부터).
+   머리글, 줄무늬, 열 너비, 병합, 칸마다 다른 서식은 모두 속성이고 계산은 backend가 한다 */
+#include <std/stddef>
+#include <std/styles>
+
+slide {
+    put table {
+        x = 80px; y = 120px; width = 1120px; height = 300px;
+        cells = [
+            ["이름", "1분기", "2분기"],
+            ["서울", "10", bold "20"],
+            ["합계", "", ""]
+        ];
+        col_widths = [400px, 360px, 360px];
+        row_heights = [60px, 120px, 120px];
+        header_rows = 1;
+        header_cols = 1;
+        banded_rows = true;
+        fill = hex(FFFFFF);
+        line_color = hex(808080);
+        line_width = 2px;
+        line_dash = dash;
+        padding = 12px;
+        anchor = top;
+        align = center;
+        cell(3, 2) { col_span = 2; fill = hex(EEE); anchor = bottom; }
+        cell(1, 1) { align = right; line_color_bottom = hex(FF0000); line_width_bottom = 3px; padding_left = 20px; }
+    }
+}
+
+target deck { path = "deck.pptx"; type = pptx; }
+-- table_basic.ir --
+Document
+  Slide 1
+    Element table
+      cells:
+        List
+          Text
+            Paragraph
+              Run "이름"
+          Text
+            Paragraph
+              Run "1분기"
+          Text
+            Paragraph
+              Run "2분기"
+        List
+          Text
+            Paragraph
+              Run "서울"
+          Text
+            Paragraph
+              Run "10"
+          Text
+            Paragraph
+              Run "20" [font-weight: bold]
+        List
+          Text
+            Paragraph
+              Run "합계"
+          Text
+          Text
+      x: 80px
+      y: 120px
+      width: 1120px
+      height: 300px
+      col_widths:
+        Item 400px
+        Item 360px
+        Item 360px
+      row_heights:
+        Item 60px
+        Item 120px
+        Item 120px
+      header_rows: 1
+      header_cols: 1
+      banded_rows: true
+      banded_cols: false
+      header_fill: rgba(242, 242, 242, 1)
+      band_fill: rgba(247, 247, 247, 1)
+      padding: 12px
+      anchor: top
+      align: center
+      fill: rgba(255, 255, 255, 1)
+      line_color: rgba(128, 128, 128, 1)
+      line_width: 2px
+      line_dash: dash
+      cell(3, 2)
+        col_span: 2
+        fill: rgba(238, 238, 238, 1)
+        anchor: bottom
+      cell(1, 1)
+        align: right
+        line_color_bottom: rgba(255, 0, 0, 1)
+        line_width_bottom: 3px
+        padding_left: 20px
+  Target deck
+    path: "deck.pptx"
+    type: pptx
+-- table_for_cells.tlide --
+/* cell(행, 열)의 번호와 칸의 글을 for 반복과 f-string으로 만든다. 반복(template 안)에서 만든 cell 블록은 편집기에서 잠긴다 */
+#include <std/stddef>
+
+template stack {
+    for (int row in 1..2) {
+        put table {
+            x = 10; y = row * 100; width = 200; height = 80;
+            cells = [[f"행 {row}", "b"], ["c", "d"]];
+            cell(row, 2) { fill = hex(ABCDEF); }
+        }
+    }
+}
+
+slide {
+    put stack { }
+}
+-- table_for_cells.ir --
+Document
+  Slide 1
+    Element table
+      cells:
+        List
+          Text
+            Paragraph
+              Run "행 1"
+          Text
+            Paragraph
+              Run "b"
+        List
+          Text
+            Paragraph
+              Run "c"
+          Text
+            Paragraph
+              Run "d"
+      x: 10
+      y: 100
+      width: 200
+      height: 80
+      col_widths:
+      row_heights:
+      header_rows: 0
+      header_cols: 0
+      banded_rows: false
+      banded_cols: false
+      header_fill: rgba(242, 242, 242, 1)
+      band_fill: rgba(247, 247, 247, 1)
+      padding: 8px
+      anchor: middle
+      align: left
+      cell(1, 2)
+        fill: rgba(171, 205, 239, 1)
+    Element table
+      cells:
+        List
+          Text
+            Paragraph
+              Run "행 2"
+          Text
+            Paragraph
+              Run "b"
+        List
+          Text
+            Paragraph
+              Run "c"
+          Text
+            Paragraph
+              Run "d"
+      x: 10
+      y: 200
+      width: 200
+      height: 80
+      col_widths:
+      row_heights:
+      header_rows: 0
+      header_cols: 0
+      banded_rows: false
+      banded_cols: false
+      header_fill: rgba(242, 242, 242, 1)
+      band_fill: rgba(247, 247, 247, 1)
+      padding: 8px
+      anchor: middle
+      align: left
+      cell(2, 2)
+        fill: rgba(171, 205, 239, 1)
+-- table_list_vars.tlide --
+/* list<T> 타입. template의 var가 list<list<text>>, list<float>를 받아 표에 넘긴다. 기본값 [ ... ]도 쓴다.
+   표의 칸은 text라서 문자열, style(...), 이름 붙인 style을 이어 쓸 수 있다 */
+#include <std/stddef>
+
+style red { color = hex(C0392B); }
+
+template grid {
+    var list<list<text>> rows;
+    var list<float> widths = [100px, 200px];
+    put table { x = 0; y = 0; width = 300; height = 100; cells = rows; col_widths = widths; }
+}
+
+slide {
+    put grid { rows = [["a", "b"], ["c", red "d"]]; }
+    put grid { rows = [["x", "y"]]; widths = [50px, 50px]; }
+}
+-- table_list_vars.ir --
+Document
+  Slide 1
+    Element table
+      cells:
+        List
+          Text
+            Paragraph
+              Run "a"
+          Text
+            Paragraph
+              Run "b"
+        List
+          Text
+            Paragraph
+              Run "c"
+          Text
+            Paragraph
+              Run "d" [color: rgba(192, 57, 43, 1)]
+      x: 0
+      y: 0
+      width: 300
+      height: 100
+      col_widths:
+        Item 100px
+        Item 200px
+      row_heights:
+      header_rows: 0
+      header_cols: 0
+      banded_rows: false
+      banded_cols: false
+      header_fill: rgba(242, 242, 242, 1)
+      band_fill: rgba(247, 247, 247, 1)
+      padding: 8px
+      anchor: middle
+      align: left
+    Element table
+      cells:
+        List
+          Text
+            Paragraph
+              Run "x"
+          Text
+            Paragraph
+              Run "y"
+      x: 0
+      y: 0
+      width: 300
+      height: 100
+      col_widths:
+        Item 50px
+        Item 50px
+      row_heights:
+      header_rows: 0
+      header_cols: 0
+      banded_rows: false
+      banded_cols: false
+      header_fill: rgba(242, 242, 242, 1)
+      band_fill: rgba(247, 247, 247, 1)
+      padding: 8px
+      anchor: middle
+      align: left
+-- target_png.tlide --
+/* png target. scale(배율, 기본 1)과 transparent(슬라이드 배경을 그리지 않는다, 기본 거짓)는 png만 쓴다. 슬라이드마다 파일 하나가 만들어진다 */
+#include <std/stddef>
+
+slide { put text_box { text = "x"; x = 0; y = 0; width = 100; height = 20; } }
+
+target shots { path = "out/shots.png"; type = png; width = 800px; height = 450px; scale = 2; transparent = true; }
+target plain { path = "plain.png"; type = png; }
+-- target_png.ir --
+Document
+  Slide 1
+    Element text_box
+      text:
+        Paragraph
+          Run "x"
+      x: 0
+      y: 0
+      width: 100
+      height: 20
+      anchor: top
+  Target shots
+    path: "out/shots.png"
+    type: png
+    size: 800px x 450px
+    scale: 2
+    transparent: true
+  Target plain
+    path: "plain.png"
+    type: png
+-- targets.tlide --
+/* target. type은 pptx, html, web, pdf이고 크기는 width와 height를 함께 쓰며, angles = css면 각도가 css 방식이다. 쓰는 master는 slide의 layout에서 모은다 */
+object label { var text text; }
+
+master first { case a { } }
+master second { case b { } }
+
+slide { layout = second.b; put label { text = "둘째 master 먼저"; } }
+slide { layout = first.a; }
+slide { layout = second.b; }
+
+target minimal { path = "min.pptx"; type = pptx; }
+target full {
+    path = "full.pptx";
+    type = pptx;
+    title = "문서 제목";
+    author = "작성자";
+    width = 1280px;
+    height = 720px;
+}
+target page { path = "page.html"; type = html; angles = css; loop = true; width = 10in; height = 5.625in; }
+target folder { path = "site"; type = web; }
+target paper { path = "paper.pdf"; type = pdf; width = 11in; height = 8.5in; angles = powerpoint; }
+-- targets.ir --
+Document
+  Master first
+    Layout a
+  Master second
+    Layout b
+  Slide 1 layout second.b
+    Element label
+      text:
+        Paragraph
+          Run "둘째 master 먼저"
+  Slide 2 layout first.a
+  Slide 3 layout second.b
+  Target minimal
+    path: "min.pptx"
+    type: pptx
+    master: second
+    master: first
+  Target full
+    path: "full.pptx"
+    type: pptx
+    master: second
+    master: first
+    size: 1280px x 720px
+    title: "문서 제목"
+    author: "작성자"
+  Target page
+    path: "page.html"
+    type: html
+    master: second
+    master: first
+    size: 960px x 540px
+    loop: true
+    angles: css
+  Target folder
+    path: "site"
+    type: web
+    master: second
+    master: first
+  Target paper
+    path: "paper.pdf"
+    type: pdf
+    master: second
+    master: first
+    size: 1056px x 816px
+-- templates_groups_names.tlide --
+/* put ... as 이름 은 template이면 그룹 하나로 묶고, group as 이름 { }은 안의 개체를 묶는다. 이름 없는 template은 그냥 펼친다 */
+object label { var text text; }
+
+template pair {
+    var text a;
+    var text b;
+    put label { text = a; }
+    put label { text = b; }
+}
+
+slide {
+    put pair { a = "이름 없음 1"; b = "이름 없음 2"; }
+    put pair as named { a = "이름 있음 1"; b = "이름 있음 2"; }
+    put label as single { text = "개체 하나"; }
+    group as box {
+        put label { text = "그룹 안 1"; }
+        put pair { a = "그룹 안 템플릿 1"; b = "그룹 안 템플릿 2"; }
+        group {
+            put label { text = "그룹 안의 그룹"; }
+        }
+    }
+}
+-- templates_groups_names.ir --
+Document
+  Slide 1
+    Element label
+      text:
+        Paragraph
+          Run "이름 없음 1"
+    Element label
+      text:
+        Paragraph
+          Run "이름 없음 2"
+    Element group as named
+      Element label
+        text:
+          Paragraph
+            Run "이름 있음 1"
+      Element label
+        text:
+          Paragraph
+            Run "이름 있음 2"
+    Element label as single
+      text:
+        Paragraph
+          Run "개체 하나"
+    Element group as box
+      Element label
+        text:
+          Paragraph
+            Run "그룹 안 1"
+      Element label
+        text:
+          Paragraph
+            Run "그룹 안 템플릿 1"
+      Element label
+        text:
+          Paragraph
+            Run "그룹 안 템플릿 2"
+      Element group
+        Element label
+          text:
+            Paragraph
+              Run "그룹 안의 그룹"
+-- templates_nested.tlide --
+/* template 펼치기. template 안에서 template을 put하고, var는 안쪽으로 넘어가며 기본값은 put마다 따로 쓰인다 */
+object label { var text text; var int x; var int y; }
+
+template tag {
+    var text name;
+    var int x;
+    var int y;
+    var color ink = hex(333);
+    put label { text = style(color = ink) name; x = x; y = y; }
+}
+
+template pair {
+    var text left;
+    var text right;
+    var int x;
+    var int y;
+    var int gap = 20px;
+    put tag { name = left; x = x; y = y; }
+    put tag { name = right; x = x + 100px + gap; y = y; ink = hex(F00); }
+}
+
+template grid {
+    var int x;
+    var int y;
+    put pair { left = "A"; right = "B"; x = x; y = y; }
+    put pair { left = "C"; right = "D"; x = x; y = y + 40px; gap = 0px; }
+}
+
+slide {
+    put pair { left = "왼쪽"; right = "오른쪽"; x = 10px; y = 10px; }
+    put grid { x = 200px; y = 100px; }
+}
+-- templates_nested.ir --
+Document
+  Slide 1
+    Element label
+      text:
+        Paragraph
+          Run "왼쪽" [color: rgba(51, 51, 51, 1)]
+      x: 10px
+      y: 10px
+    Element label
+      text:
+        Paragraph
+          Run "오른쪽" [color: rgba(255, 0, 0, 1)]
+      x: 130px
+      y: 10px
+    Element label
+      text:
+        Paragraph
+          Run "A" [color: rgba(51, 51, 51, 1)]
+      x: 200px
+      y: 100px
+    Element label
+      text:
+        Paragraph
+          Run "B" [color: rgba(255, 0, 0, 1)]
+      x: 320px
+      y: 100px
+    Element label
+      text:
+        Paragraph
+          Run "C" [color: rgba(51, 51, 51, 1)]
+      x: 200px
+      y: 140px
+    Element label
+      text:
+        Paragraph
+          Run "D" [color: rgba(255, 0, 0, 1)]
+      x: 300px
+      y: 140px
+-- text_composition.tlide --
+/* text를 만드는 여러 방법. string과 text와 var가 한 text 안에서 이어 붙고, 빈 문자열은 run을 만들지 않는다 */
+style bold { font-weight = bold; }
+style red { color = hex(F00); }
+object label { var text text; }
+
+template frame {
+    var text title;
+    var text detail = "";
+    put label { text = bold title; }
+    put label { text = detail; }
+}
+
+slide {
+    put label { text = "A" "B" "C"; }
+    put label { text = "" "빈 문자열은" "" " 건너뛴다" ""; }
+    put frame { title = "제목"; detail = "자세히"; }
+    put frame { title = red "빨간 " "제목"; }
+    put frame { title = "var 안의 목록"; detail = bullets ["가", "나"]; }
+    put label { text = red "앞 " ("괄호 안 " bold "굵게 ") "괄호 밖"; }
+}
+-- text_composition.ir --
+Document
+  Slide 1
+    Element label
+      text:
+        Paragraph
+          Run "A"
+          Run "B"
+          Run "C"
+    Element label
+      text:
+        Paragraph
+          Run "빈 문자열은"
+          Run " 건너뛴다"
+    Element label
+      text:
+        Paragraph
+          Run "제목" [font-weight: bold]
+    Element label
+      text:
+        Paragraph
+          Run "자세히"
+    Element label
+      text:
+        Paragraph
+          Run "빨간 " [color: rgba(255, 0, 0, 1), font-weight: bold]
+          Run "제목" [color: rgba(255, 0, 0, 1), font-weight: bold]
+    Element label
+      text:
+    Element label
+      text:
+        Paragraph
+          Run "var 안의 목록" [font-weight: bold]
+    Element label
+      text:
+        Paragraph bullets level 0
+          Run "가"
+        Paragraph bullets level 0
+          Run "나"
+    Element label
+      text:
+        Paragraph
+          Run "앞 " [color: rgba(255, 0, 0, 1)]
+          Run "괄호 안 " [color: rgba(255, 0, 0, 1)]
+          Run "굵게 " [color: rgba(255, 0, 0, 1), font-weight: bold]
+          Run "괄호 밖" [color: rgba(255, 0, 0, 1)]
+-- text_fstring_escapes.tlide --
+/* f-string과 이스케이프. \n은 문단 안의 줄바꿈이고 \" \\ \{ \} \t는 글자 그대로 들어간다 */
+object label { var text text; }
+
+template count_label {
+    var int n;
+    var string unit = "개";
+    put label { text = f"{n}{unit}"; }
+}
+
+slide {
+    put label { text = "줄 하나\n줄 둘"; }
+    put label { text = "따옴표 \" 역슬래시 \\ 중괄호 \{ \} 탭 \t 끝"; }
+    put label { text = f"쪽 {@slide.page} / {@slide.count}"; }
+    put label { text = f"계산 {1 + 2 * 3} 그리고 {10px - 4px} 그리고 {2 * 5px}"; }
+    put label { text = f"f-string 안의 이스케이프 \{중괄호\} \"따옴표\" \\"; }
+    put label { text = f"참 거짓: {1 == 1} {2 == 3} {true}"; }
+    put label { text = f""; }
+    put count_label { n = 3; }
+    put count_label { n = 12; unit = "명"; }
+}
+-- text_fstring_escapes.ir --
+Document
+  Slide 1
+    Element label
+      text:
+        Paragraph
+          Run "줄 하나
+줄 둘"
+    Element label
+      text:
+        Paragraph
+          Run "따옴표 " 역슬래시 \ 중괄호 { } 탭 	 끝"
+    Element label
+      text:
+        Paragraph
+          Run "쪽 1 / 1"
+    Element label
+      text:
+        Paragraph
+          Run "계산 7 그리고 6px 그리고 10px"
+    Element label
+      text:
+        Paragraph
+          Run "f-string 안의 이스케이프 {중괄호} "따옴표" \"
+    Element label
+      text:
+        Paragraph
+          Run "참 거짓: true false true"
+    Element label
+      text:
+    Element label
+      text:
+        Paragraph
+          Run "3개"
+    Element label
+      text:
+        Paragraph
+          Run "12명"
+-- text_inline_style.tlide --
+/* text 안에 바로 쓰는 style(...). 이름 있는 style과 섞어 쓰고, 속성 값에 template의 var를 쓸 수 있다 */
+style bold { font-weight = bold; }
+object label { var text text; }
+
+template note {
+    var text body;
+    var color ink = hex(333);
+    put label { text = style(color = ink, font-size = 14pt) body; }
+}
+
+slide {
+    put label { text = style(color = hex(F00), font-size = 20pt) "빨간 큰 글자" style(font-weight = bold) "굵게도"; }
+    put label { text = bold style(text-decoration = line_through) "이름 있는 style과 함께"; }
+    put label { text = style() "빈 style"; }
+    put label { text = style(color = hex(111)) "앞" style(color = hex(222)) "뒤"; }
+    put note { body = "기본 색"; }
+    put note { body = "지정한 색"; ink = oklch(60%, 0.1, 30deg); }
+    put label { text = bullets [style(color = hex(0A0)) "목록 항목", "스타일 없는 항목"]; }
+}
+-- text_inline_style.ir --
+Document
+  Slide 1
+    Element label
+      text:
+        Paragraph
+          Run "빨간 큰 글자" [color: rgba(255, 0, 0, 1), font-size: 26.6666666666667px]
+          Run "굵게도" [color: rgba(255, 0, 0, 1), font-weight: bold, font-size: 26.6666666666667px]
+    Element label
+      text:
+        Paragraph
+          Run "이름 있는 style과 함께" [font-weight: bold, text-decoration: line_through]
+    Element label
+      text:
+        Paragraph
+          Run "빈 style"
+    Element label
+      text:
+        Paragraph
+          Run "앞" [color: rgba(17, 17, 17, 1)]
+          Run "뒤" [color: rgba(34, 34, 34, 1)]
+    Element label
+      text:
+        Paragraph
+          Run "기본 색" [color: rgba(51, 51, 51, 1), font-size: 18.6666666666667px]
+    Element label
+      text:
+        Paragraph
+          Run "지정한 색" [color: rgba(180, 104, 92, 1), font-size: 18.6666666666667px]
+    Element label
+      text:
+        Paragraph bullets level 0
+          Run "목록 항목" [color: rgba(0, 170, 0, 1)]
+        Paragraph bullets level 0
+          Run "스타일 없는 항목"
+-- text_lists.tlide --
+/* bullets, numbers, dashes, paragraphs. 목록 뒤에 오는 글은 새 문단이고, 번호 모양은 style로 바꾼다 */
+style roman { list-style = upper_roman; list-start = 3; }
+style marker { list-marker = "▶"; list-marker-color = hex(F00); }
+style bold { font-weight = bold; }
+object label { var text text; }
+
+slide {
+    put label { text = bullets ["첫째", "둘째", "셋째"]; }
+    put label { text = numbers ["하나", "둘", "셋"]; }
+    put label { text = dashes ["가", "나"]; }
+    put label { text = paragraphs ["문단 하나", "문단 둘"]; }
+    put label { text = "앞 글" bullets ["항목"] "뒤 글"; }
+    put label { text = roman numbers ["로마 숫자", "3부터"]; }
+    put label { text = marker bullets ["사용자 기호", "색도 지정"]; }
+    put label { text = bullets [bold "굵은 " "항목", "일반 항목"]; }
+    put label { text = bullets []; }
+}
+-- text_lists.ir --
+Document
+  Slide 1
+    Element label
+      text:
+        Paragraph bullets level 0
+          Run "첫째"
+        Paragraph bullets level 0
+          Run "둘째"
+        Paragraph bullets level 0
+          Run "셋째"
+    Element label
+      text:
+        Paragraph numbers level 0
+          Run "하나"
+        Paragraph numbers level 0
+          Run "둘"
+        Paragraph numbers level 0
+          Run "셋"
+    Element label
+      text:
+        Paragraph dashes level 0
+          Run "가"
+        Paragraph dashes level 0
+          Run "나"
+    Element label
+      text:
+        Paragraph
+          Run "문단 하나"
+        Paragraph
+          Run "문단 둘"
+    Element label
+      text:
+        Paragraph
+          Run "앞 글"
+        Paragraph bullets level 0
+          Run "항목"
+        Paragraph
+          Run "뒤 글"
+    Element label
+      text:
+        Paragraph numbers level 0
+          Run "로마 숫자" [list-style: upper_roman, list-start: 3]
+        Paragraph numbers level 0
+          Run "3부터" [list-style: upper_roman, list-start: 3]
+    Element label
+      text:
+        Paragraph bullets level 0
+          Run "사용자 기호" [list-marker: "▶", list-marker-color: rgba(255, 0, 0, 1)]
+        Paragraph bullets level 0
+          Run "색도 지정" [list-marker: "▶", list-marker-color: rgba(255, 0, 0, 1)]
+    Element label
+      text:
+        Paragraph bullets level 0
+          Run "굵은 " [font-weight: bold]
+          Run "항목" [font-weight: bold]
+        Paragraph bullets level 0
+          Run "일반 항목"
+    Element label
+      text:
+-- text_nested_lists.tlide --
+/* 목록 안의 목록은 한 단계씩 깊어지고, paragraphs는 깊이를 바꾸지 않는다 */
+object label { var text text; }
+
+slide {
+    put label {
+        text = bullets [
+            "1단계",
+            numbers ["2단계 번호 1", "2단계 번호 2", dashes ["3단계 줄표"]],
+            "다시 1단계"
+        ];
+    }
+    put label {
+        text = bullets [
+            "문단을 담은 목록",
+            paragraphs ["기호 없는 문단", "깊이는 그대로"]
+        ];
+    }
+    put label {
+        text = numbers [
+            "앞",
+            bullets ["안쪽 기호", bullets ["더 안쪽"]],
+            "뒤"
+        ];
+    }
+}
+-- text_nested_lists.ir --
+Document
+  Slide 1
+    Element label
+      text:
+        Paragraph bullets level 0
+          Run "1단계"
+        Paragraph numbers level 1
+          Run "2단계 번호 1"
+        Paragraph numbers level 1
+          Run "2단계 번호 2"
+        Paragraph dashes level 2
+          Run "3단계 줄표"
+        Paragraph bullets level 0
+          Run "다시 1단계"
+    Element label
+      text:
+        Paragraph bullets level 0
+          Run "문단을 담은 목록"
+        Paragraph
+          Run "기호 없는 문단"
+        Paragraph
+          Run "깊이는 그대로"
+    Element label
+      text:
+        Paragraph numbers level 0
+          Run "앞"
+        Paragraph bullets level 1
+          Run "안쪽 기호"
+        Paragraph bullets level 2
+          Run "더 안쪽"
+        Paragraph numbers level 0
+          Run "뒤"
+-- text_styles.tlide --
+/* style 선언과 호출. 이어 붙인 style은 text 끝까지 누적되고, 뒤의 것이 앞의 것을 덮어쓴다 */
+style bold { font-weight = bold; }
+style plain { font-weight = normal; color = hex(000); }
+style red { color = hex(F00); }
+style size(float s) { font-size = s; }
+style tint(color c) { color = c; }
+style serif { font-family = font("Georgia"); font-style = italic; text-decoration = underline; }
+style spaced { letter-spacing = 2px; text-transform = uppercase; highlight = hex(FF0); vertical-align = super; }
+style para { text-align = center; line-height = 1.5; space-before = 6pt; space-after = 1in; margin-left = 24px; text-indent = -12px; }
+color brand rgb(10, 20, 30);
+
+object label { var text text; }
+
+slide {
+    put label { text = bold "굵게" plain " 보통" red " 빨강"; }
+    put label { text = size(12pt) "작게 " size(2 * 12pt) "크게"; }
+    put label { text = tint(hex(00F)) "파랑 " tint(rgb(0, 128, 0)) "초록" brand " color 선언"; }
+    put label { text = serif "세리프" spaced " 간격"; }
+    put label { text = para "문단 속성"; }
+    put label { text = "스타일 없음"; }
+}
+-- text_styles.ir --
+Document
+  Slide 1
+    Element label
+      text:
+        Paragraph
+          Run "굵게" [font-weight: bold]
+          Run " 보통" [color: rgba(0, 0, 0, 1), font-weight: normal]
+          Run " 빨강" [color: rgba(255, 0, 0, 1), font-weight: normal]
+    Element label
+      text:
+        Paragraph
+          Run "작게 " [font-size: 16px]
+          Run "크게" [font-size: 32px]
+    Element label
+      text:
+        Paragraph
+          Run "파랑 " [color: rgba(0, 0, 255, 1)]
+          Run "초록" [color: rgba(0, 128, 0, 1)]
+          Run " color 선언" [color: rgba(10, 20, 30, 1)]
+    Element label
+      text:
+        Paragraph
+          Run "세리프" [font-family: "Georgia", font-style: italic, text-decoration: underline]
+          Run " 간격" [font-family: "Georgia", font-style: italic, text-decoration: underline, vertical-align: super, letter-spacing: 2px, highlight: rgba(255, 255, 0, 1), text-transform: uppercase]
+    Element label
+      text:
+        Paragraph
+          Run "문단 속성" [line-height: 1.5, text-align: center, space-before: 8px, space-after: 96px, margin-left: 24px, text-indent: -12px]
+    Element label
+      text:
+        Paragraph
+          Run "스타일 없음"
+-- transitions.tlide --
+/* 화면 전환: 효과 이름, 옵션(.), 길이. 옵션을 안 쓰면 첫 옵션이 기본이고, 길이를 안 쓰면 비워 둔다 */
+slide { transition fade; }
+slide { transition fade 0.5s; }
+slide { transition fade.through_black 1s; }
+slide { transition cut; }
+slide { transition wipe.left 250ms; }
+slide { transition push; }
+slide { transition cover.right_up 2s; }
+slide { transition random; }
+slide { transition split.vertical_in 1s; }
+slide { transition morph.by_word 0.8s; }
+slide { transition checkerboard.down; }
+slide { transition fade 1s + 500ms; advance_after = 3s; }
+slide { advance_after = 1500ms; }
+-- transitions.ir --
+Document
+  Slide 1
+    transition: fade.smoothly
+  Slide 2
+    transition: fade.smoothly 0.5s
+  Slide 3
+    transition: fade.through_black 1s
+  Slide 4
+    transition: cut.smoothly
+  Slide 5
+    transition: wipe.left 250ms
+  Slide 6
+    transition: push.left
+  Slide 7
+    transition: cover.right_up 2s
+  Slide 8
+    transition: random
+  Slide 9
+    transition: split.vertical_in 1s
+  Slide 10
+    transition: morph.by_word 0.8s
+  Slide 11
+    transition: checkerboard.down
+  Slide 12
+    transition: fade.smoothly 1s+500ms
+    advance_after: 3s
+  Slide 13
+    advance_after: 1500ms
+-- units_angles_durations.tlide --
+/* 각도(단위 없음 또는 deg), 시간(s, ms), 0~1 비율(opacity), 선 굵기 같은 길이 속성 */
+object m { }
+
+slide {
+    put m as box { rotation = 45; opacity = 0.5; }
+    put m { rotation = 45deg; opacity = 1; }
+    put m { rotation = -30deg; opacity = 0; line_width = 2pt; }
+    put m { rotation = 450; glow = hex(0F0); glow_size = 1cm; shadow = hex(000); shadow_blur = 4px; shadow_distance = 3pt; shadow_angle = 135; }
+    put m { fill = linear(90, hex(F00), hex(00F)); }
+    put m { fill = linear(45deg, hex(F00) 10%, hex(0F0) 60%, hex(00F)); }
+    transition fade 500ms;
+    animate box enter fade 0.25s delay 1s;
+}
+-- units_angles_durations.ir --
+Document
+  Slide 1
+    transition: fade.smoothly 500ms
+    Element m as box
+      rotation: 45
+      opacity: 0.5
+    Element m
+      rotation: 45deg
+      opacity: 1
+    Element m
+      rotation: -30deg
+      line_width: 2.66666666666667px
+      opacity: 0
+    Element m
+      rotation: 450
+      shadow: rgba(0, 0, 0, 1)
+      shadow_blur: 4px
+      shadow_distance: 4px
+      shadow_angle: 135
+      glow: rgba(0, 255, 0, 1)
+      glow_size: 37.7952755905512px
+    Element m
+      fill: linear(90, rgba(255, 0, 0, 1), rgba(0, 0, 255, 1))
+    Element m
+      fill: linear(45deg, rgba(255, 0, 0, 1) 10%, rgba(0, 255, 0, 1) 60%, rgba(0, 0, 255, 1))
+    animate box enter fade 0.25s on_click delay 1s
+-- units_arithmetic.tlide --
+/* 단위가 있는 수의 계산. 같은 단위끼리 합치고, %와 px는 항으로 따로 남기고, 곱은 한쪽에만 단위가 있어야 한다 */
+object m { var float v; }
+object n { var int v; }
+
+slide {
+    put m { v = 5px + 1in; }
+    put m { v = 100% - 20px; }
+    put m { v = 10 + 5px; }
+    put m { v = 3 * 20px; }
+    put m { v = 20px * 3; }
+    put m { v = 1.5 * 10pt; }
+    put m { v = (1in + 2px) * 2; }
+    put m { v = 10px - 10px; }
+    put m { v = 50% + 25% - 10px + 4px; }
+    put m { v = 1 + 2 * 3; }
+    put m { v = (1 + 2) * 3; }
+    put m { v = 2 * -3px; }
+    put m { v = 10px - 15px; }
+    put n { v = 7; }
+    put n { v = 2 * 3 + 1; }
+    put n { v = 12.5%; }
+}
+-- units_arithmetic.ir --
+Document
+  Slide 1
+    Element m
+      v: 101px
+    Element m
+      v: 100%-20px
+    Element m
+      v: 15px
+    Element m
+      v: 60px
+    Element m
+      v: 60px
+    Element m
+      v: 20px
+    Element m
+      v: 196px
+    Element m
+      v: 0
+    Element m
+      v: 75%-6px
+    Element m
+      v: 7
+    Element m
+      v: 9
+    Element m
+      v: -6px
+    Element m
+      v: -5px
+    Element n
+      v: 7
+    Element n
+      v: 7
+    Element n
+      v: 12.5%
+-- units_conversion.tlide --
+/* 길이 단위. pt, in, cm, mm는 px로 바뀌고 %는 그대로 두며, 단위가 없는 수는 px로 본다 */
+object m { var float v; }
+
+slide {
+    put m { v = 10px; }
+    put m { v = 12pt; }
+    put m { v = 1in; }
+    put m { v = 2.54cm; }
+    put m { v = 25.4mm; }
+    put m { v = 50%; }
+    put m { v = 10; }
+    put m { v = 1.5; }
+    put m { v = 0; }
+    put m { v = 0px; }
+    put m { v = -10px; }
+    put m { v = -1.5pt; }
+    put m { v = -25%; }
+    put m { v = 33.3%; }
+}
+-- units_conversion.ir --
+Document
+  Slide 1
+    Element m
+      v: 10px
+    Element m
+      v: 16px
+    Element m
+      v: 96px
+    Element m
+      v: 96px
+    Element m
+      v: 96px
+    Element m
+      v: 50%
+    Element m
+      v: 10
+    Element m
+      v: 1.5
+    Element m
+      v: 0
+    Element m
+      v: 0px
+    Element m
+      v: -10px
+    Element m
+      v: -2px
+    Element m
+      v: -25%
+    Element m
+      v: 33.3%
+-- widgets_flat.tlide --
+/* std/widget/flat의 template들. 패키지 파일을 #include <...>로 불러 쓰고 template이 도형과 글상자로 펼쳐진다 */
+#include <std/widget/flat>
+
+slide {
+    put flat_card { title = "카드"; content = bullets ["하나", "둘"]; x = 40px; y = 40px; width = 400px; height = 200px; }
+    put flat_button { text = "버튼"; x = 40px; y = 280px; width = 160px; height = 48px; color = hex(2ECC71); }
+    put flat_circle { x = 260px; y = 280px; size = 60px; }
+    put flat_pill { x = 340px; y = 290px; width = 120px; height = 40px; }
+}
+-- widgets_flat.ir --
+Document
+  Slide 1
+    Element shape
+      kind: roundRect
+      x: 40px
+      y: 40px
+      width: 400px
+      height: 200px
+      text:
+      anchor: middle
+      fill: rgba(236, 240, 241, 1)
+      line_color: rgba(0, 0, 0, 0)
+      radius: 8px
+    Element text_box
+      text:
+        Paragraph
+          Run "카드" [color: rgba(44, 62, 80, 1), font-weight: bold, font-size: 26.6666666666667px]
+      x: 64px
+      y: 60px
+      width: 352px
+      height: 40px
+      anchor: middle
+    Element text_box
+      text:
+        Paragraph bullets level 0
+          Run "하나" [color: rgba(52, 73, 94, 1), font-size: 18.6666666666667px]
+        Paragraph bullets level 0
+          Run "둘" [color: rgba(52, 73, 94, 1), font-size: 18.6666666666667px]
+      x: 64px
+      y: 104px
+      width: 352px
+      height: 116px
+      anchor: top
+    Element shape
+      kind: roundRect
+      x: 40px
+      y: 280px
+      width: 160px
+      height: 48px
+      text:
+        Paragraph
+          Run "버튼" [color: rgba(255, 255, 255, 1), font-weight: bold, font-size: 21.3333333333333px]
+      anchor: middle
+      fill: rgba(46, 204, 113, 1)
+      line_color: rgba(0, 0, 0, 0)
+      radius: 6px
+    Element shape
+      kind: roundRect
+      x: 260px
+      y: 280px
+      width: 60px
+      height: 60px
+      text:
+      anchor: middle
+      fill: rgba(52, 152, 219, 1)
+      line_color: rgba(0, 0, 0, 0)
+      radius: 60px
+    Element shape
+      kind: roundRect
+      x: 340px
+      y: 290px
+      width: 120px
+      height: 40px
+      text:
+      anchor: middle
+      fill: rgba(52, 152, 219, 1)
+      line_color: rgba(0, 0, 0, 0)
+      radius: 160px
+-- 한글_폴더/발표.tlide --
+/* 한글 폴더와 한글 파일 이름. #include "..."도 한글 이름을 찾는다 (식별자는 영문이어야 한다) */
+#include "_공통"
+
+slide {
+    put box { body = "안녕하세요"; }
+}
+-- 한글_폴더/발표.ir --
+Document
+  Slide 1
+    Element box
+      body:
+        Paragraph
+          Run "안녕하세요"
+-- 한글_폴더/_공통.tlide --
+object box { var text body; }

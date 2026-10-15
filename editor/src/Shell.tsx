@@ -34,7 +34,7 @@ const nameOf = (path: string) => path.split(/[\\/]/).pop()!;
 
 // 문서가 없는 탭(.tasset, 닫은 탭)에 온 MCP 도구 호출
 const noDocument: EditorAccess = {
-    path: null, dirty: false, text: null, deck: null, stale: false, page: 0, selected: null, diagnostics: [], warnings: [],
+    path: null, dirty: false, text: null, deck: null, stale: false, page: 0, selected: null, diagnostics: [], warnings: [], schema: null, cursor: () => null, cells: null,
     edit: async () => ({ error: 'No document is open in the editor' }),
     goto: () => {},
     select: () => {},
@@ -278,7 +278,15 @@ export function Shell() {
                 }
             });
             // 에이전트는 자기를 실행한 탭(session)의 문서를 고친다. session이 없으면 보이는 탭
-            serveMcp((session) => accesses.current.get(session || activeRef.current || '') ?? noDocument).catch((error) => console.error('mcp', error));
+            serveMcp(
+                (session) => accesses.current.get(session || activeRef.current || '') ?? noDocument,
+                // 에이전트에게 열린 .tlide 문서들을 알린다. 에이전트를 실행한 탭(없으면 보이는 탭)에 current를 붙인다
+                (session) => tabsRef.current.filter((tab) => tab.kind === 'tlide').map((tab) => ({
+                    path: tab.path,
+                    dirty: handles.current.get(tab.id)?.dirty() || undefined,
+                    current: tab.id === (session || activeRef.current) || undefined,
+                })),
+            ).catch((error) => console.error('mcp', error));
             // 저장하지 않은 탭이 있으면 창을 닫기 전에 묻는다
             getCurrentWindow().onCloseRequested(async (event) => {
                 const unsaved = tabsRef.current.filter((tab) => handles.current.get(tab.id)?.dirty());

@@ -1,6 +1,6 @@
 // 속성 패널의 입력 칸. 값은 서버의 편집 요청에 그대로 펼쳐 넣는 객체({length}, {number, unit}, {enum}, {bool}, {color}, {string}, {code})로 보낸다
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, Lock, RotateCcw, FolderOpen, Plus, X } from 'lucide-react';
+import { ChevronDown, Lock, Minus, RotateCcw, FolderOpen, Plus, X } from 'lucide-react';
 import { FontPopup, cssFont, fontCode } from './FontPicker';
 import type { ActionValue, LinkValue, Origin, PaintValue, Value } from './lsp';
 import { enumNames, label } from './labels';
@@ -113,6 +113,22 @@ export function NumberField({ name, label: text, value, origin, onSet, onUnset, 
         <Row label={text ?? name} lock={lock} origin={origin} onUnset={onUnset}>
             <NumberInput value={typeof value === 'number' ? value : undefined} measure={measure} disabled={!!lock} placeholder={placeholder}
                 onCommit={(shown) => onSet(fromDisplay(measure, shown))} />
+        </Row>
+    );
+}
+
+// 정수를 − [수] + 로 하나씩 올리고 내린다 (표의 머리글 행, 열 수)
+export function StepperField({ name, label: text, value, origin, onSet, onUnset, min, max }: FieldProps & { min: number; max: number }) {
+    const lock = lockReason(origin);
+    const current = typeof value === 'number' ? value : min;
+    const step = (delta: number) => onSet({ number: Math.min(max, Math.max(min, current + delta)) });
+    return (
+        <Row label={text ?? name} lock={lock} origin={origin} onUnset={onUnset}>
+            <span className="stepper">
+                <button className="mini-button" disabled={!!lock || current <= min} title={t('하나 줄이기')} onClick={() => step(-1)}><Minus size={13} /></button>
+                <span className="stepper-value">{current}</span>
+                <button className="mini-button" disabled={!!lock || current >= max} title={t('하나 늘리기')} onClick={() => step(1)}><Plus size={13} /></button>
+            </span>
         </Row>
     );
 }

@@ -1,6 +1,7 @@
 #include "html.h"
 #include "backend.h"
 #include "raster.h"
+#include "table.h"
 #include "../middleend/geometry.h"
 
 #include <algorithm>
@@ -280,7 +281,7 @@ namespace templide::backend::html {
         private:
             std::string build() {
                 web_ = target_.type == "web";
-                print_ = target_.type == "pdf";
+                print_ = target_.type == "pdf" || target_.type == "png";
                 read_slide_size();
                 std::map<std::pair<std::size_t, std::size_t>, std::size_t> layout_numbers;
                 Array layouts;
@@ -345,7 +346,7 @@ namespace templide::backend::html {
             std::filesystem::path libs_dir_;
             bool dry_run_; // 파일을 쓰지 않고 에러만 알아본다
             bool web_ = false;
-            bool print_ = false; // type = pdf. 전환과 애니메이션이 없는 정적 출력이다
+            bool print_ = false; // type = pdf, png. 전환과 애니메이션이 없는 정적 출력이다
             bool editor_ = false;
             double width_ = default_slide_width;
             double height_ = default_slide_height;
@@ -1184,6 +1185,8 @@ namespace templide::backend::html {
                     }
                 } else if (element.object == "video" || element.object == "audio") {
                     json = media_json(result, element, element_where);
+                } else if (element.object == "table") {
+                    json = table_json(result, element, element_where, text_defaults);
                 } else if (element.object == "backdrop") {
                     const auto rect = element_rect(element, element_where);
                     if (rect) {
@@ -1201,6 +1204,85 @@ namespace templide::backend::html {
                 }
                 opacity_ = 1;
                 return json;
+            }
+
+            // 표. 열 너비와 행 높이는 비율대로 표 크기에 나눈다. 칸의 선은 왼쪽과 위쪽만 칸마다 그리고, 오른쪽과 아래쪽은 표의 바깥 변일 때만 그린다
+            // (안쪽은 이웃한 칸의 왼쪽, 위쪽 선이다). 병합에 가려진 칸은 빼고, 칸의 행과 열은 0부터다
+            Json table_json(Object& result, const ir::Element& element, const std::string& where, const TextDefaults& defaults) {
+                const auto rect = element_rect(element, where);
+                const auto resolved = table::resolve(element);
+                if (!resolved) {
+                    error(where + ": 'cells' must be a list of rows with at least one cell");
+                    return Json();
+                }
+                if (!rect) {
+                    return Json();
+                }
+                common_json(result, element, *rect);
+                const auto weights = [&](const std::vector<ir::Number>& numbers, double reference) {
+                    std::vector<double> values;
+                    for (const auto& number : numbers) {
+                        values.push_back(to_px(number, reference));
+                    }
+                    return values;
+                };
+                Array columns;
+                for (const double width : table::divide(weights(resolved->column_widths, width_), resolved->columns, rect->width)) {
+                    columns.push(width);
+                }
+                Array rows;
+                for (const double height : table::divide(weights(resolved->row_heights, height_), resolved->rows, rect->height)) {
+                    rows.push(height);
+                }
+                static const std::map<std::string, std::string> anchors = {{"top", "t"}, {"middle", "ctr"}, {"bottom", "b"}};
+                Array cells;
+                for (const auto& cell : resolved->cells) {
+                    if (cell.covered) {
+                        continue;
+                    }
+                    Object item;
+                    item.set("r", static_cast<long long>(cell.row)).set("c", static_cast<long long>(cell.column));
+                    if (cell.row_span > 1) {
+                        item.set("rs", static_cast<long long>(cell.row_span));
+                    }
+                    if (cell.column_span > 1) {
+                        item.set("cs", static_cast<long long>(cell.column_span));
+                    }
+                    if (cell.header) {
+                        item.set("th", 1);
+                    }
+                    if (cell.fill) {
+                        item.set("f", paint_json(*cell.fill, where + ", fill"));
+                    }
+                    const auto anchor = anchors.find(cell.anchor);
+                    item.set("an", anchor != anchors.end() ? anchor->second : "ctr");
+                    Array insets;
+                    for (const double padding : cell.padding) {
+                        insets.push(padding);
+                    }
+                    item.set("ins", insets);
+                    Array borders;
+                    for (std::size_t side = 0; side < 4; ++side) {
+                        const table::Line& line = cell.border[side];
+                        const bool outer = side == 0 || side == 1 || (side == 2 && cell.column + cell.column_span == resolved->columns)
+                            || (side == 3 && cell.row + cell.row_span == resolved->rows);
+                        if (!outer || line.width <= 0) {
+                            borders.push(Json());
+                            continue;
+                        }
+                        Object border;
+                        border.set("c", color_css(line.color)).set("w", line.width);
+                        if (!line.dash.empty()) {
+                            border.set("d", line.dash);
+                        }
+                        borders.push(border);
+                    }
+                    item.set("b", borders);
+                    item.set("tx", text_json(cell.text, Object(), defaults, "l"));
+                    cells.push(item);
+                }
+                result.set("t", "tbl").set("cols", columns).set("rows", rows).set("cells", cells);
+                return result;
             }
 
             // 그림. fit과 crop_*은 pptx와 같이 틀과 자르기 비율로 바꾼다
@@ -1607,6 +1689,21 @@ namespace templide::backend::html {
 
     std::string deck_json(const ir::Document& document, const ir::Target& target, const std::filesystem::path& base_dir, std::vector<std::string>& errors) {
         return Writer(document, target, base_dir, {}).run_editor(errors);
+    }
+
+    std::pair<double, double> slide_size(const ir::Target& target) {
+        if (!target.width || !target.height) {
+            return {default_slide_width, default_slide_height};
+        }
+        // 슬라이드 크기에 %는 쓸 수 없으므로 기준은 필요 없다
+        const auto pixels = [](const ir::Number& number) {
+            double total = 0;
+            for (const auto& term : number.terms) {
+                total += term.first == "%" ? 0 : term.second;
+            }
+            return total;
+        };
+        return {pixels(*target.width), pixels(*target.height)};
     }
 
     std::string print_page(const ir::Document& document, const ir::Target& target, const std::filesystem::path& base_dir,

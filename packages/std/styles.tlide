@@ -1,0 +1,62 @@
+/*
+기본 글자 style과 색 이름. 쓰려면 #include <std/styles>로 불러온다 (std/stddef 없이도 불러올 수 있다).
+
+    text = (bold "굵게") " 보통 " (red italic "빨간 기울임") " 보통"
+
+style은 그 글의 끝까지 이어지므로 범위를 정하려면 괄호로 감싼다. 이어 쓰면 겹쳐 적용된다 (bold red "굵은 빨강").
+색 이름은 web(CSS)의 기본 색과 같은 값이다. 자기 style과 이름이 겹치면 '이미 정의됨' 오류가 나므로 이 파일을 불러오지 않거나 이름을 바꾼다
+*/
+
+/* 글자 모양 */
+style bold { font-weight = bold; }
+style italic { font-style = italic; }
+style underline { text-decoration = underline; }
+style double_underline { text-decoration = double_underline; }
+style strike { text-decoration = line_through; }
+style uppercase { text-transform = uppercase; }
+style small_caps { text-transform = small_caps; }
+style superscript { vertical-align = super; }
+style subscript { vertical-align = sub; }
+
+/* 문단 정렬 */
+style align_left { text-align = left; }
+style align_center { text-align = center; }
+style align_right { text-align = right; }
+style align_justify { text-align = justify; }
+
+/* 굵기와 색을 기본으로 되돌린다 */
+style reset {
+    font-weight = normal;
+    color = hex(000);
+}
+
+/* 줄 간격(글자 크기의 몇 배인지, 정수). brgap(2) "두 줄 간격" */
+style brgap(int gap) {
+    line-height = gap;
+}
+
+/* web(CSS)의 기본 색 16가지와 orange */
+color black hex(000000);
+color silver hex(C0C0C0);
+color gray hex(808080);
+color white hex(FFFFFF);
+color maroon hex(800000);
+color red hex(FF0000);
+color purple hex(800080);
+color fuchsia hex(FF00FF);
+color green hex(008000);
+color lime hex(00FF00);
+color olive hex(808000);
+color yellow hex(FFFF00);
+color navy hex(000080);
+color blue hex(0000FF);
+color teal hex(008080);
+color aqua hex(00FFFF);
+color orange hex(FFA500);
+
+/* 자주 쓰는 다른 이름 */
+color pink hex(FFC0CB);
+color brown hex(A52A2A);
+color gold hex(FFD700);
+color cyan hex(00FFFF);
+color magenta hex(FF00FF);

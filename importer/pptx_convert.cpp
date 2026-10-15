@@ -104,9 +104,13 @@ namespace templide::importer {
                 "theme", "section", "review", "comment", "bullets", "numbers", "dashes", "paragraphs", "true", "false", "color", "int", "float", "string", "text", "bool",
                 "ref", "asset", "by", "default", "image", "video", "audio", "file", "link", "action", "hover_action", "run", "program", "macro", "action_file", "linear",
                 "radial", "pattern", "hex", "rgb", "rgba", "include",
+                // std/styles
+                "bold", "italic", "underline", "double_underline", "strike", "uppercase", "small_caps", "superscript", "subscript", "align_left", "align_center",
+                "align_right", "align_justify", "reset", "brgap", "black", "silver", "gray", "white", "maroon", "red", "purple", "fuchsia", "green", "lime", "olive",
+                "yellow", "navy", "blue", "teal", "aqua", "orange", "pink", "brown", "gold", "cyan", "magenta",
                 // stddef
-                "yellow", "bold", "reset", "brgap", "text_anchor", "image_fit", "shape_kind", "line_arrow", "connector_kind", "connector_side", "media_start", "text_box",
-                "shape", "backdrop", "line", "connector", "freeform", "placeholder",
+                "text_anchor", "image_fit", "shape_kind", "line_arrow", "connector_kind", "connector_side", "media_start", "text_box",
+                "shape", "backdrop", "line", "connector", "freeform", "placeholder", "table",
                 // 내장 enum
                 "font_weight", "target_type", "angle_convention", "text_align", "font_style", "text_decoration", "vertical_align", "text_transform", "list_style",
                 "text_autofit", "text_direction", "flip_direction", "dash_style", "line_cap", "line_join", "line_compound", "bevel_kind", "pattern_kind", "slide_jump",
@@ -393,6 +397,9 @@ namespace templide::importer {
             std::map<int, std::string> theme_names_;
             std::map<int, std::string> template_names_;
             std::map<int, std::string> case_names_;
+            std::unique_ptr<Part> table_styles_; // ppt/tableStyles.xml. 처음 필요할 때 읽는다
+            bool table_styles_loaded_ = false;
+            std::unique_ptr<xml::Node> bold_list_style_;
 
             bool selected(const std::string& id) const {
                 return selection_.contains(id);
@@ -880,7 +887,7 @@ namespace templide::importer {
 
             void add_actions(Properties& props, const Shape& shape, const Scope& scope, const std::string& where) {
                 const xml::Node* properties = nullptr;
-                for (const char* nv : {"p:nvSpPr", "p:nvPicPr", "p:nvCxnSpPr", "p:nvGrpSpPr"}) {
+                for (const char* nv : {"p:nvSpPr", "p:nvPicPr", "p:nvCxnSpPr", "p:nvGrpSpPr", "p:nvGraphicFramePr"}) {
                     if (const auto* found = shape.node->path({nv, "p:cNvPr"})) {
                         properties = found;
                     }
@@ -917,7 +924,7 @@ namespace templide::importer {
 
             // cNvPr의 대체 텍스트(descr)
             static void add_description(Properties& props, const Shape& shape) {
-                for (const char* nv : {"p:nvSpPr", "p:nvPicPr", "p:nvCxnSpPr"}) {
+                for (const char* nv : {"p:nvSpPr", "p:nvPicPr", "p:nvCxnSpPr", "p:nvGraphicFramePr"}) {
                     if (const auto* found = shape.node->path({nv, "p:cNvPr"})) {
                         if (const std::string description = found->get("descr"); !description.empty()) {
                             props.add("alt", quote(description));
@@ -1396,8 +1403,15 @@ namespace templide::importer {
 
             std::string text_code(const TextJob& job, const Scope& scope) {
                 std::vector<ParagraphPiece> paragraphs = read_paragraphs(job, scope);
-                if (paragraphs.empty() || (paragraphs.size() == 1 && paragraphs.front().pieces.empty())) {
+                if (paragraphs.empty()) {
                     return "\"\"";
+                }
+                // 글이 없는 문단 하나는 높이를 정하는 문단 끝 글자 크기가 기본 크기와 다를 때만 남긴다 (표의 빈 칸이 행 높이를 정한다)
+                if (paragraphs.size() == 1 && paragraphs.front().pieces.empty()) {
+                    const auto& end_size = paragraphs.front().end_style.size;
+                    if (!end_size || std::abs(*end_size - job.baseline(0).size) <= 0.01) {
+                        return "\"\"";
+                    }
                 }
                 assign_depths(paragraphs);
                 std::vector<std::string> codes;
@@ -2221,7 +2235,497 @@ namespace templide::importer {
                 if (object == "freeform") {
                     return emit_freeform(shape, scope, group, indent);
                 }
+                if (object == "table") {
+                    return emit_table(shape, scope, group, indent);
+                }
                 return "";
+            }
+
+            // ---- 표
+            //
+            // 표 스타일(ppt/tableStyles.xml)이 정한 채우기, 선, 글자를 칸마다 풀고 칸 자신의 서식을 그 위에 덮어, 모든 칸의 모양을 정한다.
+            // templide의 표에는 스타일이 없으므로 그 결과를 표 전체의 값(가장 많은 것)과 그와 다른 칸의 cell 블록으로 쓴다.
+            // 머리글과 줄무늬는 결과를 칸마다 칠하므로 header_rows, banded_rows는 쓰지 않는다
+
+            const xml::Node* table_style(const std::string& id) {
+                if (!table_styles_loaded_) {
+                    table_styles_loaded_ = true;
+                    table_styles_ = presentation_.package.part("ppt/tableStyles.xml");
+                }
+                if (table_styles_ == nullptr || id.empty()) {
+                    return nullptr;
+                }
+                for (const auto* style : table_styles_->root.all("a:tblStyle")) {
+                    if (style->get("styleId") == id) {
+                        return style;
+                    }
+                }
+                return nullptr;
+            }
+
+            // 모든 수준의 글자를 굵게 하는 lstStyle. 표 스타일이 굵은 글자(a:tcTxStyle b="on")를 정했을 때 글자 모양을 찾는 순서의 맨 앞에 둔다
+            const xml::Node* bold_list_style() {
+                if (bold_list_style_ == nullptr) {
+                    std::string levels;
+                    for (int level = 1; level <= 9; ++level) {
+                        levels += "<a:lvl" + std::to_string(level) + "pPr><a:defRPr b=\"1\"/></a:lvl" + std::to_string(level) + "pPr>";
+                    }
+                    std::string error;
+                    auto node = xml::parse("<a:lstStyle xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">" + levels + "</a:lstStyle>", error);
+                    if (node) {
+                        bold_list_style_ = std::make_unique<xml::Node>(std::move(*node));
+                    }
+                }
+                return bold_list_style_.get();
+            }
+
+            // 선 하나를 코드로 쓸 값. 선이 없거나 두께가 0이면 key가 "none"이다
+            struct LineSpec {
+                std::string key = "none";
+                std::string color;
+                double width = 0; // pt
+                std::string dash;
+            };
+
+            static LineSpec line_spec(const Line& line) {
+                LineSpec spec;
+                if (line.none || !line.present || !line.color) {
+                    return spec;
+                }
+                const double width = static_cast<double>(line.width.value_or(9525)) / emu_per_pt;
+                if (width <= 0) {
+                    return spec;
+                }
+                spec.color = color_code(*line.color);
+                spec.width = width;
+                spec.dash = line.dash == "solid" ? "" : line.dash;
+                spec.key = spec.color + "|" + format(width) + "|" + spec.dash;
+                return spec;
+            }
+
+            struct TableCell {
+                const xml::Node* node = nullptr; // a:tc
+                bool covered = false;
+                std::size_t row_span = 1;
+                std::size_t column_span = 1;
+                std::size_t owner = 0;           // 가려진 칸이면 그 칸을 가린 병합 칸의 번호
+                std::optional<Fill> fill;
+                std::array<LineSpec, 4> border;  // 왼쪽, 위, 오른쪽, 아래
+                std::array<Emu, 4> margin{91440, 45720, 91440, 45720};
+                std::string anchor = "top";
+                bool bold = false;
+                const xml::Node* text_style = nullptr; // 글자 색을 정한 a:tcTxStyle
+            };
+
+            std::string emit_table(const Shape& shape, const Scope& scope, const GroupTransform* group, int indent) {
+                const std::string where = where_of(shape, scope);
+                const auto* table = shape.node->path({"a:graphic", "a:graphicData", "a:tbl"});
+                if (table == nullptr) {
+                    return "";
+                }
+                const auto rows_nodes = table->all("a:tr");
+                std::vector<double> column_emu;
+                if (const auto* grid = table->child("a:tblGrid")) {
+                    for (const auto* column : grid->all("a:gridCol")) {
+                        column_emu.push_back(static_cast<double>(column->integer("w").value_or(0)));
+                    }
+                }
+                const std::size_t rows = rows_nodes.size();
+                const std::size_t columns = column_emu.size();
+                if (rows == 0 || columns == 0) {
+                    warn(where, "칸이 없는 표라 뺐습니다");
+                    return "";
+                }
+                const xml::Node* style = nullptr;
+                const xml::Node* properties = table->child("a:tblPr");
+                if (properties != nullptr) {
+                    if (const auto* id = properties->child("a:tableStyleId")) {
+                        style = table_style(id->text);
+                    }
+                }
+                // 칸 격자. 병합에 가려진 칸(hMerge, vMerge)은 왼쪽 위 칸을 찾아 주인으로 둔다
+                std::vector<TableCell> cells(rows * columns);
+                std::vector<double> row_emu;
+                for (std::size_t r = 0; r < rows; ++r) {
+                    row_emu.push_back(static_cast<double>(rows_nodes[r]->integer("h").value_or(0)));
+                    const auto nodes = rows_nodes[r]->all("a:tc");
+                    for (std::size_t c = 0; c < columns && c < nodes.size(); ++c) {
+                        TableCell& cell = cells[r * columns + c];
+                        cell.node = nodes[c];
+                        cell.owner = r * columns + c;
+                        cell.row_span = static_cast<std::size_t>(std::max<long long>(1, nodes[c]->integer("rowSpan").value_or(1)));
+                        cell.column_span = static_cast<std::size_t>(std::max<long long>(1, nodes[c]->integer("gridSpan").value_or(1)));
+                        cell.covered = nodes[c]->flag("hMerge") || nodes[c]->flag("vMerge");
+                    }
+                }
+                for (std::size_t r = 0; r < rows; ++r) {
+                    for (std::size_t c = 0; c < columns; ++c) {
+                        TableCell& cell = cells[r * columns + c];
+                        if (cell.node == nullptr || cell.covered) {
+                            continue;
+                        }
+                        cell.row_span = std::min(cell.row_span, rows - r);
+                        cell.column_span = std::min(cell.column_span, columns - c);
+                        for (std::size_t rr = r; rr < r + cell.row_span; ++rr) {
+                            for (std::size_t cc = c; cc < c + cell.column_span; ++cc) {
+                                if (rr != r || cc != c) {
+                                    cells[rr * columns + cc].covered = true;
+                                    cells[rr * columns + cc].owner = r * columns + c;
+                                }
+                            }
+                        }
+                    }
+                }
+                // 표 스타일의 층과 칸 자신의 서식으로 칸마다 모양을 푼다
+                const bool first_row = properties != nullptr && properties->flag("firstRow");
+                const bool first_column = properties != nullptr && properties->flag("firstCol");
+                const bool last_row = properties != nullptr && properties->flag("lastRow");
+                const bool last_column = properties != nullptr && properties->flag("lastCol");
+                const bool banded_rows = properties != nullptr && properties->flag("bandRow");
+                const bool banded_columns = properties != nullptr && properties->flag("bandCol");
+                enum class Region { Table, Row, Column, Cell };
+                struct Layer {
+                    const xml::Node* node;
+                    Region region;
+                };
+                const auto layers_of = [&](std::size_t r, std::size_t c) {
+                    std::vector<Layer> layers;
+                    if (style == nullptr) {
+                        return layers;
+                    }
+                    const auto add = [&](const char* name, Region region) {
+                        if (const auto* layer = style->child(name)) {
+                            layers.push_back({layer, region});
+                        }
+                    };
+                    add("a:wholeTbl", Region::Table);
+                    if (banded_rows && !(first_row && r == 0) && !(last_row && r == rows - 1)) {
+                        add((r - (first_row ? 1 : 0)) % 2 == 0 ? "a:band1H" : "a:band2H", Region::Row);
+                    }
+                    if (banded_columns && !(first_column && c == 0) && !(last_column && c == columns - 1)) {
+                        add((c - (first_column ? 1 : 0)) % 2 == 0 ? "a:band1V" : "a:band2V", Region::Column);
+                    }
+                    if (last_column && c == columns - 1) {
+                        add("a:lastCol", Region::Column);
+                    }
+                    if (first_column && c == 0) {
+                        add("a:firstCol", Region::Column);
+                    }
+                    if (last_row && r == rows - 1) {
+                        add("a:lastRow", Region::Row);
+                    }
+                    if (first_row && r == 0) {
+                        add("a:firstRow", Region::Row);
+                    }
+                    if (first_row && first_column && r == 0 && c == 0) {
+                        add("a:nwCell", Region::Cell);
+                    }
+                    if (first_row && last_column && r == 0 && c == columns - 1) {
+                        add("a:neCell", Region::Cell);
+                    }
+                    if (last_row && first_column && r == rows - 1 && c == 0) {
+                        add("a:swCell", Region::Cell);
+                    }
+                    if (last_row && last_column && r == rows - 1 && c == columns - 1) {
+                        add("a:seCell", Region::Cell);
+                    }
+                    return layers;
+                };
+                for (std::size_t r = 0; r < rows; ++r) {
+                    for (std::size_t c = 0; c < columns; ++c) {
+                        TableCell& cell = cells[r * columns + c];
+                        if (cell.node == nullptr || cell.covered) {
+                            continue;
+                        }
+                        // 칸이 병합한 영역의 맨 아래 줄과 맨 오른쪽 열을 기준으로 바깥 선을 가른다
+                        const std::size_t last_r = r + cell.row_span - 1;
+                        const std::size_t last_c = c + cell.column_span - 1;
+                        std::array<Line, 4> lines;
+                        for (const auto& layer : layers_of(r, c)) {
+                            if (const auto* tc_style = layer.node->child("a:tcStyle")) {
+                                if (const auto* fill = tc_style->child("a:fill")) {
+                                    cell.fill = read_fill(fill, *scope.part, scope.colors);
+                                    if (!cell.fill) {
+                                        cell.fill = Fill{};
+                                    }
+                                } else if (const auto* reference = tc_style->child("a:fillRef")) {
+                                    cell.fill = theme_fill(reference, *scope.part, scope.colors);
+                                }
+                                if (const auto* borders = tc_style->child("a:tcBdr")) {
+                                    // 층의 영역 바깥 변은 left, right, top, bottom이고 안쪽은 insideV, insideH다
+                                    const bool whole = layer.region == Region::Table;
+                                    const bool row_region = layer.region == Region::Row;
+                                    const bool column_region = layer.region == Region::Column;
+                                    const std::array<std::string, 4> names = {
+                                        whole || row_region ? (c == 0 ? "a:left" : "a:insideV") : "a:left",
+                                        whole || column_region ? (r == 0 ? "a:top" : "a:insideH") : "a:top",
+                                        whole || row_region ? (last_c == columns - 1 ? "a:right" : "a:insideV") : "a:right",
+                                        whole || column_region ? (last_r == rows - 1 ? "a:bottom" : "a:insideH") : "a:bottom",
+                                    };
+                                    for (std::size_t side = 0; side < 4; ++side) {
+                                        const auto* edge = borders->child(names[side]);
+                                        if (edge == nullptr) {
+                                            continue;
+                                        }
+                                        if (const auto* ln = edge->child("a:ln")) {
+                                            lines[side] = read_line(ln, scope.colors, Line{});
+                                        } else if (const auto* reference = edge->child("a:lnRef")) {
+                                            lines[side] = theme_line(reference, scope.colors);
+                                        }
+                                    }
+                                }
+                            }
+                            if (const auto* text = layer.node->child("a:tcTxStyle")) {
+                                if (const std::string bold = text->get("b"); bold == "on") {
+                                    cell.bold = true;
+                                } else if (bold == "off") {
+                                    cell.bold = false;
+                                }
+                                cell.text_style = text;
+                            }
+                        }
+                        // 칸 자신의 서식
+                        if (const auto* cell_properties = cell.node->child("a:tcPr")) {
+                            if (auto fill = read_fill(cell_properties, *scope.part, scope.colors)) {
+                                cell.fill = fill;
+                            }
+                            const std::array<const char*, 4> edges = {"a:lnL", "a:lnT", "a:lnR", "a:lnB"};
+                            for (std::size_t side = 0; side < 4; ++side) {
+                                if (const auto* ln = cell_properties->child(edges[side])) {
+                                    lines[side] = read_line(ln, scope.colors, lines[side]);
+                                }
+                            }
+                            const std::array<const char*, 4> margins = {"marL", "marT", "marR", "marB"};
+                            for (std::size_t side = 0; side < 4; ++side) {
+                                if (const auto value = cell_properties->integer(margins[side])) {
+                                    cell.margin[side] = *value;
+                                }
+                            }
+                            if (const std::string anchor = cell_properties->get("anchor"); anchor == "ctr") {
+                                cell.anchor = "middle";
+                            } else if (anchor == "b") {
+                                cell.anchor = "bottom";
+                            }
+                        }
+                        for (std::size_t side = 0; side < 4; ++side) {
+                            cell.border[side] = line_spec(lines[side]);
+                        }
+                    }
+                }
+                // 맞닿은 칸의 선이 다르면 보이는 쪽을(둘 다 보이면 오른쪽, 아래쪽 칸을) 두 칸에 모두 적는다
+                const auto owner_of = [&](std::size_t r, std::size_t c) -> TableCell& { return cells[cells[r * columns + c].owner]; };
+                const auto reconcile = [&](TableCell& before, std::size_t before_side, TableCell& after, std::size_t after_side) {
+                    const LineSpec& a = before.border[before_side];
+                    const LineSpec& b = after.border[after_side];
+                    const LineSpec chosen = b.key == "none" ? a : b;
+                    before.border[before_side] = chosen;
+                    after.border[after_side] = chosen;
+                };
+                for (std::size_t r = 0; r < rows; ++r) {
+                    for (std::size_t c = 1; c < columns; ++c) {
+                        TableCell& a = owner_of(r, c - 1);
+                        TableCell& b = owner_of(r, c);
+                        if (&a != &b && a.node != nullptr && b.node != nullptr) {
+                            reconcile(a, 2, b, 0);
+                        }
+                    }
+                }
+                for (std::size_t r = 1; r < rows; ++r) {
+                    for (std::size_t c = 0; c < columns; ++c) {
+                        TableCell& a = owner_of(r - 1, c);
+                        TableCell& b = owner_of(r, c);
+                        if (&a != &b && a.node != nullptr && b.node != nullptr) {
+                            reconcile(a, 3, b, 1);
+                        }
+                    }
+                }
+
+                // 글. 칸마다 스타일이 정한 굵은 글자와 글자 색이 기본 모양이다
+                std::vector<std::string> codes(cells.size(), "\"\"");
+                for (std::size_t i = 0; i < cells.size(); ++i) {
+                    TableCell& cell = cells[i];
+                    if (cell.node == nullptr || cell.covered) {
+                        continue;
+                    }
+                    const auto* body = cell.node->child("a:txBody");
+                    if (body == nullptr) {
+                        continue;
+                    }
+                    TextJob job;
+                    job.body = body;
+                    if (cell.bold) {
+                        if (const auto* bold_list = bold_list_style()) {
+                            job.chain.push_back(bold_list);
+                        }
+                    }
+                    if (const auto* list = body->child("a:lstStyle")) {
+                        job.chain.push_back(list);
+                    }
+                    job.own = job.chain.size();
+                    if (scope.master != nullptr) {
+                        if (const auto* styles = scope.master->part->root.child("p:txStyles")) {
+                            if (const auto* other = styles->child("p:otherStyle")) {
+                                job.chain.push_back(other);
+                            }
+                        }
+                    }
+                    if (const auto* defaults = presentation_.presentation->root.child("p:defaultTextStyle")) {
+                        job.chain.push_back(defaults);
+                    }
+                    job.font_reference = cell.text_style;
+                    // 스타일 없이 쓴 칸은 굵지 않은 기본 글자색으로 보이므로, 스타일이 정한 굵기와 색은 run마다 style(...)로 쓴다
+                    const Baseline baseline;
+                    job.baseline = [baseline](int) { return baseline; };
+                    codes[i] = text_code(job, scope);
+                }
+
+                // 표 전체의 값은 가장 많은 것으로 정한다
+                const auto most_common = [&](const std::function<std::string(const TableCell&)>& key) {
+                    std::map<std::string, std::size_t> counts;
+                    std::string best;
+                    std::size_t best_count = 0;
+                    for (const auto& cell : cells) {
+                        if (cell.node == nullptr || cell.covered) {
+                            continue;
+                        }
+                        const std::string value = key(cell);
+                        if (++counts[value] > best_count) {
+                            best_count = counts[value];
+                            best = value;
+                        }
+                    }
+                    return best;
+                };
+                const auto fill_key = [&](const TableCell& cell) {
+                    return cell.fill && cell.fill->kind != Fill::Kind::None ? fill_code(*cell.fill, scope, where) : std::string("none");
+                };
+                const std::string base_fill = most_common(fill_key);
+                // 표 전체의 선은 모든 칸의 네 변을 합쳐 가장 많은 것이다
+                std::map<std::string, std::size_t> line_counts;
+                std::map<std::string, LineSpec> line_specs;
+                for (const auto& cell : cells) {
+                    if (cell.node == nullptr || cell.covered) {
+                        continue;
+                    }
+                    for (const auto& spec : cell.border) {
+                        ++line_counts[spec.key];
+                        line_specs[spec.key] = spec;
+                    }
+                }
+                LineSpec base_line;
+                std::size_t base_line_count = 0;
+                for (const auto& [key, count] : line_counts) {
+                    if (count > base_line_count) {
+                        base_line_count = count;
+                        base_line = line_specs[key];
+                    }
+                }
+                std::array<std::string, 4> base_margin;
+                std::array<Emu, 4> margin_value{};
+                for (std::size_t side = 0; side < 4; ++side) {
+                    base_margin[side] = most_common([side](const TableCell& cell) { return std::to_string(cell.margin[side]); });
+                    margin_value[side] = std::stoll(base_margin[side]);
+                }
+                const std::string base_anchor = most_common([](const TableCell& cell) { return cell.anchor; });
+
+                const Frame frame = map_frame(read_xfrm(shape.node->child("p:xfrm")), group);
+                Properties props;
+                std::string cells_code = "cells = [\n";
+                for (std::size_t r = 0; r < rows; ++r) {
+                    cells_code += "    [";
+                    for (std::size_t c = 0; c < columns; ++c) {
+                        cells_code += (c > 0 ? ", " : "") + codes[r * columns + c];
+                    }
+                    cells_code += r + 1 < rows ? "],\n" : "]\n";
+                }
+                props.raw(cells_code + "];");
+                add_frame(props, frame);
+                std::string widths = "col_widths = [";
+                for (std::size_t c = 0; c < columns; ++c) {
+                    widths += (c > 0 ? ", " : "") + px_float(std::max(column_emu[c], emu_per_px)); // 높이가 0인 행은 글에 맞게 늘어나므로 1px로 쓴다
+                }
+                props.raw(widths + "];");
+                std::string heights = "row_heights = [";
+                for (std::size_t r = 0; r < rows; ++r) {
+                    heights += (r > 0 ? ", " : "") + px_float(std::max(row_emu[r], emu_per_px));
+                }
+                props.raw(heights + "];");
+                if (base_fill != "none") {
+                    props.add("fill", base_fill);
+                }
+                // templide의 표는 기본으로 회색 1px 선을 그리므로, 선이 없는 쪽이 많으면 두께를 0으로 쓴다
+                if (base_line.key == "none") {
+                    props.add("line_width", "0px");
+                } else {
+                    props.add("line_color", base_line.color);
+                    props.add("line_width", pt(base_line.width));
+                    if (!base_line.dash.empty()) {
+                        props.add("line_dash", base_line.dash);
+                    }
+                }
+                if (margin_value[0] == margin_value[1] && margin_value[1] == margin_value[2] && margin_value[2] == margin_value[3]) {
+                    props.add("padding", px_float(static_cast<double>(margin_value[0])));
+                } else {
+                    const std::array<const char*, 4> names = {"padding_left", "padding_top", "padding_right", "padding_bottom"};
+                    for (std::size_t side = 0; side < 4; ++side) {
+                        props.add(names[side], px_float(static_cast<double>(margin_value[side])));
+                    }
+                }
+                if (base_anchor != "middle") {
+                    props.add("anchor", base_anchor);
+                }
+                // 표 전체와 다른 칸, 병합한 칸의 cell 블록
+                for (std::size_t r = 0; r < rows; ++r) {
+                    for (std::size_t c = 0; c < columns; ++c) {
+                        const TableCell& cell = cells[r * columns + c];
+                        if (cell.node == nullptr || cell.covered) {
+                            continue;
+                        }
+                        Properties inner;
+                        if (cell.column_span > 1) {
+                            inner.add("col_span", std::to_string(cell.column_span));
+                        }
+                        if (cell.row_span > 1) {
+                            inner.add("row_span", std::to_string(cell.row_span));
+                        }
+                        if (const std::string key = fill_key(cell); key != base_fill) {
+                            inner.add("fill", key == "none" ? "rgba(0, 0, 0, 0)" : key);
+                        }
+                        const std::array<const char*, 4> sides = {"left", "top", "right", "bottom"};
+                        for (std::size_t side = 0; side < 4; ++side) {
+                            const LineSpec& spec = cell.border[side];
+                            if (spec.key == base_line.key) {
+                                continue; // 표 전체의 선과 같으면 따로 적지 않는다
+                            }
+                            if (spec.key == "none") {
+                                inner.add(std::string("line_width_") + sides[side], "0px");
+                            } else {
+                                inner.add(std::string("line_color_") + sides[side], spec.color);
+                                inner.add(std::string("line_width_") + sides[side], pt(spec.width));
+                            }
+                        }
+                        const std::array<const char*, 4> paddings = {"padding_left", "padding_top", "padding_right", "padding_bottom"};
+                        for (std::size_t side = 0; side < 4; ++side) {
+                            if (cell.margin[side] != margin_value[side]) {
+                                inner.add(paddings[side], px_float(static_cast<double>(cell.margin[side])));
+                            }
+                        }
+                        if (cell.anchor != base_anchor) {
+                            inner.add("anchor", cell.anchor);
+                        }
+                        if (!inner.lines.empty()) {
+                            std::string text = block("cell(" + std::to_string(r + 1) + ", " + std::to_string(c + 1) + ")", inner.lines, 0);
+                            if (!text.empty() && text.back() == '\n') {
+                                text.pop_back();
+                            }
+                            props.raw(text);
+                        }
+                    }
+                }
+                add_actions(props, shape, scope, where);
+                add_description(props, shape);
+                add_animations(props.lines, shape.id, scope);
+                return block("put table" + name_of(shape, scope), props.lines, indent);
             }
 
             std::string emit_group(const Shape& shape, Scope& scope, const GroupTransform* parent, int indent) {

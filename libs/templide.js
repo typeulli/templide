@@ -1103,6 +1103,42 @@
         return root;
     }
 
+    const BORDER_STYLES = {
+        dot: 'dotted', sysDot: 'dotted', dash: 'dashed', sysDash: 'dashed', lgDash: 'dashed', dashDot: 'dashed', lgDashDot: 'dashed',
+        lgDashDotDot: 'dashed', sysDashDot: 'dashed', sysDashDotDot: 'dashed',
+    };
+
+    // 표. 칸은 CSS grid에 놓고 글이 길면 행이 늘어난다. 칸의 선은 왼쪽과 위쪽만 칸마다 그리고 오른쪽, 아래쪽은 표의 바깥 변일 때만 있다
+    // (el.b는 왼쪽, 위, 오른쪽, 아래 순서이고 그리지 않는 쪽은 null이다). 칸의 행과 열은 0부터다
+    function tableNode(el, w, context) {
+        const grid = html('div', 'tl-table', {width: `${round(w)}px`});
+        grid.style.gridTemplateColumns = el.cols.map((width) => `${round(width)}px`).join(' ');
+        grid.style.gridTemplateRows = el.rows.map((height) => `minmax(${round(height)}px, auto)`).join(' ');
+        for (const cell of el.cells) {
+            const node = html('div', 'tl-cell');
+            node.dataset.cell = `${cell.r},${cell.c}`;
+            node.style.gridRow = `${cell.r + 1} / span ${cell.rs || 1}`;
+            node.style.gridColumn = `${cell.c + 1} / span ${cell.cs || 1}`;
+            if (cell.f) {
+                node.style.background = cssPaint(cell.f);
+            }
+            node.style.padding = cell.ins.map((value) => `${round(value)}px`).join(' ');
+            node.style.justifyContent = cell.an === 'ctr' ? 'center' : cell.an === 'b' ? 'flex-end' : 'flex-start';
+            ['Left', 'Top', 'Right', 'Bottom'].forEach((side, index) => {
+                const line = cell.b[index];
+                if (line) {
+                    node.style[`border${side}`] = `${round(line.w)}px ${BORDER_STYLES[line.d] || 'solid'} ${line.c}`;
+                }
+            });
+            const counters = {};
+            for (const paragraph of cell.tx.ps) {
+                node.appendChild(paragraphNode(paragraph, context, counters, null, false));
+            }
+            grid.appendChild(node);
+        }
+        return grid;
+    }
+
     // backdrop. 뒤에 있는 것을 흐리게 보여 준다 (CSS backdrop-filter)
     function backdropNode(el, w, h) {
         const geometry = elementGeometry(el, w, h);
@@ -1406,6 +1442,9 @@
             case 'aud':
                 node.appendChild(mediaNode(el, w, h, context, node));
                 break;
+            case 'tbl':
+                node.appendChild(tableNode(el, w, context));
+                break;
             case 'bd': {
                 node.appendChild(backdropNode(el, w, h));
                 // 그림자와 네온은 도형 바깥만 그린 층으로 따로 둔다
@@ -1443,7 +1482,7 @@
         // 대체 텍스트. 글자나 미디어가 든 개체는 묶음으로, 나머지(글자가 없는 도형 포함)는 그림으로 읽힌다
         if (el.alt) {
             const hasText = !!el.tx && !!el.tx.ps && el.tx.ps.some((paragraph) => paragraph.rs && paragraph.rs.length > 0);
-            node.setAttribute('role', hasText || el.t === 'vid' || el.t === 'aud' ? 'group' : 'img');
+            node.setAttribute('role', hasText || el.t === 'vid' || el.t === 'aud' || el.t === 'tbl' ? 'group' : 'img');
             node.setAttribute('aria-label', el.alt);
         }
         if (!el.r && !(el.fx && (el.fx.rx || el.fx.ry || el.fx.ps))) {
@@ -3574,6 +3613,8 @@
 .tl-svg { position: absolute; left: 0; top: 0; overflow: visible; }
 .tl-text { position: absolute; display: flex; flex-direction: column; box-sizing: border-box !important; overflow: visible; }
 .tl-columns { box-sizing: border-box !important; }
+.tl-table { position: absolute; left: 0; top: 0; display: grid; }
+.tl-cell { display: flex; flex-direction: column; box-sizing: border-box !important; min-width: 0; }
 .tl-p { margin: 0; white-space: pre-wrap; overflow-wrap: break-word; }
 .tl-nowrap .tl-p { white-space: pre; }
 .tl-run { white-space: inherit; }
@@ -3662,22 +3703,29 @@ a.tl-run { cursor: pointer; }
 
     // PDF 인쇄용. 숨긴 슬라이드를 뺀 모든 슬라이드를 애니메이션 없이 root에 한 쪽씩 쌓고, 쪽 크기를 슬라이드 크기로 한다.
     // reveal.js의 인쇄 모드는 비동기로 쪽을 짜서 브라우저가 너무 일찍 인쇄하면 빈 쪽이 나오므로, 이쪽은 동기로 끝낸다
+    // 주소의 #page=번호(0부터)가 있으면 그 슬라이드 하나만 그리고(png), #transparent=1이면 슬라이드 배경을 그리지 않는다
     function printDeck(root, deck) {
         injectStyle(deck);
+        const query = new URLSearchParams(location.hash.slice(1));
+        const only = query.has('page') ? Number(query.get('page')) : null;
+        const transparent = query.get('transparent') === '1';
         const style = document.createElement('style');
         style.textContent = `@page { size: ${deck.w}px ${deck.h}px; margin: 0; }
-html, body { margin: 0; padding: 0; background: #fff; }
+html, body { margin: 0; padding: 0; background: ${transparent ? 'transparent' : '#fff'}; }
 .tl-page { position: relative; width: ${deck.w}px; height: ${deck.h}px; overflow: hidden; break-after: page; }
 .tl-page:last-child { break-after: auto; }
 * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }`;
         document.head.appendChild(style);
         deck.slides.forEach((slide, index) => {
-            if (slide.hid) {
+            if (slide.hid || (only !== null && index !== only)) {
                 return;
             }
             const page = html('div', 'tl-page');
             root.appendChild(page);
             const {stage, fit} = renderSlide(deck, index);
+            if (transparent) {
+                stage.style.background = 'none';
+            }
             page.appendChild(stage);
             fit();
         });

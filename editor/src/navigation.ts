@@ -278,10 +278,11 @@ function register(m: typeof Monaco, lsp: Lsp) {
     const K = m.languages.CompletionItemKind;
     const kinds: Record<number, number> = {
         3: K.Function, 6: K.Variable, 7: K.Class, 9: K.Module, 10: K.Property, 12: K.Value, 14: K.Keyword, 15: K.Snippet,
-        16: K.Color, 17: K.File, 20: K.EnumMember, 22: K.Struct,
+        16: K.Color, 17: K.File, 19: K.Folder, 20: K.EnumMember, 22: K.Struct,
     };
     m.languages.registerCompletionItemProvider('tlide', {
-        triggerCharacters: ['.', '<', ' ', '=', '('],
+        // " 와 / 는 #include "경로"의 경로를 한 단계씩 고르는 데 쓴다 (경로 밖에서는 서버가 빈 목록을 돌려준다)
+        triggerCharacters: ['.', '<', ' ', '=', '(', '"', '/'],
         provideCompletionItems: async (model, position) => {
             const document = documents.get(model);
             const uri = document?.uri();
@@ -302,6 +303,8 @@ function register(m: typeof Monaco, lsp: Lsp) {
                     insertTextRules: item.insertTextFormat === 2 ? m.languages.CompletionItemInsertTextRule.InsertAsSnippet : undefined,
                     range: toRange(item.textEdit.range),
                     sortText: item.sortText,
+                    // 하위 폴더를 고르면 그 안의 목록을 이어서 보인다
+                    command: item.kind === 19 ? { id: 'editor.action.triggerSuggest', title: '' } : undefined,
                 })),
             };
         },

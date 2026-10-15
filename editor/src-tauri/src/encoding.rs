@@ -1,5 +1,6 @@
-// 텍스트 파일의 인코딩. VS Code처럼 파일은 바이트로 읽어 인코딩을 정한 뒤 글로 바꾸고, 저장할 때 같은 인코딩과 BOM으로 되돌린다.
-// 화면과 컴파일러에는 항상 UTF-8 글만 간다. 인코딩 이름은 웹 표준(encoding_rs)의 이름이다 (UTF-8, UTF-16LE, EUC-KR, Shift_JIS ...)
+//! 텍스트 파일의 인코딩을 감지하고 읽고 쓴다.
+//!
+//! 화면과 컴파일러에는 항상 UTF-8을 전달하고, 저장할 때 원래 인코딩과 BOM을 복원한다.
 use chardetng::{EncodingDetector, Iso2022JpDetection, Utf8Detection};
 use encoding_rs::{Encoding, ISO_2022_JP, REPLACEMENT, UTF_16BE, UTF_16LE, UTF_8, X_USER_DEFINED};
 use serde_json::{json, Value};
@@ -12,12 +13,12 @@ struct Decoded {
     lossy: bool,   // 이 인코딩으로 읽을 수 없는 바이트가 있어 깨진 글자(U+FFFD)로 바꿨다
 }
 
-// 이름이 가리키는 인코딩. 읽을 수는 있어도 저장할 수 없는 것(ISO-2022-JP 등)은 목록에서 뺀다
+/// 이름에 해당하는 인코딩을 반환한다. 읽기 전용 인코딩은 제외한다.
 fn resolve(name: &str) -> Option<&'static Encoding> {
     Encoding::for_label(name.trim().as_bytes()).filter(|encoding| *encoding != ISO_2022_JP && *encoding != REPLACEMENT && *encoding != X_USER_DEFINED)
 }
 
-// 맨 앞의 BOM이 가리키는 인코딩과 BOM의 바이트 수
+/// 파일 앞의 BOM이 나타내는 인코딩과 바이트 수를 반환한다.
 fn bom_of(bytes: &[u8]) -> Option<(&'static Encoding, usize)> {
     if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
         Some((UTF_8, 3))
@@ -30,7 +31,7 @@ fn bom_of(bytes: &[u8]) -> Option<(&'static Encoding, usize)> {
     }
 }
 
-// BOM이 없을 때 자동 추측: 영문뿐이면 기본 인코딩, 올바른 UTF-8이면 UTF-8, 아니면 chardetng가 고른 옛 인코딩
+/// BOM이 없을 때 파일 내용으로 인코딩을 추측한다.
 fn guess(bytes: &[u8], default: &'static Encoding) -> &'static Encoding {
     if bytes.is_ascii() {
         return default;
@@ -43,7 +44,7 @@ fn guess(bytes: &[u8], default: &'static Encoding) -> &'static Encoding {
     detector.guess(None, Utf8Detection::Deny)
 }
 
-// 인코딩을 정하는 순서: 고른 인코딩, BOM, (자동 추측이 켜져 있으면) 추측, 설정의 기본 인코딩
+/// 선택한 인코딩, BOM, 자동 추측, 기본 인코딩 순서로 인코딩을 정한다.
 fn decode(bytes: &[u8], forced: Option<&'static Encoding>, default: &'static Encoding, auto_guess: bool) -> Decoded {
     let bom = bom_of(bytes);
     let (encoding, guessed) = match (forced, bom) {
@@ -64,7 +65,7 @@ fn decode(bytes: &[u8], forced: Option<&'static Encoding>, default: &'static Enc
     Decoded { text: text.into_owned(), encoding, bom: has_bom, guessed, lossy }
 }
 
-// 글을 파일에 쓸 바이트로. 그 인코딩으로 쓸 수 없는 글자가 있으면 (글자, 줄, 칸) 목록과 개수를 돌려준다. 줄과 칸은 1부터이고 칸은 UTF-16 단위다
+/// 텍스트를 지정한 인코딩의 바이트로 변환한다.
 fn encode(text: &str, encoding: &'static Encoding, bom: bool) -> Result<Vec<u8>, (Vec<(char, usize, usize)>, usize)> {
     if encoding == UTF_8 {
         let mut bytes = Vec::with_capacity(text.len() + 3);
@@ -125,7 +126,7 @@ pub fn read_text(path: String, encoding: Option<String>, default_encoding: Optio
     }))
 }
 
-// 저장한다. 그 인코딩으로 쓸 수 없는 글자가 있으면 파일은 건드리지 않고 {saved: false, unmappable: [{char, line, column}], total}을 돌려준다
+/// 지정한 인코딩으로 파일을 저장한다.
 #[tauri::command]
 pub fn write_text(path: String, text: String, encoding: String, bom: bool) -> Result<Value, String> {
     let target = resolve(&encoding).ok_or_else(|| format!("unknown encoding: {encoding}"))?;

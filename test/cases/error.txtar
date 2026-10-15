@@ -1,0 +1,1857 @@
+-- action_without_call.tlide --
+/* run()에 함수 이름이 없음 */
+object tile { var text text; }
+slide {
+    put tile { text = "x"; action = run(); }
+}
+-- action_without_call.expected --
+$ templide action_without_call.tlide --check
+[exit] 1
+[stderr]
+action_without_call.tlide:4:37: error: run needs a function name and optional arguments, such as run("onClick", @slide.number)
+-- adjust_not_available.tlide --
+/* 조절점이 없는 도형의 adj1 */
+#include <std/stddef>
+slide {
+    put shape { kind = rect; x = 0; y = 0; width = 1; height = 1; adj1 = 0.5; }
+}
+-- adjust_not_available.expected --
+$ templide adjust_not_available.tlide --check
+[exit] 1
+[stderr]
+adjust_not_available.tlide:4:74: error: Kind 'rect' has no adj1
+-- animate_bad_category.tlide --
+/* 종류가 enter, emphasis, exit, move, media가 아님 */
+object label { var text text; }
+slide {
+    put label as a { text = "x"; }
+    animate a leave fade;
+}
+-- animate_bad_category.expected --
+$ templide animate_bad_category.tlide --check
+[exit] 1
+[stderr]
+animate_bad_category.tlide:5:15: error: An animation must be enter, emphasis, exit, move or media, but got 'leave'
+-- animate_bad_option.tlide --
+/* 그 효과에 없는 옵션 */
+object label { var text text; }
+slide {
+    put label as a { text = "x"; }
+    animate a enter fly.sideways;
+}
+-- animate_bad_option.expected --
+$ templide animate_bad_option.tlide --check
+[exit] 1
+[stderr]
+animate_bad_option.tlide:5:25: error: Animation 'fly' has no option 'sideways' (down, up, right, left, up_left, up_right, down_right, down_left)
+-- animate_duplicate_duration.tlide --
+/* 길이를 두 번 씀 */
+object label { var text text; }
+slide {
+    put label as a { text = "x"; }
+    animate a enter fade 1s 2s;
+}
+-- animate_duplicate_duration.expected --
+$ templide animate_duplicate_duration.tlide --check
+[exit] 1
+[stderr]
+animate_duplicate_duration.tlide:5:29: error: Duplicate animation duration
+-- animate_in_template.tlide --
+/* animate는 slide에 직접 쓴 put, group에서만 */
+object label { var text text; }
+template t {
+    put label { text = "x"; animate enter fade; }
+}
+slide { put t { } }
+-- animate_in_template.expected --
+$ templide animate_in_template.tlide --check
+[exit] 1
+[stderr]
+animate_in_template.tlide:4:29: error: 'animate' can only be used in a put or group written in a slide
+-- animate_media_on_label.tlide --
+/* media 애니메이션은 video와 audio에만 */
+object label { var text text; }
+slide {
+    put label as a { text = "x"; }
+    animate a media play;
+}
+-- animate_media_on_label.expected --
+$ templide animate_media_on_label.tlide --check
+[exit] 1
+[stderr]
+animate_media_on_label.tlide:5:13: error: Media animations can only be used on a video or an audio, but 'a' is a label
+-- animate_order_zero.tlide --
+/* order는 1 이상 */
+object label { var text text; }
+slide {
+    put label as a { text = "x"; }
+    animate a enter fade order 0;
+}
+-- animate_order_zero.expected --
+$ templide animate_order_zero.tlide --check
+[exit] 1
+[stderr]
+animate_order_zero.tlide:5:32: error: 'order' must be a number of 1 or more without a unit
+-- animate_unknown_effect.tlide --
+/* 모르는 애니메이션 효과 */
+object label { var text text; }
+slide {
+    put label as a { text = "x"; }
+    animate a enter explode;
+}
+-- animate_unknown_effect.expected --
+$ templide animate_unknown_effect.tlide --check
+[exit] 1
+[stderr]
+animate_unknown_effect.tlide:5:21: error: Unknown enter animation: explode
+-- animate_unknown_target.tlide --
+/* animate 대상 이름이 slide에 없음 */
+object label { var text text; }
+slide {
+    put label { text = "x"; }
+    animate ghost enter fade;
+}
+-- animate_unknown_target.expected --
+$ templide animate_unknown_target.tlide --check
+[exit] 1
+[stderr]
+animate_unknown_target.tlide:5:13: error: No object named 'ghost' on this slide; give one a name with 'put ... as ghost'
+-- asset_without_bundle.tlide --
+/* 묶음을 불러오지 않고 asset("이름") */
+#include <std/stddef>
+slide {
+    put image { data = asset("logo"); x = 0; y = 0; width = 1; height = 1; }
+}
+-- asset_without_bundle.expected --
+$ templide asset_without_bundle.tlide --check
+[exit] 1
+[stderr]
+asset_without_bundle.tlide:4:30: error: No asset bundle is loaded; add 'asset "file.tasset";' first
+-- background_file_missing.tlide --
+/* 배경 그림 파일이 없음 (html) */
+slide {
+    background = image("nope.png");
+}
+target page { path = "a.html"; type = html; }
+-- background_file_missing.expected --
+$ templide background_file_missing.tlide --check
+[exit] 1
+[stderr]
+error: target page: slide 1, background: cannot open image file $DIR/nope.png
+-- bad_unit.tlide --
+/* 모르는 단위 */
+object box { var int x; var int y; var int width; var int height; }
+slide {
+    put box { x = 10foo; y = 0; width = 1; height = 1; }
+}
+-- bad_unit.expected --
+$ templide bad_unit.tlide --check
+[exit] 1
+[stderr]
+bad_unit.tlide:4:19: error: Unknown unit 'foo' (px, pt, in, cm, mm, %, deg, s, ms)
+-- builtin_name.tlide --
+/* 내장 이름으로 선언 */
+object text { var int x; }
+slide { }
+-- builtin_name.expected --
+$ templide builtin_name.tlide --check
+[exit] 1
+[stderr]
+builtin_name.tlide:2:1: error: 'text' is a built-in name
+-- builtin_property_clash.tlide --
+/* object의 var가 모든 object에 붙는 속성과 겹침 */
+object thing { var int rotation; }
+slide { }
+-- builtin_property_clash.expected --
+$ templide builtin_property_clash.tlide --check
+[exit] 1
+[stderr]
+builtin_property_clash.tlide:2:1: error: 'rotation' is a built-in property of every object
+-- cell_duplicate_property.tlide --
+/* cell 블록에서 같은 속성을 두 번 쓸 수 없다 */
+#include <std/stddef>
+
+slide {
+    put table {
+        x = 10px; y = 10px; width = 300px; height = 100px;
+        cells = [["a"]]; cell(1, 1) { fill = hex(FFF); fill = hex(000); }
+    }
+}
+-- cell_duplicate_property.expected --
+$ templide cell_duplicate_property.tlide --check
+[exit] 1
+[stderr]
+cell_duplicate_property.tlide:7:56: error: Duplicate property: fill
+-- cell_in_text_box.tlide --
+/* cell(...)은 put table 안에서만 쓴다 */
+#include <std/stddef>
+slide {
+    put text_box { text = "a"; x = 0; y = 0; width = 100; height = 20; cell(1, 1) { fill = hex(FFF); } }
+}
+-- cell_in_text_box.expected --
+$ templide cell_in_text_box.tlide --check
+[exit] 1
+[stderr]
+cell_in_text_box.tlide:4:72: error: 'cell' can only be used in a put table
+-- cell_property_type.tlide --
+/* cell 블록의 속성 타입 */
+#include <std/stddef>
+
+slide {
+    put table {
+        x = 10px; y = 10px; width = 300px; height = 100px;
+        cells = [["a"]]; cell(1, 1) { fill = "red"; }
+    }
+}
+-- cell_property_type.expected --
+$ templide cell_property_type.tlide --check
+[exit] 1
+[stderr]
+cell_property_type.tlide:7:46: error: Expected color, gradient, pattern or image, but got string
+-- cell_unknown_property.tlide --
+/* cell 블록의 알 수 없는 속성 */
+#include <std/stddef>
+
+slide {
+    put table {
+        x = 10px; y = 10px; width = 300px; height = 100px;
+        cells = [["a"]]; cell(1, 1) { bogus = 1; }
+    }
+}
+-- cell_unknown_property.expected --
+$ templide cell_unknown_property.tlide --check
+[exit] 1
+[stderr]
+cell_unknown_property.tlide:7:39: error: Unknown cell property: bogus
+-- color_alpha_range.tlide --
+/* rgba 알파 범위 */
+object swatch { var color c; }
+slide {
+    put swatch { c = rgba(0, 0, 0, 2); }
+}
+-- color_alpha_range.expected --
+$ templide color_alpha_range.tlide --check
+[exit] 1
+[stderr]
+color_alpha_range.tlide:4:36: error: Alpha must be a number from 0 to 1 without a unit
+-- color_hex_digits.tlide --
+/* hex 색의 자리 수 */
+object swatch { var color c; }
+slide {
+    put swatch { c = hex(12345); }
+}
+-- color_hex_digits.expected --
+$ templide color_hex_digits.tlide --check
+[exit] 1
+[stderr]
+color_hex_digits.tlide:4:22: error: Hex color must have 3, 4, 6 or 8 digits
+-- color_in_text.tlide --
+/* 색은 text에 쓸 수 없다 */
+object label { var text text; }
+slide {
+    put label { text = hex(F00); }
+}
+-- color_in_text.expected --
+$ templide color_in_text.tlide --check
+[exit] 1
+[stderr]
+color_in_text.tlide:4:24: error: color cannot be used in text
+-- color_rgb_range.tlide --
+/* rgb 성분 범위 */
+object swatch { var color c; }
+slide {
+    put swatch { c = rgb(300, 0, 0); }
+}
+-- color_rgb_range.expected --
+$ templide color_rgb_range.tlide --check
+[exit] 1
+[stderr]
+color_rgb_range.tlide:4:26: error: Color component must be a number from 0 to 255 without a unit
+-- color_space_arg_count.tlide --
+/* hsl 인자 수 */
+object swatch { var color c; }
+slide {
+    put swatch { c = hsl(10, 20%); }
+}
+-- color_space_arg_count.expected --
+$ templide color_space_arg_count.tlide --check
+[exit] 1
+[stderr]
+color_space_arg_count.tlide:4:22: error: hsl needs three values and an optional alpha, such as hsl(160deg, 40%, 59%)
+-- color_space_unit.tlide --
+/* oklch의 색상(hue)에 잘못된 단위 */
+object swatch { var color c; }
+slide {
+    put swatch { c = oklch(70%, 0.1, 20px); }
+}
+-- color_space_unit.expected --
+$ templide color_space_unit.tlide --check
+[exit] 1
+[stderr]
+color_space_unit.tlide:4:38: error: A hue must be an angle without a unit or with deg, such as 160deg
+-- condition_not_bool.tlide --
+/* if 조건이 bool이 아님 */
+object label { var text text; }
+template t {
+    if (1) { put label { text = "x"; } }
+}
+slide { }
+-- condition_not_bool.expected --
+$ templide condition_not_bool.tlide --check
+[exit] 1
+[stderr]
+condition_not_bool.tlide:4:9: error: Condition must be a bool such as 'a == b', but got int
+-- connector_missing_object.tlide --
+/* connector가 없는 이름을 가리킴 */
+#include <std/stddef>
+slide {
+    put shape as a { kind = rect; x = 0; y = 0; width = 10; height = 10; }
+    put connector { from = a; to = nowhere; }
+}
+-- connector_missing_object.expected --
+$ templide connector_missing_object.tlide --check
+[exit] 1
+[stderr]
+connector_missing_object.tlide:5:36: error: No object named 'nowhere' on this slide
+-- connector_to_line.tlide --
+/* connector는 선에 붙을 수 없음 */
+#include <std/stddef>
+slide {
+    put shape as a { kind = rect; x = 0; y = 0; width = 10; height = 10; }
+    put line as l { x1 = 0; y1 = 0; x2 = 10; y2 = 10; }
+    put connector { from = a; to = l; }
+}
+-- connector_to_line.expected --
+$ templide connector_to_line.tlide --check
+[exit] 1
+[stderr]
+connector_to_line.tlide:6:36: error: Cannot connect to the line 'l'
+-- connector_with_fill.tlide --
+/* connector에는 fill이 없음 */
+#include <std/stddef>
+slide {
+    put shape as a { kind = rect; x = 0; y = 0; width = 10; height = 10; }
+    put shape as b { kind = rect; x = 50; y = 0; width = 10; height = 10; }
+    put connector { from = a; to = b; fill = hex(F00); }
+}
+-- connector_with_fill.expected --
+$ templide connector_with_fill.tlide --check
+[exit] 1
+[stderr]
+connector_with_fill.tlide:6:39: error: A line has no fill
+-- context_without_member.tlide --
+/* @slide만 쓰고 멤버가 없음 */
+object label { var text text; }
+slide {
+    put label { text = f"{@slide}"; }
+}
+-- context_without_member.expected --
+$ templide context_without_member.tlide --check
+[exit] 1
+[stderr]
+context_without_member.tlide:4:27: error: '@slide' must be followed by a member such as '@slide.page'
+-- crop_everything.tlide --
+/* 자르고 남는 그림이 없음 */
+#include <std/stddef>
+slide {
+    put image { data = file("a.png"); x = 0; y = 0; width = 1; height = 1; crop_left = 60%; crop_right = 60%; }
+}
+-- crop_everything.expected --
+$ templide crop_everything.tlide --check
+[exit] 1
+[stderr]
+crop_everything.tlide:4:106: error: Crop must leave part of the image
+-- duplicate_definition.tlide --
+/* 같은 이름을 두 번 선언 */
+style bold { font-weight = bold; }
+style bold { font-weight = normal; }
+slide { }
+-- duplicate_definition.expected --
+$ templide duplicate_definition.tlide --check
+[exit] 1
+[stderr]
+duplicate_definition.tlide:3:1: error: 'bold' is already defined
+-- duplicate_layout.tlide --
+/* master 안의 같은 case 이름 */
+master deck {
+    case a { }
+    case a { }
+}
+slide { }
+-- duplicate_layout.expected --
+$ templide duplicate_layout.tlide --check
+[exit] 1
+[stderr]
+duplicate_layout.tlide:4:5: error: Duplicate layout 'a' in master 'deck'
+-- duplicate_object_name.tlide --
+/* 한 slide에서 같은 이름의 put as */
+object label { var text text; }
+slide {
+    put label as a { text = "x"; }
+    put label as a { text = "y"; }
+}
+-- duplicate_object_name.expected --
+$ templide duplicate_object_name.tlide --check
+[exit] 1
+[stderr]
+duplicate_object_name.tlide:5:18: error: Duplicate object name 'a' on this slide
+-- duplicate_property.tlide --
+/* 같은 속성을 두 번 쓴 put */
+object box { var int x; var int y; var int width; var int height; }
+slide {
+    put box { x = 1; x = 2; y = 0; width = 1; height = 1; }
+}
+-- duplicate_property.expected --
+$ templide duplicate_property.tlide --check
+[exit] 1
+[stderr]
+duplicate_property.tlide:4:22: error: Duplicate property: x
+-- duplicate_style_property.tlide --
+/* style 안의 같은 속성 두 번 */
+style odd { color = hex(F00); color = hex(0F0); }
+slide { }
+-- duplicate_style_property.expected --
+$ templide duplicate_style_property.tlide --check
+[exit] 1
+[stderr]
+duplicate_style_property.tlide:2:31: error: Duplicate style property: color
+-- duplicate_transition.tlide --
+/* 한 slide에 transition 두 번 */
+slide {
+    transition fade;
+    transition push;
+}
+-- duplicate_transition.expected --
+$ templide duplicate_transition.tlide --check
+[exit] 1
+[stderr]
+duplicate_transition.tlide:4:5: error: Duplicate transition
+-- encoding_not_utf8.tlide (base64) --
+b2JqZWN0IGxhYmVsIHsgdmFyIHRleHQgdGV4dDsgfQpzbGlkZSB7CiAgICBwdXQgbGFiZWwgeyB0
+ZXh0ID0gIrChIjsgfQp9Cg==
+-- encoding_not_utf8.expected --
+$ templide encoding_not_utf8.tlide --check
+[exit] 1
+[stderr]
+encoding_not_utf8.tlide: error: encoding_not_utf8.tlide is not UTF-8 (the first byte that is not valid UTF-8 is on line 3); save it as UTF-8 (in the editor: Save with Encoding)
+-- encoding_utf16_odd_bytes.tlide (base64) --
+//4vACoAIAB4x1TPKbUgANzC2NU6ACAAXNUArvysIAB0x6i6wMkArCAA4LQgADi7HMEgACoALwAK
+AG8AYgBqAGUAYwB0ACAAbABhAGIAZQBsACAAewAgAHYAYQByACAAdABlAHgAdAAgAHQAZQB4AHQA
+OwAgAH0ACgBzAGwAaQBkAGUAIAB7AAoAIAAgACAAIABwAHUAdAAgAGwAYQBiAGUAbAAgAHsAIAB0
+AGUAeAB0ACAAPQAgACIAXNUAriAAPdgA3iAAZQBuAGQAIgA7ACAAfQAKAH0ACgAK
+-- encoding_utf16_odd_bytes.expected --
+$ templide encoding_utf16_odd_bytes.tlide --check
+[exit] 1
+[stderr]
+encoding_utf16_odd_bytes.tlide: error: encoding_utf16_odd_bytes.tlide is not valid UTF-16 (odd number of bytes); save it as UTF-8 (in the editor: Save with Encoding)
+-- encoding_utf16_unpaired_surrogate.tlide (base64) --
+//4A2GEA
+-- encoding_utf16_unpaired_surrogate.expected --
+$ templide encoding_utf16_unpaired_surrogate.tlide --check
+[exit] 1
+[stderr]
+encoding_utf16_unpaired_surrogate.tlide: error: encoding_utf16_unpaired_surrogate.tlide is not valid UTF-16 (unpaired surrogate); save it as UTF-8 (in the editor: Save with Encoding)
+-- encoding_utf32.tlide (base64) --
+//4AAC8AAAAqAAAAIAAAAHjHAABUzwAAKbUAACAAAADcwgAA2NUAADoAAAAgAAAAXNUAAACuAAD8
+rAAAIAAAAHTHAACougAAwMkAAACsAAAgAAAA4LQAACAAAAA4uwAAHMEAACAAAAAqAAAALwAAAAoA
+AABvAAAAYgAAAGoAAABlAAAAYwAAAHQAAAAgAAAAbAAAAGEAAABiAAAAZQAAAGwAAAAgAAAAewAA
+ACAAAAB2AAAAYQAAAHIAAAAgAAAAdAAAAGUAAAB4AAAAdAAAACAAAAB0AAAAZQAAAHgAAAB0AAAA
+OwAAACAAAAB9AAAACgAAAHMAAABsAAAAaQAAAGQAAABlAAAAIAAAAHsAAAAKAAAAIAAAACAAAAAg
+AAAAIAAAAHAAAAB1AAAAdAAAACAAAABsAAAAYQAAAGIAAABlAAAAbAAAACAAAAB7AAAAIAAAAHQA
+AABlAAAAeAAAAHQAAAAgAAAAPQAAACAAAAAiAAAAXNUAAACuAAAgAAAAAPYBACAAAABlAAAAbgAA
+AGQAAAAiAAAAOwAAACAAAAB9AAAACgAAAH0AAAAKAAAA
+-- encoding_utf32.expected --
+$ templide encoding_utf32.tlide --check
+[exit] 1
+[stderr]
+encoding_utf32.tlide: error: encoding_utf32.tlide is UTF-32, which the compiler cannot read; save it as UTF-8 (in the editor: Save with Encoding)
+-- font_as_string.tlide --
+/* font-family는 font("...")로 써야 한다 */
+style serif { font-family = "Georgia"; }
+slide { }
+-- font_as_string.expected --
+$ templide font_as_string.tlide --check
+[exit] 1
+[stderr]
+font_as_string.tlide:2:29: error: Write a font as font("..."), such as font("Arial")
+-- for_range_not_int.tlide --
+/* 범위 for는 int만 */
+object label { var text text; }
+template t {
+    for (string s in 1..3) { put label { text = "x"; } }
+}
+slide { }
+-- for_range_not_int.expected --
+$ templide for_range_not_int.tlide --check
+[exit] 1
+[stderr]
+for_range_not_int.tlide:4:10: error: A range can only be used with int, but got string
+-- fstring_slide_number.tlide --
+/* @slide.number는 f-string 안에 쓸 수 없다 */
+object label { var text text; }
+slide {
+    put label { text = f"쪽 {@slide.number}"; }
+}
+-- fstring_slide_number.expected --
+$ templide fstring_slide_number.tlide --check
+[exit] 1
+[stderr]
+fstring_slide_number.tlide:4:31: error: This value is updated by PowerPoint, so it cannot be used in an f-string; put it directly in text
+-- html_bevel.tlide --
+/* html은 3D 입체(bevel)를 그리지 못한다 */
+#include <std/stddef>
+slide {
+    put shape { kind = rect; x = 0; y = 0; width = 10; height = 10; bevel = circle; }
+}
+target web { path = "a.html"; type = html; }
+-- html_bevel.expected --
+$ templide html_bevel.tlide --check
+[exit] 1
+[stderr]
+error: target web: slide 1, shape: the html backend cannot draw 'bevel'; 3D bevels and extrusions only render in PowerPoint
+-- html_transition.tlide --
+/* html은 randomBars 전환을 그리지 못한다 */
+slide {
+    transition randomBars.vertical;
+}
+target web { path = "a.html"; type = html; }
+-- html_transition.expected --
+$ templide html_transition.tlide --check
+[exit] 1
+[stderr]
+error: target web: html_transition.tlide:3:16: the html backend does not support transition randomBars.vertical; it only renders in PowerPoint
+-- image_empty_path.tlide --
+/* image("")의 빈 경로 */
+slide {
+    background = image("");
+}
+-- image_empty_path.expected --
+$ templide image_empty_path.tlide --check
+[exit] 1
+[stderr]
+image_empty_path.tlide:3:24: error: The path must not be empty
+-- image_extension_html.tlide --
+/* html이 읽지 못하는 그림 확장자 */
+#include <std/stddef>
+slide {
+    put image { data = file("a.webp"); x = 0; y = 0; width = 1; height = 1; }
+}
+target page { path = "a.html"; type = html; }
+-- image_extension_html.expected --
+$ templide image_extension_html.tlide --check
+[exit] 1
+[stderr]
+error: target page: slide 1, image: unsupported image format '.webp' (png, jpg, gif, bmp)
+-- image_extension_pptx.tlide --
+/* pptx가 읽지 못하는 그림 확장자 */
+#include <std/stddef>
+slide {
+    put image { data = file("a.tga"); x = 0; y = 0; width = 1; height = 1; }
+}
+target deck { path = "a.pptx"; type = pptx; }
+-- image_extension_pptx.expected --
+$ templide image_extension_pptx.tlide --check
+[exit] 1
+[stderr]
+error: target deck: slide 1, image: unsupported image format '.tga' (png, jpg, gif, bmp)
+-- image_file_missing.tlide --
+/* 그림 파일이 없음 */
+#include <std/stddef>
+slide {
+    put image { data = file("nope.png"); x = 0; y = 0; width = 1; height = 1; }
+}
+target deck { path = "a.pptx"; type = pptx; }
+-- image_file_missing.expected --
+$ templide image_file_missing.tlide --check
+[exit] 1
+[stderr]
+error: target deck: slide 1, image: cannot open image file $DIR/nope.png
+-- image_path_property.tlide --
+/* 그림은 path가 아니라 data로 준다 */
+#include <std/stddef>
+slide {
+    put image { path = "a.png"; x = 0; y = 0; width = 1; height = 1; }
+}
+-- image_path_property.expected --
+$ templide image_path_property.tlide --check
+[exit] 1
+[stderr]
+image_path_property.tlide:4:17: error: 'image' has no property 'path'; give the file with data, such as data = file("picture.png")
+-- image_refers_to_itself.tlide --
+/* image 이름이 자기 자신을 가리킴 */
+image a = a;
+slide { }
+-- image_refers_to_itself.expected --
+$ templide image_refers_to_itself.tlide --check
+[exit] 1
+[stderr]
+image_refers_to_itself.tlide:2:7: error: 'a' refers to itself
+-- include_error_location/main.tlide --
+/* 오류는 그 오류가 있는 파일의 이름과 위치로 알린다. 파일은 읽은 순서(main이 먼저, 그다음 _inc), 그 안에서는 위치 순서로 나온다 */
+#include "_inc"
+
+slide {
+    put nothing_here { }
+}
+-- include_error_location/main.expected --
+$ templide main.tlide --check
+[exit] 1
+[stderr]
+main.tlide:5:5: error: Unknown template or object: nothing_here
+_inc.tlide:2:9: error: Unknown type: undefined_type
+-- include_error_location/_inc.tlide --
+object thing {
+    var undefined_type x;
+}
+-- include_not_found.tlide --
+/* #include "..."로 없는 파일 */
+#include "nothing_here"
+slide { }
+-- include_not_found.expected --
+$ templide include_not_found.tlide --check
+[exit] 1
+[stderr]
+include_not_found.tlide:2:10: error: Cannot find file: nothing_here.tlide
+-- include_package_not_found.tlide --
+/* #include <...>로 없는 패키지 */
+#include <std/nothing_here>
+slide { }
+-- include_package_not_found.expected --
+$ templide include_package_not_found.tlide --check
+[exit] 1
+[stderr]
+include_package_not_found.tlide:2:10: error: Cannot find package: $EXE_DIR/packages/std/nothing_here.tlide
+-- layout_syntax.tlide --
+/* layout은 master.case로 써야 한다 */
+master deck { case a { } }
+slide {
+    layout = deck;
+}
+-- layout_syntax.expected --
+$ templide layout_syntax.tlide --check
+[exit] 1
+[stderr]
+layout_syntax.tlide:4:14: error: Layout must be written as <master>.<layout> or <master>(<arguments>).<layout>
+-- link_and_action.tlide --
+/* link와 action은 함께 쓸 수 없다 */
+object tile { var text text; }
+slide {
+    put tile { text = "x"; link = "https://example.com"; action = run("f"); }
+}
+-- link_and_action.expected --
+$ templide link_and_action.tlide --check
+[exit] 1
+[stderr]
+link_and_action.tlide:4:28: error: Use either 'link' or 'action'; an object has one click action (write the link as action = ...)
+-- link_file_call.tlide --
+/* 링크에 file(...)은 쓸 수 없다 (action_file을 쓴다) */
+object tile { var text text; }
+slide {
+    put tile { text = "x"; link = file("a.pdf"); }
+}
+-- link_file_call.expected --
+$ templide link_file_call.tlide --check
+[exit] 1
+[stderr]
+link_file_call.tlide:4:35: error: To open a file when clicked, write action_file("..."); file(...) gives a picture, video or audio file
+-- link_slide_missing.tlide --
+/* 없는 슬라이드로의 링크 */
+object tile { var text text; }
+slide {
+    put tile { text = "x"; link = slide(5); }
+}
+-- link_slide_missing.expected --
+$ templide link_slide_missing.tlide --check
+[exit] 1
+[stderr]
+link_slide_missing.tlide:4:41: error: There is no slide 5 to link to
+-- link_slide_not_whole.tlide --
+/* 슬라이드 번호는 정수 */
+object tile { var text text; }
+slide {
+    put tile { text = "x"; link = slide(1.5); }
+}
+-- link_slide_not_whole.expected --
+$ templide link_slide_not_whole.tlide --check
+[exit] 1
+[stderr]
+link_slide_not_whole.tlide:4:41: error: Expected int, but got float
+-- list_assign_mismatch.tlide --
+/* list<int> 자리에 list<text> 값을 넘길 수 없다 */
+#include <std/stddef>
+template t {
+    var list<int> numbers;
+}
+template u {
+    var list<text> words;
+    put t { numbers = words; }
+}
+slide { }
+-- list_assign_mismatch.expected --
+$ templide list_assign_mismatch.tlide --check
+[exit] 1
+[stderr]
+list_assign_mismatch.tlide:8:23: error: Expected list<int>, but got list<text>
+-- list_item_type.tlide --
+/* list<float>의 항목은 숫자여야 한다 */
+#include <std/stddef>
+
+slide {
+    put table {
+        x = 10px; y = 10px; width = 300px; height = 100px;
+        cells = [["a"]]; col_widths = ["wide"];
+    }
+}
+-- list_item_type.expected --
+$ templide list_item_type.tlide --check
+[exit] 1
+[stderr]
+list_item_type.tlide:7:40: error: Expected float, but got string
+-- list_not_a_list.tlide --
+/* list<list<text>> 자리에 목록이 아닌 값 */
+#include <std/stddef>
+
+slide {
+    put table {
+        x = 10px; y = 10px; width = 300px; height = 100px;
+        cells = "x";
+    }
+}
+-- list_not_a_list.expected --
+$ templide list_not_a_list.tlide --check
+[exit] 1
+[stderr]
+list_not_a_list.tlide:7:17: error: Expected list<list<text>>, but got string
+-- list_row_not_a_list.tlide --
+/* 행은 [ ... ] 목록이어야 한다 */
+#include <std/stddef>
+
+slide {
+    put table {
+        x = 10px; y = 10px; width = 300px; height = 100px;
+        cells = ["a", "b"];
+    }
+}
+-- list_row_not_a_list.expected --
+$ templide list_row_not_a_list.tlide --check
+[exit] 1
+[stderr]
+list_row_not_a_list.tlide:7:18: error: Expected list<text>, but got string
+list_row_not_a_list.tlide:7:23: error: Expected list<text>, but got string
+-- list_unknown_element_type.tlide --
+/* list<T>의 T를 모르면 그 타입 이름을 알린다 */
+#include <std/stddef>
+template t {
+    var list<list<nothing>> data;
+}
+slide { }
+-- list_unknown_element_type.expected --
+$ templide list_unknown_element_type.tlide --check
+[exit] 1
+[stderr]
+list_unknown_element_type.tlide:4:9: error: Unknown type: nothing
+-- loop_too_many.tlide --
+/* 반복이 10000번을 넘음 */
+object label { var text text; }
+template t {
+    for (int i in 1..10001) { put label { text = "x"; } }
+}
+slide { put t { } }
+-- loop_too_many.expected --
+$ templide loop_too_many.tlide --check
+[exit] 1
+[stderr]
+loop_too_many.tlide:4:5: error: Loop runs more than 10000 times
+-- master_arg_count.tlide --
+/* master 인자 수 */
+master deck(color c) { case a { } }
+slide {
+    layout = deck.a;
+}
+-- master_arg_count.expected --
+$ templide master_arg_count.tlide --check
+[exit] 1
+[stderr]
+master_arg_count.tlide:4:14: error: Master 'deck' needs 1 argument(s), but got 0
+-- master_slide_page.tlide --
+/* master 안에서는 @slide.page를 쓸 수 없다 */
+object label { var text text; }
+master deck {
+    case a { put label { text = f"{@slide.page}"; } }
+}
+slide { }
+-- master_slide_page.expected --
+$ templide master_slide_page.tlide --check
+[exit] 1
+[stderr]
+master_slide_page.tlide:4:36: error: '@slide' cannot be used in a master
+-- master_theme_not_a_theme.tlide --
+/* master의 theme에 theme이 아닌 이름 */
+master deck {
+    theme = nothing;
+    case a { }
+}
+slide { }
+-- master_theme_not_a_theme.expected --
+$ templide master_theme_not_a_theme.tlide --check
+[exit] 1
+[stderr]
+master_theme_not_a_theme.tlide:3:13: error: Expected the name of a theme
+-- missing_required_property.tlide --
+/* 기본값이 없는 var를 안 쓴 put */
+object box { var int x; var int y; var int width; var int height; }
+slide {
+    put box { x = 1; y = 2; width = 3; }
+}
+-- missing_required_property.expected --
+$ templide missing_required_property.tlide --check
+[exit] 1
+[stderr]
+missing_required_property.tlide:4:5: error: Missing property 'height' for 'box'
+-- multiply_units.tlide --
+/* 단위가 있는 두 수의 곱 */
+object box { var int x; var int y; var int width; var int height; }
+slide {
+    put box { x = 2px * 3px; y = 0; width = 1; height = 1; }
+}
+-- multiply_units.expected --
+$ templide multiply_units.tlide --check
+[exit] 1
+[stderr]
+multiply_units.tlide:4:19: error: Cannot multiply two numbers that both have units
+-- negative_percent_size.tlide --
+/* %로 쓴 크기가 음수 (슬라이드 크기를 알아야 해서 백엔드가 알린다) */
+#include <std/stddef>
+slide {
+    put text_box { text = "x"; x = 0; y = 0; width = -10%; height = 10; }
+}
+target deck { path = "a.pptx"; type = pptx; }
+-- negative_percent_size.expected --
+$ templide negative_percent_size.tlide --check
+[exit] 1
+[stderr]
+error: target deck: slide 1, text_box: width and height must not be negative
+-- negative_size.tlide --
+/* 크기는 음수일 수 없다 */
+object box { var int x; var int y; var int width; var int height; }
+slide {
+    put box { x = 0; y = 0; width = -10px; height = 1; }
+}
+-- negative_size.expected --
+$ templide negative_size.tlide --check
+[exit] 1
+[stderr]
+negative_size.tlide:4:37: error: 'width' must be 0 or more
+-- ok_check.tlide --
+/* 문제가 없는 문서의 --check는 target마다 ok를 찍고 파일을 쓰지 않는다 */
+#include <std/stddef>
+slide {
+    put text_box { text = "x"; x = 0; y = 0; width = 100; height = 20; }
+}
+target deck { path = "a.pptx"; type = pptx; }
+target page { path = "a.html"; type = html; }
+target paper { path = "a.pdf"; type = pdf; }
+-- ok_check.expected --
+$ templide ok_check.tlide --check
+[exit] 0
+[stdout]
+deck: ok
+page: ok
+paper: ok
+-- opacity_range.tlide --
+/* opacity는 0~1 */
+object box { var int x; var int y; var int width; var int height; }
+slide {
+    put box { x = 0; y = 0; width = 1; height = 1; opacity = 2; }
+}
+-- opacity_range.expected --
+$ templide opacity_range.tlide --check
+[exit] 1
+[stderr]
+opacity_range.tlide:4:62: error: 'opacity' must be between 0 and 1
+-- parse_bad_hex_digit.tlide --
+/* hex(...)에 16진수가 아닌 글자 */
+object label { var text text; }
+object swatch { var color c; }
+slide {
+    put swatch { c = hex(GG0); }
+}
+-- parse_bad_hex_digit.expected --
+$ templide parse_bad_hex_digit.tlide --check
+[exit] 1
+[stderr]
+parse_bad_hex_digit.tlide:5:26: error: Invalid hex color: GG0
+-- parse_else_without_if.tlide --
+/* if 없는 else */
+object label { var text text; }
+template t {
+    else { put label { text = "x"; } }
+}
+-- parse_else_without_if.expected --
+$ templide parse_else_without_if.tlide --check
+[exit] 1
+[stderr]
+parse_else_without_if.tlide:4:5: error: 'else' without preceding 'if'
+-- parse_fstring_unterminated.tlide --
+/* 줄 끝까지 닫히지 않은 f-string */
+object label { var text text; }
+slide {
+    put label { text = f"abc {1 + 2} def; }
+}
+-- parse_fstring_unterminated.expected --
+$ templide parse_fstring_unterminated.tlide --check
+[exit] 1
+[stderr]
+parse_fstring_unterminated.tlide:4:37: error: Unterminated f-string
+parse_fstring_unterminated.tlide:6:1: error: Unexpected end of file in block
+-- parse_list_without_kind.tlide --
+/* bullets 같은 종류 없이 쓴 목록 */
+object label { var text text; }
+slide {
+    put label { text = ["a", "b"]; }
+}
+-- parse_list_without_kind.expected --
+$ templide parse_list_without_kind.tlide --check
+[exit] 1
+[stderr]
+parse_list_without_kind.tlide:4:24: error: A list must follow 'bullets', 'numbers' or 'dashes'
+-- parse_minus_space.tlide --
+/* 음수 리터럴은 - 바로 뒤에 숫자가 붙어야 한다 */
+object box { var int x; var int y; var int width; var int height; }
+slide {
+    put box { x = - 5px; y = 0; width = 1; height = 1; }
+}
+-- parse_minus_space.expected --
+$ templide parse_minus_space.tlide --check
+[exit] 1
+[stderr]
+parse_minus_space.tlide:4:21: error: Expected a number right after '-'
+-- parse_missing_semicolon.tlide --
+/* 문장 끝의 ; 빠짐 */
+object label { var text text; }
+slide {
+    put label { text = "abc" }
+}
+-- parse_missing_semicolon.expected --
+$ templide parse_missing_semicolon.tlide --check
+[exit] 1
+[stderr]
+parse_missing_semicolon.tlide:4:30: error: Expected ';' after expression, but got '}'
+-- parse_multiple_errors.tlide --
+/* 서로 다른 구문 오류는 복구해서 모두 알린다 */
+object label { var text text; }
+slide {
+    put label { text = "첫째" }
+}
+slide {
+    put label { text = ; }
+}
+slide {
+    put label { text = "셋째"; }
+}
+-- parse_multiple_errors.expected --
+$ templide parse_multiple_errors.tlide --check
+[exit] 1
+[stderr]
+parse_multiple_errors.tlide:4:33: error: Expected ';' after expression, but got '}'
+parse_multiple_errors.tlide:7:24: error: Expected expression, but got ';'
+-- parse_non_ascii_identifier.tlide --
+/* 식별자는 영문이어야 한다 */
+object box { var text body; }
+slide {
+    put 상자 { }
+}
+-- parse_non_ascii_identifier.expected --
+$ templide parse_non_ascii_identifier.tlide --check
+[exit] 1
+[stderr]
+parse_non_ascii_identifier.tlide:4:9: error: Expected name after 'put', but got '상'
+-- parse_object_statement.tlide --
+/* object 안에는 var만 쓸 수 있다 */
+object box {
+    put box { }
+}
+-- parse_object_statement.expected --
+$ templide parse_object_statement.tlide --check
+[exit] 1
+[stderr]
+parse_object_statement.tlide:3:5: error: Unexpected identifier: put
+-- parse_rgb_arg_count.tlide --
+/* rgb()의 인자 수 */
+object swatch { var color c; }
+slide {
+    put swatch { c = rgb(1, 2); }
+}
+-- parse_rgb_arg_count.expected --
+$ templide parse_rgb_arg_count.tlide --check
+[exit] 1
+[stderr]
+parse_rgb_arg_count.tlide:4:22: error: rgb() expects 3 arguments, but got 2
+-- parse_unknown_directive.tlide --
+/* #include가 아닌 지시자 */
+#define x
+slide { }
+-- parse_unknown_directive.expected --
+$ templide parse_unknown_directive.tlide --check
+[exit] 1
+[stderr]
+parse_unknown_directive.tlide:2:2: error: Unknown directive: #define
+-- parse_unknown_escape.tlide --
+/* 모르는 이스케이프 \q */
+object label { var text text; }
+slide {
+    put label { text = "a\qb"; }
+}
+-- parse_unknown_escape.expected --
+$ templide parse_unknown_escape.tlide --check
+[exit] 1
+[stderr]
+parse_unknown_escape.tlide:4:24: error: Unknown escape '\q' in string (\n, \t, \", \\, \{, \})
+-- parse_unknown_statement.tlide --
+/* 파일 맨 위에서 모르는 문장 */
+object label { var text text; }
+foo { }
+slide { }
+-- parse_unknown_statement.expected --
+$ templide parse_unknown_statement.tlide --check
+[exit] 1
+[stderr]
+parse_unknown_statement.tlide:3:1: error: Unexpected identifier: foo
+-- parse_unterminated_brace.tlide --
+/* 닫히지 않은 중괄호: 파일 끝에서 블록이 끝나지 않았다 */
+object label { var text text; }
+slide {
+    put label { text = "abc"; }
+-- parse_unterminated_brace.expected --
+$ templide parse_unterminated_brace.tlide --check
+[exit] 1
+[stderr]
+parse_unterminated_brace.tlide:5:1: error: Unexpected end of file in block
+-- parse_unterminated_comment.tlide --
+/* 닫히지 않은 /* 주석 */
+object label { var text text; }
+slide {
+    put label { text = "abc"; }
+}
+/* 닫는 기호가 없다
+-- parse_unterminated_comment.expected --
+$ templide parse_unterminated_comment.tlide --check
+[exit] 1
+[stderr]
+parse_unterminated_comment.tlide:6:1: error: Unexpected token: unterminated comment
+-- parse_unterminated_string.tlide --
+/* 닫히지 않은 문자열: 줄 끝까지 닫는 따옴표가 없다 */
+object label { var text text; }
+slide {
+    put label { text = "abc; }
+}
+-- parse_unterminated_string.expected --
+$ templide parse_unterminated_string.tlide --check
+[exit] 1
+[stderr]
+parse_unterminated_string.tlide:4:24: error: Expected expression, but got '"abc; }'
+parse_unterminated_string.tlide:6:1: error: Unexpected end of file in block
+-- placeholder_on_slide.tlide --
+/* placeholder는 master의 case에만 */
+#include <std/stddef>
+slide {
+    put placeholder { role = title; x = 0; y = 0; width = 1; height = 1; }
+}
+-- placeholder_on_slide.expected --
+$ templide placeholder_on_slide.tlide --check
+[exit] 1
+[stderr]
+placeholder_on_slide.tlide:4:5: error: A placeholder can only be put in a master case; a slide fills it with title, subtitle or body
+-- plain_list_in_text.tlide --
+/* [a, b]는 list<T> 자리에만 쓴다. 글 자리에는 bullets, numbers, dashes, paragraphs 뒤에만 쓸 수 있다 */
+#include <std/stddef>
+slide {
+    put text_box { text = ["a", "b"]; x = 0; y = 0; width = 100; height = 20; }
+}
+-- plain_list_in_text.expected --
+$ templide plain_list_in_text.tlide --check
+[exit] 1
+[stderr]
+plain_list_in_text.tlide:4:27: error: A list must follow 'bullets', 'numbers' or 'dashes'
+-- plain_list_inside_bullets.tlide --
+/* 목록 안의 바깥 목록 없는 [ ... ]도 같다. 안쪽 목록은 bullets [ ... ]로 쓴다 */
+#include <std/stddef>
+slide {
+    put text_box { text = bullets ["a", ["b"]]; x = 0; y = 0; width = 100; height = 20; }
+}
+-- plain_list_inside_bullets.expected --
+$ templide plain_list_inside_bullets.tlide --check
+[exit] 1
+[stderr]
+plain_list_inside_bullets.tlide:4:41: error: A list must follow 'bullets', 'numbers' or 'dashes'
+-- png_bad_extension.tlide --
+/* png target의 path는 .png로 끝나야 한다 */
+#include <std/stddef>
+slide { put text_box { text = "x"; x = 0; y = 0; width = 100; height = 20; } }
+target t { path = "a.jpg"; type = png; }
+-- png_bad_extension.expected --
+$ templide png_bad_extension.tlide --check
+[exit] 1
+[stderr]
+error: target t: the path of a png target must end with .png, such as "slides.png" (slide n is written as slides-n.png)
+-- png_options_on_pptx.tlide --
+/* scale과 transparent는 png만 쓴다. 다른 target에 적으면 경고만 하고 무시한다 (종료 코드 0) */
+#include <std/stddef>
+slide { put text_box { text = "x"; x = 0; y = 0; width = 100; height = 20; } }
+target t { path = "a.pptx"; type = pptx; scale = 2; transparent = true; }
+-- png_options_on_pptx.expected --
+$ templide png_options_on_pptx.tlide --check
+[exit] 0
+[stdout]
+t: ok
+[stderr]
+png_options_on_pptx.tlide:4:50: warning: scale only applies to png targets; the pptx target 't' ignores it
+png_options_on_pptx.tlide:4:67: warning: transparent only applies to png targets; the pptx target 't' ignores it
+-- png_run_action_warning.tlide --
+/* png는 JS 함수를 부르는 곳이 없는 정적 출력이라 run(...)을 무시하고 경고한다 */
+#include <std/stddef>
+slide { put shape { kind = rect; x = 0; y = 0; width = 100; height = 20; action = run("go"); } }
+target t { path = "a.png"; type = png; }
+-- png_run_action_warning.expected --
+$ templide png_run_action_warning.tlide --check
+[exit] 0
+[stdout]
+t: ok
+[stderr]
+png_run_action_warning.tlide:3:83: warning: run("go") calls a JS function, which only works in html and web; the png target 't' ignores it
+-- png_scale_range.tlide --
+/* scale은 0.1 ~ 10이다 */
+#include <std/stddef>
+slide { put text_box { text = "x"; x = 0; y = 0; width = 100; height = 20; } }
+target t { path = "a.png"; type = png; scale = 20; }
+-- png_scale_range.expected --
+$ templide png_scale_range.tlide --check
+[exit] 1
+[stderr]
+png_scale_range.tlide:4:48: error: 'scale' must be between 0.1 and 10
+-- png_transparent_type.tlide --
+/* transparent는 true나 false다 */
+#include <std/stddef>
+slide { put text_box { text = "x"; x = 0; y = 0; width = 100; height = 20; } }
+target t { path = "a.png"; type = png; transparent = 1; }
+-- png_transparent_type.expected --
+$ templide png_transparent_type.tlide --check
+[exit] 1
+[stderr]
+png_transparent_type.tlide:4:54: error: Expected bool, but got int
+-- pptx_ok_with_bevel.tlide --
+/* pptx는 bevel을 그릴 수 있어서 같은 문서가 통과한다 (html_bevel과 짝) */
+#include <std/stddef>
+slide {
+    put shape { kind = rect; x = 0; y = 0; width = 10; height = 10; bevel = circle; }
+}
+target deck { path = "a.pptx"; type = pptx; }
+-- pptx_ok_with_bevel.expected --
+$ templide pptx_ok_with_bevel.tlide --check
+[exit] 0
+[stdout]
+deck: ok
+-- pptx_slide_size_range.tlide --
+/* pptx 슬라이드 크기는 1in~56in */
+slide { }
+target deck { path = "a.pptx"; type = pptx; width = 10px; height = 10px; }
+-- pptx_slide_size_range.expected --
+$ templide pptx_slide_size_range.tlide --check
+[exit] 1
+[stderr]
+error: target deck: slide width must be between 1in and 56in
+error: target deck: slide height must be between 1in and 56in
+-- radius_wrong_kind.tlide --
+/* radius는 둥근 모서리 도형에만 */
+#include <std/stddef>
+slide {
+    put shape { kind = rect; x = 0; y = 0; width = 1; height = 1; radius = 5px; }
+}
+-- radius_wrong_kind.expected --
+$ templide radius_wrong_kind.tlide --check
+[exit] 1
+[stderr]
+radius_wrong_kind.tlide:4:76: error: 'radius' only applies to shapes, backdrops and images of kind roundRect, round1Rect, round2SameRect, round2DiagRect or snipRoundRect
+-- self_name_unnamed.tlide --
+/* 이름 없는 put에서 @self.name */
+object label { var text text; }
+slide {
+    put label { text = @self.name; }
+}
+-- self_name_unnamed.expected --
+$ templide self_name_unnamed.tlide --check
+[exit] 1
+[stderr]
+self_name_unnamed.tlide:4:24: error: '@self.name' needs a named object; write 'put ... as NAME'
+-- self_outside_put.tlide --
+/* @self는 put의 속성 값 안에서만 */
+slide {
+    comment f"{@self.name}";
+}
+-- self_outside_put.expected --
+$ templide self_outside_put.tlide --check
+[exit] 1
+[stderr]
+self_outside_put.tlide:3:16: error: '@self' can only be used in the properties of a put
+-- shadow_detail_without_base.tlide --
+/* shadow_blur는 shadow가 있어야 한다 */
+object box { var int x; var int y; var int width; var int height; }
+slide {
+    put box { x = 0; y = 0; width = 1; height = 1; shadow_blur = 3px; }
+}
+-- shadow_detail_without_base.expected --
+$ templide shadow_detail_without_base.tlide --check
+[exit] 1
+[stderr]
+shadow_detail_without_base.tlide:4:52: error: 'shadow_blur' needs 'shadow'
+-- style_arg_count.tlide --
+/* style 인자 수가 다름 */
+object label { var text text; }
+style size(float s) { font-size = s; }
+slide {
+    put label { text = size() "x"; }
+}
+-- style_arg_count.expected --
+$ templide style_arg_count.tlide --check
+[exit] 1
+[stderr]
+style_arg_count.tlide:5:24: error: Style 'size' needs 1 argument(s), but got 0
+-- style_needs_arguments.tlide --
+/* 인자가 필요한 style을 이름만 씀 */
+object label { var text text; }
+style size(float s) { font-size = s; }
+slide {
+    put label { text = size "x"; }
+}
+-- style_needs_arguments.expected --
+$ templide style_needs_arguments.tlide --check
+[exit] 1
+[stderr]
+style_needs_arguments.tlide:5:24: error: Style 'size' needs 1 argument(s)
+-- style_used_as_value.tlide --
+/* style을 값 자리에 씀 */
+object box { var int x; var int y; var int width; var int height; }
+style big { font-size = 40pt; }
+slide {
+    put box { x = big; y = 0; width = 1; height = 1; }
+}
+-- style_used_as_value.expected --
+$ templide style_used_as_value.tlide --check
+[exit] 1
+[stderr]
+style_used_as_value.tlide:5:19: error: Style 'big' can only be used inside text
+-- styles_not_included.tlide --
+/* bold 같은 기본 style은 std/styles에 있어서, stddef만 불러서는 쓸 수 없다 */
+#include <std/stddef>
+slide {
+    put text_box { text = bold "굵게"; x = 0px; y = 0px; width = 100px; height = 50px; }
+}
+-- styles_not_included.expected --
+$ templide styles_not_included.tlide --check
+[exit] 1
+[stderr]
+styles_not_included.tlide:4:27: error: Unknown style or variable: bold
+-- table_cell_duplicate.tlide --
+/* 같은 칸에 cell 블록을 둘 쓸 수 없다 */
+#include <std/stddef>
+
+slide {
+    put table {
+        x = 10px; y = 10px; width = 300px; height = 100px;
+        cells = [["a", "b"]]; cell(1, 1) { fill = hex(FFF); } cell(1, 1) { align = right; }
+    }
+}
+-- table_cell_duplicate.expected --
+$ templide table_cell_duplicate.tlide --check
+[exit] 1
+[stderr]
+table_cell_duplicate.tlide:7:63: error: Duplicate cell(1, 1)
+-- table_cell_not_integer.tlide --
+/* cell의 행과 열은 단위 없는 정수다 */
+#include <std/stddef>
+
+slide {
+    put table {
+        x = 10px; y = 10px; width = 300px; height = 100px;
+        cells = [["a", "b"]]; cell(1.5, 1) { fill = hex(FFF); }
+    }
+}
+-- table_cell_not_integer.expected --
+$ templide table_cell_not_integer.tlide --check
+[exit] 1
+[stderr]
+table_cell_not_integer.tlide:7:36: error: Expected int, but got float
+-- table_cell_outside.tlide --
+/* cell(행, 열)은 표 안이어야 한다 */
+#include <std/stddef>
+
+slide {
+    put table {
+        x = 10px; y = 10px; width = 300px; height = 100px;
+        cells = [["a", "b"], ["c", "d"]]; cell(3, 1) { fill = hex(FFF); }
+    }
+}
+-- table_cell_outside.expected --
+$ templide table_cell_outside.tlide --check
+[exit] 1
+[stderr]
+table_cell_outside.tlide:7:43: error: cell(3, 1) is outside the table, which has 2 rows and 2 columns
+-- table_cells_missing.tlide --
+/* cells는 꼭 넣어야 한다 */
+#include <std/stddef>
+
+slide {
+    put table {
+        x = 10px; y = 10px; width = 300px; height = 100px;
+    }
+}
+-- table_cells_missing.expected --
+$ templide table_cells_missing.tlide --check
+[exit] 1
+[stderr]
+table_cells_missing.tlide:5:5: error: Missing property 'cells' for 'table'
+-- table_col_widths_count.tlide --
+/* col_widths의 개수는 열의 수와 같아야 한다 */
+#include <std/stddef>
+
+slide {
+    put table {
+        x = 10px; y = 10px; width = 300px; height = 100px;
+        cells = [["a", "b"]]; col_widths = [100px];
+    }
+}
+-- table_col_widths_count.expected --
+$ templide table_col_widths_count.tlide --check
+[exit] 1
+[stderr]
+table_col_widths_count.tlide:7:44: error: 'col_widths' has 1 values, but the table has 2 columns
+-- table_covered_block.tlide --
+/* 병합에 가려지는 칸에는 cell 블록을 쓸 수 없다 */
+#include <std/stddef>
+
+slide {
+    put table {
+        x = 10px; y = 10px; width = 300px; height = 100px;
+        cells = [["a", ""]]; cell(1, 1) { col_span = 2; } cell(1, 2) { fill = hex(FFF); }
+    }
+}
+-- table_covered_block.expected --
+$ templide table_covered_block.tlide --check
+[exit] 1
+[stderr]
+table_covered_block.tlide:7:59: error: cell(1, 2) is covered by the merged cell at cell(1, 1), so it cannot have its own cell block
+-- table_covered_text.tlide --
+/* 병합에 가려지는 칸의 글은 비어 있어야 한다 */
+#include <std/stddef>
+
+slide {
+    put table {
+        x = 10px; y = 10px; width = 300px; height = 100px;
+        cells = [["a", "b"]]; cell(1, 1) { col_span = 2; }
+    }
+}
+-- table_covered_text.expected --
+$ templide table_covered_text.tlide --check
+[exit] 1
+[stderr]
+table_covered_text.tlide:7:17: error: The cell in row 1, column 2 is covered by the merged cell at cell(1, 1), so its text must be empty ("")
+-- table_empty_row.tlide --
+/* 표에는 열이 하나 이상 있어야 한다 */
+#include <std/stddef>
+
+slide {
+    put table {
+        x = 10px; y = 10px; width = 300px; height = 100px;
+        cells = [[]];
+    }
+}
+-- table_empty_row.expected --
+$ templide table_empty_row.tlide --check
+[exit] 1
+[stderr]
+table_empty_row.tlide:7:17: error: A table needs at least one row and one column
+-- table_forbidden_rotation.tlide --
+/* 표는 돌릴 수 없다 */
+#include <std/stddef>
+
+slide {
+    put table {
+        x = 10px; y = 10px; width = 300px; height = 100px;
+        cells = [["a"]]; rotation = 10;
+    }
+}
+-- table_forbidden_rotation.expected --
+$ templide table_forbidden_rotation.tlide --check
+[exit] 1
+[stderr]
+table_forbidden_rotation.tlide:7:26: error: A table has no 'rotation'
+-- table_forbidden_shadow.tlide --
+/* 표에는 그림자를 쓸 수 없다 */
+#include <std/stddef>
+
+slide {
+    put table {
+        x = 10px; y = 10px; width = 300px; height = 100px;
+        cells = [["a"]]; shadow = hex(000);
+    }
+}
+-- table_forbidden_shadow.expected --
+$ templide table_forbidden_shadow.tlide --check
+[exit] 1
+[stderr]
+table_forbidden_shadow.tlide:7:26: error: A table has no 'shadow'
+-- table_header_rows_range.tlide --
+/* header_rows는 행의 수를 넘을 수 없다 */
+#include <std/stddef>
+
+slide {
+    put table {
+        x = 10px; y = 10px; width = 300px; height = 100px;
+        cells = [["a"], ["b"]]; header_rows = 5;
+    }
+}
+-- table_header_rows_range.expected --
+$ templide table_header_rows_range.tlide --check
+[exit] 1
+[stderr]
+table_header_rows_range.tlide:7:47: error: 'header_rows' is 5, but the table has only 2 rows
+-- table_merge_outside.tlide --
+/* 병합한 칸은 표 밖으로 나갈 수 없다 */
+#include <std/stddef>
+
+slide {
+    put table {
+        x = 10px; y = 10px; width = 300px; height = 100px;
+        cells = [["a", "b"]]; cell(1, 2) { col_span = 3; }
+    }
+}
+-- table_merge_outside.expected --
+$ templide table_merge_outside.tlide --check
+[exit] 1
+[stderr]
+table_merge_outside.tlide:7:31: error: The merged cell at cell(1, 2) reaches outside the table, which has 1 rows and 2 columns
+-- table_merge_overlap.tlide --
+/* 병합한 칸끼리 겹칠 수 없다 */
+#include <std/stddef>
+
+slide {
+    put table {
+        x = 10px; y = 10px; width = 300px; height = 100px;
+        cells = [["a", "", ""], ["", "", ""]]; cell(1, 1) { col_span = 2; row_span = 2; } cell(1, 2) { col_span = 2; }
+    }
+}
+-- table_merge_overlap.expected --
+$ templide table_merge_overlap.tlide --check
+[exit] 1
+[stderr]
+table_merge_overlap.tlide:7:91: error: The merged cell at cell(1, 2) overlaps the merged cell at cell(1, 1)
+-- table_no_rows.tlide --
+/* 표에는 행이 하나 이상 있어야 한다 */
+#include <std/stddef>
+
+slide {
+    put table {
+        x = 10px; y = 10px; width = 300px; height = 100px;
+        cells = [];
+    }
+}
+-- table_no_rows.expected --
+$ templide table_no_rows.tlide --check
+[exit] 1
+[stderr]
+table_no_rows.tlide:7:17: error: A table needs at least one row and one column
+-- table_ragged_rows.tlide --
+/* 모든 행의 칸 수가 같아야 한다 */
+#include <std/stddef>
+
+slide {
+    put table {
+        x = 10px; y = 10px; width = 300px; height = 100px;
+        cells = [["a", "b"], ["c"]];
+    }
+}
+-- table_ragged_rows.expected --
+$ templide table_ragged_rows.tlide --check
+[exit] 1
+[stderr]
+table_ragged_rows.tlide:7:17: error: Row 2 of 'cells' has 1 cells, but row 1 has 2
+-- table_row_heights_zero.tlide --
+/* 열 너비와 행 높이는 0보다 커야 한다 */
+#include <std/stddef>
+
+slide {
+    put table {
+        x = 10px; y = 10px; width = 300px; height = 100px;
+        cells = [["a"], ["b"]]; row_heights = [0px, 10px];
+    }
+}
+-- table_row_heights_zero.expected --
+$ templide table_row_heights_zero.tlide --check
+[exit] 1
+[stderr]
+table_row_heights_zero.tlide:7:47: error: A value of 'row_heights' must be more than 0
+-- table_span_zero.tlide --
+/* col_span, row_span은 1 이상이다 */
+#include <std/stddef>
+
+slide {
+    put table {
+        x = 10px; y = 10px; width = 300px; height = 100px;
+        cells = [["a", "b"]]; cell(1, 1) { col_span = 0; }
+    }
+}
+-- table_span_zero.expected --
+$ templide table_span_zero.tlide --check
+[exit] 1
+[stderr]
+table_span_zero.tlide:7:55: error: 'col_span' must be a whole number between 1 and 1000
+-- target_duplicate_property.tlide --
+/* target의 같은 속성 두 번 */
+target t { path = "a.pptx"; path = "b.pptx"; type = pptx; }
+-- target_duplicate_property.expected --
+$ templide target_duplicate_property.tlide --check
+[exit] 1
+[stderr]
+target_duplicate_property.tlide:2:29: error: Duplicate property: path
+-- target_has_master.tlide --
+/* target에는 master 속성이 없다 */
+master deck { case a { } }
+target t { path = "a.pptx"; type = pptx; master = deck; }
+-- target_has_master.expected --
+$ templide target_has_master.tlide --check
+[exit] 1
+[stderr]
+target_has_master.tlide:3:42: error: A target has no master; the master comes from each slide's layout
+-- target_missing_path.tlide --
+/* target에 path가 없음 */
+target t { type = pptx; }
+-- target_missing_path.expected --
+$ templide target_missing_path.tlide --check
+[exit] 1
+[stderr]
+target_missing_path.tlide:2:1: error: Missing property 'path' for target 't'
+-- target_missing_type.tlide --
+/* target에 type이 없음 */
+target t { path = "a.pptx"; }
+-- target_missing_type.expected --
+$ templide target_missing_type.tlide --check
+[exit] 1
+[stderr]
+target_missing_type.tlide:2:1: error: Missing property 'type' for target 't'
+-- target_unknown_property.tlide --
+/* target에 없는 속성 */
+target t { path = "a.pptx"; type = pptx; colour = hex(F00); }
+-- target_unknown_property.expected --
+$ templide target_unknown_property.tlide --check
+[exit] 1
+[stderr]
+target_unknown_property.tlide:2:42: error: Unknown target property: colour
+-- target_unknown_type.tlide --
+/* target type에 없는 값 */
+target t { path = "a.key"; type = keynote; }
+-- target_unknown_type.expected --
+$ templide target_unknown_type.tlide --check
+[exit] 1
+[stderr]
+target_unknown_type.tlide:2:35: error: 'keynote' is not a value of 'target_type'
+-- target_width_without_height.tlide --
+/* width만 쓴 target */
+target t { path = "a.pptx"; type = pptx; width = 1280px; }
+-- target_width_without_height.expected --
+$ templide target_width_without_height.tlide --check
+[exit] 1
+[stderr]
+target_width_without_height.tlide:2:1: error: Target 't' must set both width and height
+-- template_recursion.tlide --
+/* 자기 자신을 put하는 template */
+template loop { put loop { } }
+slide { put loop { } }
+-- template_recursion.expected --
+$ templide template_recursion.tlide --check
+[exit] 1
+[stderr]
+template_recursion.tlide:2:17: error: Template expansion is too deep; check for a template that puts itself
+-- template_var_outside_top.tlide --
+/* 변수 선언은 template 맨 위에서만 */
+object label { var text text; }
+template t {
+    if (1 == 1) {
+        var int n;
+    }
+}
+slide { }
+-- template_var_outside_top.expected --
+$ templide template_var_outside_top.tlide --check
+[exit] 1
+[stderr]
+template_var_outside_top.tlide:5:9: error: Variables must be declared at the top level of a template
+-- theme_unknown_property.tlide --
+/* theme에 없는 속성 */
+theme t { accent9 = hex(F00); }
+slide { }
+-- theme_unknown_property.expected --
+$ templide theme_unknown_property.tlide --check
+[exit] 1
+[stderr]
+theme_unknown_property.tlide:2:11: error: Unknown theme property: accent9
+-- title_without_layout.tlide --
+/* layout 없이 title을 채움 */
+slide {
+    title = "제목";
+}
+-- title_without_layout.expected --
+$ templide title_without_layout.tlide --check
+[exit] 1
+[stderr]
+title_without_layout.tlide:3:5: error: 'title' needs a layout with a title placeholder
+-- title_without_placeholder.tlide --
+/* layout에 title 개체 틀이 없음 */
+#include <std/stddef>
+master deck { case blank { } }
+slide {
+    layout = deck.blank;
+    title = "제목";
+}
+-- title_without_placeholder.expected --
+$ templide title_without_placeholder.tlide --check
+[exit] 1
+[stderr]
+title_without_placeholder.tlide:6:5: error: Layout 'blank' has no title placeholder
+-- top_level_if.tlide --
+/* 파일 맨 위의 if는 아직 쓸 수 없다 */
+if (1 == 1) { }
+slide { }
+-- top_level_if.expected --
+$ templide top_level_if.tlide --check
+[exit] 1
+[stderr]
+top_level_if.tlide:2:1: error: 'if' is not supported at the top level yet
+-- transition_bad_option.tlide --
+/* 그 효과에 없는 옵션 */
+slide {
+    transition wipe.diagonal;
+}
+-- transition_bad_option.expected --
+$ templide transition_bad_option.tlide --check
+[exit] 1
+[stderr]
+transition_bad_option.tlide:3:21: error: Transition 'wipe' has no option 'diagonal' (left, up, right, down)
+-- transition_unknown.tlide --
+/* 모르는 전환 효과 */
+slide {
+    transition teleport;
+}
+-- transition_unknown.expected --
+$ templide transition_unknown.tlide --check
+[exit] 1
+[stderr]
+transition_unknown.tlide:3:16: error: Unknown transition: teleport
+-- unit_not_allowed.tlide --
+/* 속성이 받지 않는 단위 (각도에 px) */
+object box { var int x; var int y; var int width; var int height; }
+slide {
+    put box { x = 0; y = 0; width = 1; height = 1; rotation = 10px; }
+}
+-- unit_not_allowed.expected --
+$ templide unit_not_allowed.tlide --check
+[exit] 1
+[stderr]
+unit_not_allowed.tlide:4:63: error: 'rotation' must be an angle without a unit or with deg
+-- unknown_enum_member.tlide --
+/* enum에 없는 값 */
+enum align { left, right }
+object card { var align align; }
+slide {
+    put card { align = middle; }
+}
+-- unknown_enum_member.expected --
+$ templide unknown_enum_member.tlide --check
+[exit] 1
+[stderr]
+unknown_enum_member.tlide:5:24: error: 'middle' is not a value of 'align'
+-- unknown_function.tlide --
+/* 없는 함수 호출 */
+object box { var int x; var int y; var int width; var int height; }
+slide {
+    put box { x = double(2); y = 0; width = 1; height = 1; }
+}
+-- unknown_function.expected --
+$ templide unknown_function.tlide --check
+[exit] 1
+[stderr]
+unknown_function.tlide:4:19: error: Unknown function: double
+-- unknown_layout.tlide --
+/* master에 없는 case */
+master deck { case a { } }
+slide {
+    layout = deck.b;
+}
+-- unknown_layout.expected --
+$ templide unknown_layout.tlide --check
+[exit] 1
+[stderr]
+unknown_layout.tlide:4:19: error: Master 'deck' has no layout 'b'
+-- unknown_master.tlide --
+/* 없는 master */
+slide {
+    layout = nothing.main;
+}
+-- unknown_master.expected --
+$ templide unknown_master.tlide --check
+[exit] 1
+[stderr]
+unknown_master.tlide:3:14: error: Unknown master: nothing
+-- unknown_name.tlide --
+/* 없는 이름을 값으로 쓴 경우 */
+object box { var int x; var int y; var int width; var int height; }
+slide {
+    put box { x = nowhere; y = 0; width = 1; height = 1; }
+}
+-- unknown_name.expected --
+$ templide unknown_name.tlide --check
+[exit] 1
+[stderr]
+unknown_name.tlide:4:19: error: Unknown name: nowhere
+-- unknown_object.tlide --
+/* 없는 template이나 object를 put */
+slide {
+    put nothing_here { }
+}
+-- unknown_object.expected --
+$ templide unknown_object.tlide --check
+[exit] 1
+[stderr]
+unknown_object.tlide:3:5: error: Unknown template or object: nothing_here
+-- unknown_property.tlide --
+/* object에 없는 속성 */
+object box { var int x; var int y; var int width; var int height; }
+slide {
+    put box { x = 1; y = 2; width = 3; height = 4; depth_of_field = 5; }
+}
+-- unknown_property.expected --
+$ templide unknown_property.tlide --check
+[exit] 1
+[stderr]
+unknown_property.tlide:4:52: error: 'box' has no property 'depth_of_field'
+-- unknown_slide_property.tlide --
+/* slide에 없는 속성 */
+slide {
+    colour = hex(F00);
+}
+-- unknown_slide_property.expected --
+$ templide unknown_slide_property.tlide --check
+[exit] 1
+[stderr]
+unknown_slide_property.tlide:3:5: error: Unknown slide property: colour
+-- unknown_style.tlide --
+/* 없는 style */
+object label { var text text; }
+slide {
+    put label { text = fancy "x"; }
+}
+-- unknown_style.expected --
+$ templide unknown_style.tlide --check
+[exit] 1
+[stderr]
+unknown_style.tlide:4:24: error: Unknown style or variable: fancy
+-- unknown_style_property.tlide --
+/* style에 없는 속성 */
+style odd { glow-color = hex(F00); }
+slide { }
+-- unknown_style_property.expected --
+$ templide unknown_style_property.tlide --check
+[exit] 1
+[stderr]
+unknown_style_property.tlide:2:13: error: Unknown style property: glow-color
+-- unknown_type.tlide --
+/* 없는 타입의 var */
+object box { var thing x; }
+slide { }
+-- unknown_type.expected --
+$ templide unknown_type.tlide --check
+[exit] 1
+[stderr]
+unknown_type.tlide:2:18: error: Unknown type: thing
+-- warning_gamut.tlide --
+/* sRGB 밖의 색은 경고하고 종료 코드는 0이다 */
+#include <std/stddef>
+slide {
+    put shape { kind = rect; x = 0; y = 0; width = 10; height = 10; fill = oklch(70%, 0.4, 150deg); }
+}
+target deck { path = "a.pptx"; type = pptx; }
+-- warning_gamut.expected --
+$ templide warning_gamut.tlide --check
+[exit] 0
+[stdout]
+deck: ok
+[stderr]
+warning_gamut.tlide:4:76: warning: This oklch color is outside the sRGB range that pptx and html can show; using the nearest color hex(00C248)
+-- warning_run_in_pptx.tlide --
+/* run(...)은 pptx에서 무시되므로 경고하고 종료 코드는 0이다 */
+#include <std/stddef>
+slide {
+    put text_box { text = "x"; x = 0; y = 0; width = 10; height = 10; action = run("onClick"); }
+}
+target deck { path = "a.pptx"; type = pptx; }
+-- warning_run_in_pptx.expected --
+$ templide warning_run_in_pptx.tlide --check
+[exit] 0
+[stdout]
+deck: ok
+[stderr]
+warning_run_in_pptx.tlide:4:80: warning: run("onClick") calls a JS function, which only works in html and web; the pptx target 'deck' ignores it
+-- warning_script_in_pptx.tlide --
+/* script는 html과 web만 읽으므로 pptx에서는 경고 */
+slide { }
+target deck { path = "a.pptx"; type = pptx; script = "a.js"; }
+-- warning_script_in_pptx.expected --
+$ templide warning_script_in_pptx.tlide --check
+[exit] 0
+[stdout]
+deck: ok
+[stderr]
+warning_script_in_pptx.tlide:3:54: warning: script is only loaded by html and web targets; the pptx target 'deck' ignores it
+-- wrong_type_fill.tlide --
+/* fill 자리에 수 */
+object box { var int x; var int y; var int width; var int height; }
+slide {
+    put box { x = 0; y = 0; width = 1; height = 1; fill = 5; }
+}
+-- wrong_type_fill.expected --
+$ templide wrong_type_fill.tlide --check
+[exit] 1
+[stderr]
+wrong_type_fill.tlide:4:59: error: Expected color, gradient, pattern or image, but got int
+-- wrong_type_float_for_int.tlide --
+/* int 자리에 소수 */
+object box { var int x; var int y; var int width; var int height; }
+slide {
+    put box { x = 1.5; y = 0; width = 1; height = 1; }
+}
+-- wrong_type_float_for_int.expected --
+$ templide wrong_type_float_for_int.tlide --check
+[exit] 1
+[stderr]
+wrong_type_float_for_int.tlide:4:19: error: Expected int, but got float
+-- wrong_type_int.tlide --
+/* int 자리에 문자열 */
+object box { var int x; var int y; var int width; var int height; }
+slide {
+    put box { x = "text"; y = 0; width = 1; height = 1; }
+}
+-- wrong_type_int.expected --
+$ templide wrong_type_int.tlide --check
+[exit] 1
+[stderr]
+wrong_type_int.tlide:4:19: error: Expected int, but got string
+-- 한글_오류/오류.tlide --
+/* 한글 파일 이름과 한글 글자가 든 줄의 오류 위치 */
+object box { var text body; }
+slide {
+    put box { body = "한글 문자열 뒤에서 오류"; mistake = 1; }
+}
+-- 한글_오류/오류.expected --
+$ templide 오류.tlide --check
+[exit] 1
+[stderr]
+오류.tlide:4:59: error: 'box' has no property 'mistake'

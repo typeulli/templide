@@ -1,0 +1,516 @@
+-- ast_dump.tlide --
+/* --ast는 구문 트리를 찍는다 (분석 전이라 의미 오류가 있어도 찍힌다). 연산 우선순위, 목록, f-string, 단위, 색, 블록 문장을 한 번에 본다 */
+#include <std/stddef>
+enum mode { fast, slow }
+style bold { font-weight = bold; }
+style big(int n) { font-size = n * 2pt; }
+color red rgb(255, 0, 0);
+
+object card {
+    var text title;
+    var mode mode = fast;
+}
+
+template row {
+    var int n;
+    for (int i in 1..n) {
+        put card { title = f"행 {i + 1 * 2}"; }
+    }
+    if (n == 3) { put card { title = "셋"; } } else if (n == 4) { put card { title = "넷"; } } else { put card { title = "그 밖"; } }
+}
+
+master deck {
+    theme = nothing;
+    case a { background = linear(90, hex(F00), rgba(0, 0, 255, 0.5)); }
+}
+
+slide {
+    layout = deck.a;
+    put card as c { title = bold big(3) "굵게" bullets ["하나", numbers ["안쪽"]] style(color = hsl(30deg, 100%, 50%)) "색"; }
+    group as g { put row { n = 1 + 2 * 3 - 4; } }
+    comment "메모";
+    transition fade.through_black 1s;
+    animate c enter fly.left 1s with_previous delay 0.5s;
+    review { text = "검토"; }
+}
+
+section "구역";
+image logo = file("logo.png");
+asset "pics.tasset" by { * as p, "a.png" as q } default;
+target out { path = "a.pptx"; type = pptx; }
+-- ast_dump.expected --
+$ templide ast_dump.tlide --ast
+[exit] 0
+[stdout]
+File ast_dump.tlide
+  Include <std/stddef>
+  Enum mode { fast, slow }
+  Style bold
+    StyleAssign font-weight
+      Name bold
+  Style big(int n)
+    StyleAssign font-size
+      Multiply
+        Name n
+        Dimension 2pt
+  Style red
+    StyleAssign color
+      ColorRGB
+        Int 255
+        Int 0
+        Int 0
+  Object card
+    Var text title
+    Var mode mode
+      Name fast
+  Template row
+    Var int n
+    For int i
+      range:
+        Int 1
+        Name n
+      body:
+        Put card
+          Assign title
+            FString
+              String "행 "
+              Add
+                Name i
+                Multiply
+                  Int 1
+                  Int 2
+    If
+      condition:
+        Equal
+          Name n
+          Int 3
+      body:
+        Put card
+          Assign title
+            String "셋"
+      branch:
+        ElseIf
+          condition:
+            Equal
+              Name n
+              Int 4
+          body:
+            Put card
+              Assign title
+                String "넷"
+          branch:
+            Else
+              Put card
+                Assign title
+                  String "그 밖"
+  Master deck
+    Assign theme
+      Name nothing
+    Case a
+      Assign background
+        Call linear
+          Int 90
+          ColorHex F00
+          ColorRGBA
+            Int 0
+            Int 0
+            Int 255
+            Float 0.5
+  Slide
+    Assign layout
+      Member .a
+        Name deck
+    Put card as c
+      Assign title
+        Text
+          Name bold
+          Call big
+            Int 3
+          String "굵게"
+          List bullets
+            String "하나"
+            List numbers
+              String "안쪽"
+          InlineStyle
+            StyleAssign color
+              Color hsl
+                Dimension 30deg
+                Dimension 100%
+                Dimension 50%
+          String "색"
+    Group as g
+      Put row
+        Assign n
+          Minus
+            Add
+              Int 1
+              Multiply
+                Int 2
+                Int 3
+            Int 4
+    Comment
+      String "메모"
+    Transition fade.through_black
+      Dimension 1s
+    Animate c enter fly.left with_previous
+      duration:
+        Dimension 1s
+      delay:
+        Dimension 0.5s
+    Review
+      Assign text
+        String "검토"
+  Section
+    String "구역"
+  Constant image logo
+    Call file
+      String "logo.png"
+  Asset "pics.tasset" default by
+    * as p
+    "a.png" as q
+  Target out
+    Assign path
+      String "a.pptx"
+    Assign type
+      Name pptx
+-- ast_dump.steps --
+ast_dump.tlide --ast
+-- build_web.tlide --
+/* type = web은 path 폴더에 index.html과 reveal.js, templide.js, 라이선스를 쓴다. 폴더가 없으면 만든다 */
+#include <std/stddef>
+
+slide {
+    put text_box { text = "web 폴더"; x = 10px; y = 10px; width = 300px; height = 30px; }
+}
+
+target site { path = "out/site"; type = web; }
+-- build_web.expected --
+$ templide build_web.tlide
+[exit] 0
+[stdout]
+site: wrote out/site
+[files]
+out/site/index.html (html)
+out/site/reveal/LICENSE (file)
+out/site/reveal/plugin/notes.js (file)
+out/site/reveal/reveal.css (file)
+out/site/reveal/reveal.js (file)
+out/site/templide.js (file)
+-- build_web.steps --
+build_web.tlide
+-- check_writes_nothing.tlide --
+/* --check는 모든 target(pptx, html, web, pdf)을 파일 없이 검사한다. 브라우저도 필요 없다 */
+#include <std/stddef>
+
+slide {
+    put text_box { text = "검사만"; x = 10px; y = 10px; width = 100px; height = 30px; }
+}
+
+target a { path = "a.pptx"; type = pptx; }
+target b { path = "b.html"; type = html; }
+target c { path = "site"; type = web; }
+target d { path = "d.pdf"; type = pdf; }
+-- check_writes_nothing.expected --
+$ templide check_writes_nothing.tlide --check
+[exit] 0
+[stdout]
+a: ok
+b: ok
+c: ok
+d: ok
+
+$ templide check_writes_nothing.tlide --check --target d
+[exit] 0
+[stdout]
+d: ok
+-- check_writes_nothing.steps --
+# 브라우저가 없는 환경에서도 pdf target의 --check는 통과해야 한다
+@env TEMPLIDE_BROWSER=$DIR/no-such-browser
+check_writes_nothing.tlide --check
+check_writes_nothing.tlide --check --target d
+-- cli_usage.tlide --
+/* 명령줄 사용법과 인자 오류 */
+slide { }
+target a { path = "a.pptx"; type = pptx; }
+-- cli_usage.expected --
+$ templide --check
+[exit] 1
+[stderr]
+usage: templide [--ast | --ir | --check] [--watch] [--target <name>]... <file>
+       templide --serve
+
+$ templide cli_usage.tlide --check --ast
+[exit] 1
+[stderr]
+error: --check and --watch cannot be used with --ast or --ir
+
+$ templide cli_usage.tlide --ir --check
+[exit] 1
+[stderr]
+error: --check and --watch cannot be used with --ast or --ir
+
+$ templide nothing_here.tlide --check
+[exit] 1
+[stderr]
+nothing_here.tlide: error: Cannot open file
+
+$ templide nothing_here.tlide --ast
+[exit] 1
+[stderr]
+Cannot open file: nothing_here.tlide
+
+$ templide nothing_here.tlide
+[exit] 1
+[stderr]
+nothing_here.tlide: error: Cannot open file
+-- cli_usage.steps --
+# 파일을 안 줌
+--check
+# --check와 --ast, --ir은 함께 쓸 수 없다
+cli_usage.tlide --check --ast
+cli_usage.tlide --ir --check
+# 없는 파일
+nothing_here.tlide --check
+nothing_here.tlide --ast
+nothing_here.tlide
+-- no_target.tlide --
+/* target가 없는 문서: --check는 문서만 검사하고 성공, 만들기는 만들 것이 없다는 오류 */
+#include <std/stddef>
+
+slide {
+    put text_box { text = "target 없음"; x = 10px; y = 10px; width = 100px; height = 30px; }
+}
+-- no_target.expected --
+$ templide no_target.tlide --check
+[exit] 0
+[stdout]
+no target; only the document was checked
+
+$ templide no_target.tlide
+[exit] 1
+[stderr]
+error: no target to build
+-- no_target.steps --
+no_target.tlide --check
+no_target.tlide
+-- pdf_no_browser.tlide --
+/* 브라우저가 없을 때: pdf target도 --check는 통과하고, 실제로 만들 때만 브라우저를 찾지 못했다는 오류가 난다 (다른 target은 영향이 없다) */
+#include <std/stddef>
+
+slide {
+    put text_box { text = "pdf"; x = 10px; y = 10px; width = 100px; height = 30px; }
+}
+
+target p { path = "p.pdf"; type = pdf; }
+target h { path = "h.html"; type = html; }
+-- pdf_no_browser.expected --
+$ templide pdf_no_browser.tlide --check
+[exit] 0
+[stdout]
+p: ok
+h: ok
+
+$ templide pdf_no_browser.tlide --target p
+[exit] 1
+[stderr]
+error: target p: cannot find a browser to make the PDF with; install Chrome or Edge, or set TEMPLIDE_BROWSER to the path of one
+
+$ templide pdf_no_browser.tlide --target h
+[exit] 0
+[stdout]
+h: wrote h.html
+[files]
+h.html (html)
+-- pdf_no_browser.steps --
+# TEMPLIDE_BROWSER가 없는 파일을 가리키면 브라우저가 없는 것과 같다
+@env TEMPLIDE_BROWSER=$DIR/no-such-browser
+pdf_no_browser.tlide --check
+pdf_no_browser.tlide --target p
+pdf_no_browser.tlide --target h
+-- pdf_smoke.tlide --
+/* 진짜 PDF 만들기 (Chrome이나 Edge가 있을 때만 돈다). 내용은 비교하지 않고 PDF 파일이 생겼는지만 본다 */
+#include <std/stddef>
+
+slide {
+    put text_box { text = "PDF 한 쪽"; x = 10px; y = 10px; width = 300px; height = 40px; }
+}
+
+slide {
+    transition fade;
+    put shape { kind = ellipse; x = 100px; y = 100px; width = 100px; height = 100px; fill = hex(3498DB); }
+}
+
+target p { path = "p.pdf"; type = pdf; }
+-- pdf_smoke.expected --
+$ templide pdf_smoke.tlide
+[exit] 0
+[stdout]
+p: wrote p.pdf
+[files]
+p.pdf (pdf)
+-- pdf_smoke.steps --
+@requires browser
+pdf_smoke.tlide
+-- png_check.tlide --
+/* png target도 --check는 파일을 쓰지 않고 브라우저도 찾지 않는다 */
+#include <std/stddef>
+slide { put text_box { text = "x"; x = 0; y = 0; width = 100; height = 20; } }
+slide { hidden = true; put text_box { text = "y"; x = 0; y = 0; width = 100; height = 20; } }
+target shots { path = "out/shots.png"; type = png; scale = 2; }
+-- png_check.expected --
+$ templide png_check.tlide --check
+[exit] 0
+[stdout]
+shots: ok
+-- png_check.steps --
+# 브라우저가 없는 환경에서도 png target의 --check는 통과해야 한다
+@env TEMPLIDE_BROWSER=$DIR/no-such-browser
+png_check.tlide --check
+-- png_no_browser.tlide --
+/* 브라우저가 없으면 png를 만들 때만 브라우저를 찾지 못했다는 오류가 난다 */
+#include <std/stddef>
+slide { put text_box { text = "x"; x = 0; y = 0; width = 100; height = 20; } }
+target shots { path = "shots.png"; type = png; }
+-- png_no_browser.expected --
+$ templide png_no_browser.tlide
+[exit] 1
+[stderr]
+error: target shots: cannot find a browser to make the images with; install Chrome or Edge, or set TEMPLIDE_BROWSER to the path of one
+-- png_no_browser.steps --
+@env TEMPLIDE_BROWSER=$DIR/no-such-browser
+png_no_browser.tlide
+-- png_scale_transparent.tlide --
+/* scale은 그림 크기에 곱하고(800 x 450 -> 1600 x 900), transparent면 투명도가 있는 RGBA다. 두 target이 따로 만든다 */
+#include <std/stddef>
+
+slide {
+    background = hex(DDEEFF);
+    put text_box { text = "배경은 투명할 때 빠진다"; x = 10px; y = 10px; width = 400px; height = 40px; }
+}
+
+target big { path = "big.png"; type = png; width = 800px; height = 450px; scale = 2; }
+target cutout { path = "cutout.png"; type = png; width = 800px; height = 450px; transparent = true; }
+-- png_scale_transparent.expected --
+$ templide png_scale_transparent.tlide
+[exit] 0
+[stdout]
+big: wrote big-<n>.png
+cutout: wrote cutout-<n>.png
+[files]
+big-1.png (png 1600x900 rgb)
+cutout-1.png (png 800x450 rgba)
+-- png_scale_transparent.steps --
+@requires browser
+png_scale_transparent.tlide
+-- png_smoke.tlide --
+/* 진짜 PNG 만들기 (Chrome이나 Edge가 있을 때만 돈다). 숨긴 슬라이드를 뺀 슬라이드마다 shots-n.png가 생기고
+   크기는 슬라이드 크기(기본 1280 x 720)이며 투명하지 않은 RGB다 */
+#include <std/stddef>
+
+slide {
+    put text_box { text = "첫 쪽"; x = 10px; y = 10px; width = 300px; height = 40px; }
+    put table { x = 10px; y = 100px; width = 300px; height = 80px; cells = [["a", "b"], ["c", "d"]]; }
+}
+
+slide { hidden = true; put text_box { text = "숨긴 쪽"; x = 10px; y = 10px; width = 300px; height = 40px; } }
+
+slide {
+    put shape { kind = ellipse; x = 100px; y = 100px; width = 100px; height = 100px; fill = hex(3498DB); }
+}
+
+target shots { path = "out/shots.png"; type = png; }
+-- png_smoke.expected --
+$ templide png_smoke.tlide
+[exit] 0
+[stdout]
+shots: wrote out/shots-<n>.png
+[files]
+out/shots-1.png (png 1280x720 rgb)
+out/shots-2.png (png 1280x720 rgb)
+-- png_smoke.steps --
+@requires browser
+png_smoke.tlide
+-- target_select.tlide --
+/* --target은 여러 번 쓸 수 있고 고른 target만 만든다. 없는 이름이면 아무것도 만들지 않고 오류다 */
+#include <std/stddef>
+
+slide {
+    put text_box { text = "target 고르기"; x = 10px; y = 10px; width = 100px; height = 30px; }
+}
+
+target a { path = "a.pptx"; type = pptx; }
+target b { path = "b.html"; type = html; }
+target c { path = "out/c.pptx"; type = pptx; }
+-- target_select.expected --
+$ templide target_select.tlide
+[exit] 0
+[stdout]
+a: wrote a.pptx
+b: wrote b.html
+c: wrote out/c.pptx
+[files]
+a.pptx (zip)
+b.html (html)
+out/c.pptx (zip)
+
+$ templide target_select.tlide --target a
+[exit] 0
+[stdout]
+a: wrote a.pptx
+[files]
+a.pptx (zip)
+
+$ templide target_select.tlide --target b --target c
+[exit] 0
+[stdout]
+b: wrote b.html
+c: wrote out/c.pptx
+[files]
+b.html (html)
+out/c.pptx (zip)
+
+$ templide target_select.tlide --target nope
+[exit] 1
+[stderr]
+error: unknown target: nope
+
+$ templide target_select.tlide --target a --target nope
+[exit] 1
+[stderr]
+error: unknown target: nope
+
+$ templide target_select.tlide --target
+[exit] 1
+[stderr]
+error: --target needs a target name
+-- target_select.steps --
+target_select.tlide
+target_select.tlide --target a
+target_select.tlide --target b --target c
+target_select.tlide --target nope
+target_select.tlide --target a --target nope
+target_select.tlide --target
+-- 한글_빌드/발표.tlide --
+/* 한글 파일 이름과 한글 target 경로(path)로 만들기. 만든 파일의 이름과 폴더도 한글이다 (식별자는 영문이어야 한다) */
+#include <std/stddef>
+
+slide {
+    put text_box { text = "한글 이름 시험"; x = 10px; y = 10px; width = 300px; height = 30px; }
+}
+
+target deck { path = "산출물/발표.pptx"; type = pptx; }
+-- 한글_빌드/발표.expected --
+$ templide 발표.tlide --check
+[exit] 0
+[stdout]
+deck: ok
+
+$ templide 발표.tlide
+[exit] 0
+[stdout]
+deck: wrote 산출물/발표.pptx
+[files]
+산출물/발표.pptx (zip)
+-- 한글_빌드/발표.steps --
+발표.tlide --check
+발표.tlide

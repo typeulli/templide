@@ -3,7 +3,7 @@
 
 export const objectNames: Record<string, string> = {
     text_box: '글상자', shape: '도형', image: '그림', line: '선', group: '그룹', backdrop: '배경 흐림', connector: '연결선',
-    freeform: '자유형', placeholder: '개체 틀', video: '비디오', audio: '오디오',
+    freeform: '자유형', placeholder: '개체 틀', video: '비디오', audio: '오디오', table: '표',
 };
 
 export const propertyNames: Record<string, string> = {
@@ -25,6 +25,8 @@ export const propertyNames: Record<string, string> = {
     hide_icon: '쇼 동안 아이콘 숨기기', across_slides: '여러 슬라이드에 걸쳐 재생', volume: '음량', trim_start: '앞 자르기', trim_end: '뒤 자르기',
     fade_in: '소리 키우며 시작', fade_out: '소리 줄이며 끝', background: '배경', hidden: '슬라이드 숨기기', advance_after: '자동으로 넘기기',
     transition_sound: '전환 소리', title: '제목', author: '작성자',
+    cells: '칸', col_widths: '열 너비', row_heights: '행 높이', header_rows: '머리글 행', header_cols: '머리글 열', banded_rows: '줄무늬 행',
+    banded_cols: '줄무늬 열', header_fill: '머리글 채우기', band_fill: '줄무늬 채우기', align: '가로 맞춤',
 };
 
 export const enumNames: Record<string, string> = {

@@ -592,7 +592,22 @@ namespace templide::importer {
                     const auto* data = node->path({"a:graphic", "a:graphicData"});
                     const std::string uri = data != nullptr ? data->get("uri") : "";
                     if (uri.ends_with("/table")) {
-                        unsupported(shape, "table", "표는 templide에서 지원하지 않습니다");
+                        shape.object = "table";
+                        // 목록에 보이는 글은 앞쪽 칸들의 글이고, 한글이 있는지는 모든 칸의 글로 본다
+                        const auto* table = data->child("a:tbl");
+                        if (table == nullptr || table->all("a:tr").empty()) {
+                            shape.reason = "칸이 없는 표입니다";
+                        } else {
+                            for (const auto* row : table->all("a:tr")) {
+                                for (const auto* cell : row->all("a:tc")) {
+                                    const std::string text = plain_text(cell->child("a:txBody"), 100000);
+                                    note_text(text);
+                                    if (shape.excerpt.size() < 40 && !text.empty()) {
+                                        shape.excerpt += (shape.excerpt.empty() ? "" : " | ") + text;
+                                    }
+                                }
+                            }
+                        }
                     } else if (uri.find("chart") != std::string::npos) {
                         unsupported(shape, "chart", "차트는 templide에서 지원하지 않습니다");
                     } else if (uri.ends_with("/diagram")) {

@@ -8,19 +8,17 @@
 #include <vector>
 
 namespace templide::backend {
-    // target 하나의 결과 파일을 쓴다. 상대 경로는 base_dir 기준이다. libs_dir에는 html 출력에 넣는 templide.js와 reveal.js가 있다.
-    // 실패하면 에러 메시지를 돌려준다. 그 target에서 할 수 없어 빼고 만든 것은 warnings에 넣는다.
-    // dry_run이면 파일을 쓰지 않고(pdf는 브라우저도 부르지 않고) 에러와 경고만 알아본다
+    /** target 하나를 출력한다. 실패한 작업은 반환값에, 지원되지 않아 생략한 작업은 warnings에 기록한다. */
     std::vector<std::string> write_target(const ir::Document& document, const ir::Target& target, const std::filesystem::path& base_dir,
                                           const std::filesystem::path& libs_dir, std::vector<std::string>& warnings, bool dry_run = false);
 
-    // target이 할 수 없어 빼고 만드는 것. where는 원문 위치(파일:줄:칸)다
+    /** target이 지원하지 않아 생략하는 기능에 대한 경고. */
     struct Warning {
         std::string where;
         std::string message;
     };
 
-    // pptx는 run(...) 동작과 script를, html과 web은 program(...)과 macro(...) 동작을 뺀다. 원문 순서이고 같은 경고는 한 번만 있다
+    /** target에서 지원되지 않는 기능의 경고를 원문 순서로 반환한다. */
     std::vector<Warning> target_warnings(const ir::Document& document, const ir::Target& target);
 
     // ---- backend들이 함께 쓰는 도우미

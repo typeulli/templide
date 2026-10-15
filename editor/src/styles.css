@@ -176,6 +176,7 @@ body.resizing-row, body.resizing-row * { cursor: row-resize !important; user-sel
 .segmented { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border-radius: 7px; background: var(--hover); }
 .segmented button { display: grid; place-items: center; width: 34px; height: 26px; border: none; border-radius: 5px; background: transparent; cursor: pointer; }
 .segmented button:disabled { opacity: 0.4; cursor: default; }
+.segmented.compact button { width: 28px; }
 .segmented button.active { background: var(--panel); color: var(--accent); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
 .order { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
 .order button {
@@ -457,3 +458,47 @@ body.resizing-row, body.resizing-row * { cursor: row-resize !important; user-sel
 .monaco-editor .view-line .colorpicker-color-decoration, .monaco-editor .view-line .tlide-swatch { vertical-align: -0.09em; }
 .tlide-font-button { margin-left: 3px; padding: 0 3px; border-radius: 3px; color: #8a8a92; background: #f1f1f4; cursor: pointer; }
 .tlide-font-button:hover { color: #0d99ff; background: #e6f4ff; }
+
+/* 표 편집: 칸 선택, 열과 행 경계, 옮기는 손잡이, 칸 입력창 */
+
+.cell-range { position: absolute; box-sizing: border-box; border: solid var(--accent); background: rgba(13, 153, 255, 0.10); pointer-events: none; }
+.cell-range.several { background: rgba(13, 153, 255, 0.16); }
+.cell-active { position: absolute; box-sizing: border-box; border: solid rgba(13, 153, 255, 0.9); background: rgba(255, 255, 255, 0.4); pointer-events: none; }
+.table-handle { position: absolute; z-index: 1; pointer-events: auto; }
+.table-handle.column { cursor: col-resize; }
+.table-handle.row { cursor: row-resize; }
+.table-handle:hover { background: rgba(13, 153, 255, 0.35); }
+.table-guide { position: absolute; z-index: 1; background: var(--accent); pointer-events: none; }
+.table-grip { position: absolute; z-index: 2; display: grid; place-items: center; box-sizing: border-box; border-style: solid; border-color: var(--accent); background: #fff; color: var(--accent); cursor: move; pointer-events: auto; }
+.table-lock { position: absolute; z-index: 2; white-space: nowrap; background: #3a3a40; color: #fff; pointer-events: none; }
+.cell-proxy {
+    position: absolute; z-index: 3; box-sizing: border-box; margin: 0; border: none; outline-style: solid; outline-color: var(--accent); outline-offset: 0;
+    resize: none; overflow: hidden; white-space: pre-wrap; overflow-wrap: break-word; user-select: text;
+    opacity: 0; pointer-events: none; caret-color: transparent;
+}
+.cell-proxy.editing { opacity: 1; pointer-events: auto; caret-color: auto; }
+
+.table-group { gap: 1px; }
+.table-group .separator { margin: 0 3px; }
+.table-picker { display: block; }
+.table-grid { display: grid; grid-template-columns: repeat(8, 18px); gap: 3px; }
+.table-grid-cell { width: 18px; height: 18px; padding: 0; border: 1px solid var(--border-strong); border-radius: 3px; background: #fff; cursor: pointer; }
+.table-grid-cell.on { border-color: var(--accent); background: var(--accent-soft); }
+.table-grid-label { display: block; margin-top: 6px; text-align: center; font-size: 12px; color: var(--muted); }
+.menu-rule { height: 1px; margin: 3px 0; background: var(--border); }
+.table-hint { padding: 6px 14px 10px; }
+.stepper { display: inline-flex; align-items: center; gap: 2px; }
+.stepper-value { min-width: 26px; text-align: center; }
+.mini-field { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: 11px; color: var(--muted); }
+.mini-field > span { flex: none; min-width: 26px; }
+.mini-field .number-input { flex: 1; min-width: 0; }
+.padding-sides { margin-bottom: 6px; }
+.border-title { margin: 8px 0 4px; font-size: 11px; font-weight: 600; color: var(--muted); }
+.side-picker { display: grid; grid-template-columns: repeat(3, 14px); grid-template-rows: repeat(3, 14px); gap: 2px; }
+.side-picker button { padding: 0; border: 1px solid var(--border-strong); border-radius: 2px; background: var(--hover); cursor: pointer; }
+.side-picker button.on { border-color: var(--accent); background: var(--accent); }
+.side-picker .top { grid-column: 2; grid-row: 1; }
+.side-picker .left { grid-column: 1; grid-row: 2; }
+.side-picker .all { grid-column: 2; grid-row: 2; }
+.side-picker .right { grid-column: 3; grid-row: 2; }
+.side-picker .bottom { grid-column: 2; grid-row: 3; }

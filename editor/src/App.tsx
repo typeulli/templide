@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { message, open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
 import { emitTo, listen } from '@tauri-apps/api/event';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { lsp, pathToUri, type DeckResult, type Diagnostic, type Origin, type Range, type Schema } from './lsp';
-import { SlideView, findElement, selectionIn, type EditingRun, type Point, type Resize } from './SlideView';
+import { SlideView, findElement, lockOf, selectionIn, type EditingRun, type Point, type Resize } from './SlideView';
 import { FormatBar, IconButton, Thumbnail, fontToggles, type StyleProperty, type Toggle } from './Panels';
 import { ElementPanel, SlidePanel, type Pickers } from './Properties';
+import { anchorsIn, cellsLock, clampSel, rectOf, sameSel, splitTargets, tableOf, type CellAction, type CellSel } from './Table';
+import { TableGrid, TableInsertButton, TableMenu, TableToolbar, structural, tableState, type CellControls, type TableCommand } from './TableUi';
 import { AnimationPane, type AnimationOp } from './Animations';
 import { quote, type SetValue } from './Fields';
 import { AgentPanel } from './Agents';
@@ -155,6 +157,9 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
     const [preview, setPreview] = useState<{ transition: boolean; key: number } | null>(null); // 캔버스에서 재생하는 중
     const [mode, setMode] = useState<'connect' | 'draw' | null>(null); // 연결선의 두 번째 개체 고르기, 자유형 그리기
     const connectFrom = useRef<string | null>(null);
+    const [cells, setCells] = useState<CellSel | null>(null);           // 고른 표의 칸 범위
+    const [cellMenu, setCellMenu] = useState<Point | null>(null);       // 칸 오른쪽 단추 메뉴의 자리
+    const [cellFocus, setCellFocus] = useState(0);                      // 바뀌면 칸 입력창이 포커스를 되찾는다
     // 고른 요소의 put 문장 시작을 따라가는 Monaco 장식. element id는 문장의 위치로 만들어지므로
     // 앞의 코드가 바뀌면 id도 바뀐다. 다시 컴파일한 뒤 장식이 옮겨 간 자리의 요소를 다시 고른다
     const anchor = useRef<{ decorations: string[]; head: string; rest: string } | null>(null);
@@ -344,6 +349,23 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
 
     // 덱이 지금 문서에서 만든 것이고 오류가 없을 때만 캔버스에서 고칠 수 있다 (element id가 원문 위치로 만들어지기 때문)
     const fresh = () => pending.current === 0 && deckVersion.current === version.current && !deckError;
+    const deckErrorRef = useRef<string | null>(null);
+    deckErrorRef.current = deckError;
+    // 앞선 수정의 컴파일이 끝날 때까지 기다린다.
+    const whenReady = useCallback(async () => {
+        for (let waited = 0; waited < 3000; waited += 25) {
+            if (pending.current === 0) {
+                if (deckErrorRef.current) {
+                    return false; // 오류가 있으면 새 덱을 기다릴 수 없다.
+                }
+                if (deckVersion.current === version.current) {
+                    return true;
+                }
+            }
+            await new Promise((done) => setTimeout(done, 25));
+        }
+        return false;
+    }, []);
 
     const sendChange = useCallback(async () => {
         pending.current = 0;
@@ -367,20 +389,25 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
     }, [refreshDeck]);
 
     // 컴파일러가 돌려준 원문 수정을 Monaco에 넣는다. 한 번의 실행 취소로 되돌릴 수 있다
-    const applyEdits = useCallback((edits: ServerEdit[]) => {
+    // 여러 편집을 하나의 실행 취소 단위로 묶을 수 있다.
+    const applyEdits = useCallback((edits: ServerEdit[], stops: { before?: boolean; after?: boolean } = {}) => {
         const instance = editor.current!;
         if (edits.some((edit) => edit.uri !== uri.current)) {
             showNotice(t('다른 파일에 적힌 값이라 여기서 고칠 수 없습니다. 그 파일을 열어 고쳐 주세요'));
             return false;
         }
         immediate.current = true;
-        instance.pushUndoStop();
+        if (stops.before !== false) {
+            instance.pushUndoStop();
+        }
         instance.executeEdits('canvas', edits.map((edit) => ({ range: toMonaco(edit.range), text: edit.newText, forceMoveMarkers: true })));
-        instance.pushUndoStop();
+        if (stops.after !== false) {
+            instance.pushUndoStop();
+        }
         return true;
     }, [showNotice]);
 
-    const requestEdit = useCallback(async (edits: object[]): Promise<boolean> => {
+    const requestEdit = useCallback(async (edits: object[], stops?: { before?: boolean; after?: boolean }): Promise<boolean> => {
         if (!uri.current || !editor.current) {
             return false;
         }
@@ -396,7 +423,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             showNotice(result.error);
             return false;
         }
-        return applyEdits(result.edits ?? []);
+        return applyEdits(result.edits ?? [], stops);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [applyEdits, showNotice, deckError]);
 
@@ -405,6 +432,313 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
         requestEdit(Object.entries(change).map(([name, value]) => ({ op: 'set', id, name, length: value, instance }))), [requestEdit]);
     const onText = useCallback((id: string, paragraph: number, run: number, value: string) =>
         requestEdit([{ op: 'text', id, paragraph, run, text: value }]), [requestEdit]);
+
+    // 컴파일이 끝난 뒤 최신 편집 함수를 사용한다.
+    const requestEditRef = useRef(requestEdit);
+    requestEditRef.current = requestEdit;
+
+    // 표의 셀 선택과 편집을 처리한다.
+    const selectedInfo = selected && deck ? deck.elements[selected] : undefined;
+    const selectedTable = tableOf(selectedInfo);
+    const cellSel = cells && cells.id === selected ? cells : null;
+    const cellState = tableState(selectedInfo, selectedTable, cellSel, selectedInfo ? cellsLock(selectedInfo, lockOf) : null);
+    const cellStateRef = useRef(cellState);
+    cellStateRef.current = cellState;
+
+    const onCells = useCallback((next: CellSel | null) => setCells((current) => sameSel(current, next) ? current : next), []);
+
+    // 셀의 글을 바꾼다.
+    const onCellText = useCallback(async (id: string, row: number, column: number, text: string) => {
+        await whenReady();
+        return requestEditRef.current([{ op: 'table', id, action: 'text', row, column, text }]);
+    }, [whenReady]);
+
+    // 열 너비와 행 높이를 바꾼다.
+    const onTableSizes = useCallback(async (id: string, axis: 'columns' | 'rows', values: number[], height: number | null) => {
+        await whenReady();
+        const info = deckRef.current?.elements[id];
+        const ops: object[] = [{ op: 'table', id, action: 'sizes', axis, values }];
+        if (height !== null && info && !lockOf(info.properties.height) && info.properties.height) {
+            ops.push({ op: 'set', id, name: 'height', length: height });
+        }
+        return requestEditRef.current(ops);
+    }, [whenReady]);
+
+    // 순차적인 표 편집을 하나의 실행 취소로 묶는다.
+    const tableSequence = useCallback(async (steps: (() => object[])[]): Promise<boolean> => {
+        let sent = false;
+        for (const build of steps) {
+            await whenReady();
+            const ops = build();
+            if (ops.length === 0) {
+                continue;
+            }
+            if (!await requestEditRef.current(ops, { before: !sent, after: false })) {
+                break;
+            }
+            sent = true;
+        }
+        editor.current?.pushUndoStop();
+        return sent;
+    }, [whenReady]);
+
+    // 선택한 셀에 속성을 적용한다.
+    const applyCells = useCallback(async (properties: { name: string; value: SetValue }[]) => {
+        const state = cellStateRef.current;
+        if (!state || properties.length === 0) {
+            return;
+        }
+        if (state.styleLock) {
+            showNotice(t('칸 서식을 고칠 수 없습니다: {0}', state.styleLock));
+            return;
+        }
+        const id = state.sel.id;
+        const targets = state.cells;
+        const blocked = (list: typeof targets) => list.filter((cell) => !deckRef.current?.elements[id]?.table?.cellStyles?.some((style) => style.row === cell.row && style.column === cell.column));
+        const without = new Set(blocked(targets).map((cell) => `${cell.row},${cell.column}`));
+        let declared = false;
+        const ops = (cell: { row: number; column: number }, list: typeof properties) => list.map(({ name, value }) => {
+            const { declare, ...rest } = value;
+            const keep = declare && !declared ? { declare } : {};
+            declared = declared || !!declare;
+            return { op: 'table', id, action: 'cell_set', row: cell.row, column: cell.column, name, ...rest, ...keep };
+        });
+        await tableSequence([
+            () => targets.flatMap((cell) => without.has(`${cell.row},${cell.column}`) ? ops(cell, properties.slice(0, 1)) : ops(cell, properties)),
+            () => properties.length > 1 ? targets.filter((cell) => without.has(`${cell.row},${cell.column}`)).flatMap((cell) => ops(cell, properties.slice(1))) : [],
+        ]);
+    }, [tableSequence, showNotice]);
+
+    // 선택한 셀에서 속성을 지운다.
+    const unsetCells = useCallback(async (names: string[]) => {
+        const state = cellStateRef.current;
+        if (!state) {
+            return;
+        }
+        const id = state.sel.id;
+        const ops = state.cells.flatMap((cell) => {
+            const style = deckRef.current?.elements[id]?.table?.cellStyles?.find((each) => each.row === cell.row && each.column === cell.column);
+            return names.filter((name) => style?.properties[name]).map((name) => ({ op: 'table', id, action: 'cell_unset', row: cell.row, column: cell.column, name }));
+        });
+        if (ops.length > 0) {
+            await requestEdit(ops);
+        }
+    }, [requestEdit]);
+
+    // 선택한 셀의 글을 비운다.
+    const clearCellText = useCallback(async () => {
+        const state = cellStateRef.current;
+        if (!state) {
+            return;
+        }
+        if (state.lock) {
+            showNotice(t('이 칸은 고칠 수 없습니다: {0}. 코드에서 고쳐 주세요', state.lock));
+            return;
+        }
+        const ops = state.cells.filter((cell) => state.table.cells![cell.row][cell.column].text)
+            .map((cell) => ({ op: 'table', id: state.sel.id, action: 'text', row: cell.row, column: cell.column, text: '' }));
+        if (ops.length > 0) {
+            await whenReady();
+            await requestEditRef.current(ops);
+        }
+    }, [showNotice, whenReady]);
+
+    // 클립보드 내용을 선택한 셀에 붙여 넣는다.
+    const pasteCells = useCallback(async (rows: string[][]) => {
+        const state = cellStateRef.current;
+        if (!state) {
+            return;
+        }
+        if (state.lock) {
+            showNotice(t('이 칸은 고칠 수 없습니다: {0}. 코드에서 고쳐 주세요', state.lock));
+            return;
+        }
+        const text = (row: number, column: number) => state.table.cells![row][column].text ?? '';
+        const edits: { row: number; column: number; text: string }[] = [];
+        if (rows.length === 1 && rows[0].length === 1) {
+            edits.push(...state.cells.map((cell) => ({ ...cell, text: rows[0][0] })));
+        } else {
+            rows.forEach((line, i) => line.forEach((value, j) => {
+                const row = state.rect.r1 + i;
+                const column = state.rect.c1 + j;
+                if (row < state.rows && column < state.columns && !state.table.cells![row][column].covered) {
+                    edits.push({ row, column, text: value });
+                }
+            }));
+        }
+        const ops = edits.filter((edit) => edit.text !== text(edit.row, edit.column))
+            .map((edit) => ({ op: 'table', id: state.sel.id, action: 'text', row: edit.row, column: edit.column, text: edit.text }));
+        if (ops.length > 0) {
+            await whenReady();
+            await requestEditRef.current(ops);
+        }
+    }, [showNotice, whenReady]);
+
+    // 셀의 단순한 텍스트 서식을 바꾼다.
+    const applyCellStyle = useCallback(async (properties: StyleProperty[], toggle?: Toggle) => {
+        const state = cellStateRef.current;
+        const model = editor.current?.getModel();
+        if (!state || !model) {
+            return;
+        }
+        if (state.lock) {
+            showNotice(t('이 칸은 고칠 수 없습니다: {0}. 코드에서 고쳐 주세요', state.lock));
+            return;
+        }
+        const code = (property: StyleProperty) => {
+            const color = property.color ? `hex(${property.color.replace('#', '').slice(0, 6).toUpperCase()})` : undefined;
+            const value = property.enum ?? color ?? (property.number !== undefined ? `${property.number}${property.unit ?? ''}` : undefined) ?? property.code
+                ?? (property.string !== undefined ? quote(property.string) : undefined);
+            return value === undefined ? null : `${property.name} = ${value}`;
+        };
+        const targets = state.cells.filter((cell) => state.table.cells![cell.row][cell.column].text);
+        if (targets.length === 0) {
+            showNotice(t('글이 있는 칸을 고르세요'));
+            return;
+        }
+        // 켜고 끄는 서식은 고른 칸이 모두 이미 켜져 있으면 끈다
+        let chosen = properties;
+        if (toggle) {
+            const el = findElement(deckRef.current?.deck.slides[pageRef.current]?.els ?? [], state.sel.id);
+            const on = targets.every((cell) => el?.cells?.find((each: { r: number; c: number }) => each.r === cell.row && each.c === cell.column)?.tx?.ps?.[0]?.rs?.[0]?.[toggle.key]);
+            if (on) {
+                chosen = [toggle.off];
+            }
+        }
+        const written = chosen.map(code).filter(Boolean).join(', ');
+        const edits: ServerEdit[] = [];
+        let skipped = 0;
+        for (const cell of targets) {
+            const runs = state.table.cells![cell.row][cell.column].runs;
+            const origin = runs?.length === 1 && runs[0].length === 1 ? runs[0][0] : undefined;
+            if (!origin || origin.kind !== 'literal' || !origin.text || origin.styled || !origin.range || origin.uri !== uri.current) {
+                skipped += 1;
+                continue;
+            }
+            edits.push({ uri: origin.uri!, range: origin.range, newText: `(style(${written}) ${model.getValueInRange(toMonaco(origin.range))})` });
+        }
+        if (skipped > 0) {
+            showNotice(t('{0}개 칸은 글이 서식 없는 문자열 하나가 아니라 서식을 넣지 못했습니다. 코드에서 고쳐 주세요', skipped));
+        }
+        if (edits.length > 0) {
+            await whenReady();
+            applyEdits(edits);
+        }
+    }, [applyEdits, showNotice, whenReady]);
+
+    const tableCommand = useCallback(async (command: TableCommand) => {
+        const state = cellStateRef.current;
+        if (!state) {
+            return;
+        }
+        const { rect, sel } = state;
+        const id = sel.id;
+        const op = (action: string, fields: object = {}) => ({ op: 'table', id, action, ...fields });
+        const shift = (dRow: number, dColumn: number) => setCells((current) => current && {
+            ...current, anchor: { row: current.anchor.row + dRow, column: current.anchor.column + dColumn }, focus: { row: current.focus.row + dRow, column: current.focus.column + dColumn },
+        });
+        switch (command) {
+            case 'insertRowAbove':
+                if (await requestEdit([op('insert_row', { index: rect.r1 })])) {
+                    shift(1, 0); // 고른 칸은 그대로 두려고 번호를 하나 민다
+                }
+                break;
+            case 'insertRowBelow':
+                await requestEdit([op('insert_row', { index: rect.r2 + 1 })]);
+                break;
+            case 'insertColumnLeft':
+                if (await requestEdit([op('insert_column', { index: rect.c1 })])) {
+                    shift(0, 1);
+                }
+                break;
+            case 'insertColumnRight':
+                await requestEdit([op('insert_column', { index: rect.c2 + 1 })]);
+                break;
+            case 'deleteRows':
+            case 'deleteColumns': {
+                // 뒤에서부터 하나씩 지운다 (한꺼번에 보내면 번호를 다시 매기는 수정이 서로 겹친다)
+                const rowsOut = command === 'deleteRows';
+                const first = rowsOut ? rect.r1 : rect.c1;
+                const last = rowsOut ? rect.r2 : rect.c2;
+                const steps: (() => object[])[] = [];
+                for (let index = last; index >= first; --index) {
+                    steps.push(() => [op(rowsOut ? 'remove_row' : 'remove_column', { index })]);
+                }
+                if (await tableSequence(steps)) {
+                    const left = (rowsOut ? state.rows : state.columns) - (last - first + 1);
+                    const cell = rowsOut ? { row: Math.min(first, left - 1), column: sel.focus.column } : { row: sel.focus.row, column: Math.min(first, left - 1) };
+                    setCells({ id, anchor: cell, focus: cell });
+                }
+                break;
+            }
+            case 'merge':
+                if (await requestEdit([op('merge', { row: rect.r1, column: rect.c1, rows: rect.r2 - rect.r1 + 1, columns: rect.c2 - rect.c1 + 1 })])) {
+                    const cell = { row: rect.r1, column: rect.c1 };
+                    setCells({ id, anchor: cell, focus: cell });
+                }
+                break;
+            case 'split':
+                await requestEdit(splitTargets(state.table, rect).map((cell) => op('split', { row: cell.row, column: cell.column })));
+                break;
+            case 'clearText':
+                await clearCellText();
+                break;
+            case 'clearFormat': {
+                const styles = deckRef.current?.elements[id]?.table?.cellStyles ?? [];
+                const ops = anchorsIn(state.table, rect).flatMap((cell) => {
+                    const style = styles.find((each) => each.row === cell.row && each.column === cell.column);
+                    return Object.keys(style?.properties ?? {}).filter((name) => !structural.has(name)).map((name) => op('cell_unset', { row: cell.row, column: cell.column, name }));
+                });
+                if (ops.length === 0) {
+                    showNotice(t('지울 칸 서식이 없습니다'));
+                } else {
+                    await requestEdit(ops);
+                }
+                break;
+            }
+        }
+    }, [requestEdit, tableSequence, clearCellText, showNotice]);
+
+    // 툴바, 메뉴, 패널의 단추로 한 명령은 끝나면 포커스를 칸 입력창에 돌려준다 (이어서 방향키와 글자를 칠 수 있게)
+    const runCommand = useCallback(async (command: TableCommand) => {
+        await tableCommand(command);
+        setCellFocus((count) => count + 1);
+    }, [tableCommand]);
+    const cellControls: CellControls = { command: runCommand, set: applyCells, unset: unsetCells };
+
+    // 칸 입력창에서 온 동작. 실행 취소는 코드의 기록이므로 Monaco의 모델에 바로 시킨다
+    // (editor.trigger는 포커스가 입력창(textarea)에 있으면 그 입력창의 실행 취소를 해 버린다)
+    const cellAction = useCallback((action: CellAction) => {
+        if (action.type === 'clear') {
+            clearCellText();
+        } else if (action.type === 'paste') {
+            pasteCells(action.rows);
+        } else if (action.type === 'format') {
+            applyCellStyle(fontToggles[action.key].properties, fontToggles[action.key].toggle);
+        } else if (action.type === 'redo') {
+            editor.current?.getModel()?.redo();
+        } else {
+            editor.current?.getModel()?.undo();
+        }
+    }, [clearCellText, pasteCells, applyCellStyle]);
+
+    // 요소를 바꾸면 칸 선택을 풀고, 표가 줄면(행과 열을 지움) 선택을 표 안으로 당긴다
+    useEffect(() => {
+        setCells((current) => {
+            if (!current) {
+                return current;
+            }
+            const table = tableOf(deck?.elements[current.id]);
+            if (current.id !== selected) {
+                return null;
+            }
+            if (!table) {
+                return current;
+            }
+            const next = clampSel(table, current);
+            return sameSel(next, current) ? current : next;
+        });
+    }, [deck, selected]);
 
     const onSetProperty = useCallback((name: string, value: SetValue) => {
         if (selectedRef.current) {
@@ -456,6 +790,16 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
     const insert = useCallback((object: 'text_box' | 'shape') => object === 'text_box'
         ? insertObject('text_box', 400, 80, [{ name: 'text', string: t('새 글상자') }])
         : insertObject('shape', 300, 200, [{ name: 'kind', enum: 'rect' }]), [insertObject]);
+
+    // 표: 슬라이드 가운데에 너비의 60%, 행 높이 48px로 넣는다. 둘 이상의 행이면 첫 행을 머리글로 한다
+    const insertTable = useCallback((rows: number, columns: number) => {
+        const line = `[${Array.from({ length: columns }, () => '""').join(', ')}]`;
+        const width = Math.round((deckRef.current?.width ?? 1280) * 0.6);
+        return insertObject('table', width, rows * 48, [
+            { name: 'cells', code: `[${Array.from({ length: rows }, () => line).join(', ')}]` },
+            ...(rows > 1 ? [{ name: 'header_rows', number: 1 }] : []),
+        ]);
+    }, [insertObject]);
 
     // 파일들을 기본 묶음(asset "..." default;)에 넣고, 파일마다 이름을 붙인 선언(image 이름 = asset("...");)을 만든다.
     // 기본 묶음이 없으면 새 묶음을 저장할 곳을 묻고 asset 문도 함께 만든다. codes는 파일마다 붙인 이름이다
@@ -885,6 +1229,10 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
 
     // 켜고 끄는 서식은 고른 글자가 모두 이미 켜져 있으면 끈다 (일부만 고른 글자는 켠다)
     const applyStyle = useCallback(async (properties: StyleProperty[], toggle?: Toggle) => {
+        if (!editing.current && cellStateRef.current) {
+            await applyCellStyle(properties, toggle);
+            return;
+        }
         const targets = styleTargets();
         if (!targets) {
             return;
@@ -898,9 +1246,13 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             }
         }
         await requestEdit(targets.runs.map(({ p, r, range }) => ({ op: 'style', id: targets.id, paragraph: p, run: r, ...(range ?? {}), properties: chosen })));
-    }, [requestEdit, styleTargets]);
+    }, [requestEdit, styleTargets, applyCellStyle]);
 
     const clearStyle = useCallback(async () => {
+        if (!editing.current && cellStateRef.current) {
+            showNotice(t('칸 글의 서식을 지우는 것은 코드에서 해 주세요'));
+            return;
+        }
         const targets = styleTargets();
         if (!targets) {
             return;
@@ -1328,6 +1680,8 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
                     // 썸네일을 눌러 슬라이드 목록에 포커스가 있으면 그 슬라이드를 지운다
                     if (target.closest('.thumbs')) {
                         slideAction('delete');
+                    } else if (cellStateRef.current) {
+                        clearCellText(); // 칸을 고르고 있으면 표가 아니라 칸의 글을 지운다
                     } else {
                         remove();
                     }
@@ -1343,7 +1697,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
         };
         window.addEventListener('keydown', keydown);
         return () => window.removeEventListener('keydown', keydown);
-    }, [save, remove, slideAction, startShow, paste, cut, showNotice, newFile, applyStyle, zoom, fitScale]);
+    }, [save, remove, slideAction, startShow, paste, cut, showNotice, newFile, applyStyle, clearCellText, zoom, fitScale]);
 
     // 코드 편집기의 저장 동작. 키는 설정을 따른다 (addCommand는 마지막에 만든 편집기에 걸리므로, 탭마다 있는 편집기에는 그 편집기에만 붙는 동작으로 둔다)
     useEffect(() => {
@@ -1384,6 +1738,9 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             }
             return;
         }
+        if (id !== selectedRef.current) {
+            setCells(null);
+        }
         setSelected(id);
         const info = id ? deckRef.current?.elements[id] : null;
         if (info && info.source.range && editor.current) {
@@ -1417,7 +1774,12 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
     const ready = !!deck && monacoReady;
     const textSelected = !!selected && !!deck?.elements[selected]?.text;
     const fileName = path ? path.split(/[\\/]/).pop() : null;
-    const undo = (redo: boolean) => editor.current?.trigger('toolbar', redo ? 'redo' : 'undo', null);
+    const undo = (redo: boolean) => {
+        editor.current?.trigger('toolbar', redo ? 'redo' : 'undo', null);
+        if (cellStateRef.current) {
+            setTimeout(() => setCellFocus((count) => count + 1), 50); // 실행 취소가 포커스를 코드로 가져가므로 칸 입력창에 돌려준다
+        }
+    };
     mcpAccess.current = {
         path,
         dirty,
@@ -1428,6 +1790,19 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
         selected,
         diagnostics,
         warnings,
+        schema,
+        cursor: () => {
+            const code = editor.current;
+            const position = code?.getPosition();
+            if (!code || !position) {
+                return null;
+            }
+            const range = code.getSelection();
+            const model = code.getModel();
+            const chosen = range && !range.isEmpty() && model ? model.getValueInRange(range) : '';
+            return { line: position.lineNumber, column: position.column, selection: chosen && range ? { from: range.startLineNumber, to: range.endLineNumber, text: chosen } : undefined };
+        },
+        cells: selectedTable && cellSel ? rectOf(selectedTable, cellSel) : null,
         edit: editDocument,
         goto: setPage,
         select: (id) => {
@@ -1493,9 +1868,10 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
                 </span>
                 <span className="separator" />
                 {/* 글자가 있는 개체를 고르면 서식 막대를, 아니면 넣기 버튼을 보여 준다 */}
-                {textSelected ? <FormatBar enabled={monacoReady} onStyle={applyStyle} onClear={clearStyle} /> : <span className="tool-group">
+                {textSelected || cellState ? <FormatBar enabled={monacoReady && !cellState?.lock} onStyle={applyStyle} onClear={clearStyle} /> : <span className="tool-group">
                     <IconButton icon={Type} title={t('글상자 넣기')} disabled={!ready} onClick={() => insert('text_box')} />
                     <IconButton icon={Square} title={t('도형 넣기')} disabled={!ready} onClick={() => insert('shape')} />
+                    <TableInsertButton disabled={!ready} onPick={insertTable} />
                     <IconButton icon={ImageIcon} title={t('그림 넣기')} disabled={!ready} onClick={insertImage} />
                     <IconButton icon={Film} title={t('비디오 넣기 (mp4, webm)')} disabled={!ready} onClick={insertVideo} />
                     <InsertMenu disabled={!ready} items={[
@@ -1504,8 +1880,14 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
                         { icon: Spline, label: t('연결선'), title: t('고른 개체에서 다음에 누르는 개체로 잇습니다'), onClick: startConnect, disabled: !selected },
                         { icon: PenTool, label: t('자유형 그리기'), title: t('누를 때마다 점, 두 번 눌러 끝내기, Esc 취소'), onClick: () => setMode('draw') },
                         { icon: Blend, label: t('배경 흐림'), title: t('뒤의 배경을 흐리게 비추는 유리 효과'), onClick: () => insertObject('backdrop', 300, 200, [{ name: 'kind', enum: 'roundRect' }, { name: 'blur', length: 16 }]) },
-                    ]} active={mode !== null} />
+                    ]} active={mode !== null} extra={(close) => <><span className="menu-label">{t('표')}</span><TableGrid onPick={(rows, columns) => { close(); insertTable(rows, columns); }} /></>} />
                 </span>}
+                {selectedTable && (
+                    <>
+                        <span className="separator" />
+                        <TableToolbar state={cellState} onCommand={runCommand} />
+                    </>
+                )}
                 <span className="separator" />
                 <span className="tool-group">
                     <IconButton icon={Undo2} title={withShortcut(t('실행 취소'), 'undo')} disabled={!monacoReady} onClick={() => undo(false)} />
@@ -1529,7 +1911,9 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
                     <SlideView deck={deck} index={Math.min(page, slideCount - 1)} selected={selected} editable={monacoReady && !deckError} editing={editing}
                         zoom={zoom} onZoom={(next, fit) => { setFitScale(fit); setZoom(next); }}
                         onSelect={select} onPaint={onFirstPaint} onMove={onMove} onResize={onResize} onText={onText} onNotice={showNotice} stale={!!deckError}
-                        preview={preview} onPreviewEnd={stopPreview} drawing={mode === 'draw'} onDraw={onDraw} />
+                        preview={preview} onPreviewEnd={stopPreview} drawing={mode === 'draw'} onDraw={onDraw}
+                        connecting={mode === 'connect'} cells={cellSel} focusSignal={cellFocus} onCells={onCells} onCellText={onCellText} onTableSizes={onTableSizes} onCellAction={cellAction}
+                        onCellMenu={setCellMenu} />
                 )}
                 {deck && (
                     <div className="zoom-control">
@@ -1577,7 +1961,8 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             </main>
             {!propsOpen ? null : deck && selected && deck.elements[selected]
                 ? <ElementPanel key={selected} deck={deck} schema={schema} page={Math.min(page, slideCount - 1)} id={selected} info={deck.elements[selected]} pickers={pickers}
-                    readSource={readSource} onSet={onSetProperty} onUnset={onUnsetProperty} onOrder={order} onAnimation={onAnimation} onPreview={() => startPreview(false)} />
+                    readSource={readSource} onSet={onSetProperty} onUnset={onUnsetProperty} onOrder={order} onAnimation={onAnimation} onPreview={() => startPreview(false)}
+                    table={selectedTable ? { state: cellState, controls: cellControls } : undefined} />
                 : deck && slideCount > 0
                     ? <SlidePanel deck={deck} schema={schema} page={Math.min(page, slideCount - 1)} pickers={pickers} readSource={readSource}
                         onSlide={onSlide} onDocument={onDocument} onPreview={startPreview} />
@@ -1667,6 +2052,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
                     )}
                 </div>
             </section>
+            {cellMenu && cellState && <TableMenu x={cellMenu.x} y={cellMenu.y} state={cellState} onCommand={runCommand} onClose={() => setCellMenu(null)} />}
             {fontPopup && (
                 <FontPopup x={fontPopup.x} y={fontPopup.y} current={fontPopup.current} onClose={() => setFontPopup(null)} onPick={(name) => {
                     const instance = editor.current;
@@ -1800,7 +2186,7 @@ function Resizer({ area, edge, value, min, max, onChange, onEnd }: {
 // 툴바의 "더 넣기" 메뉴
 type InsertItem = { icon: typeof Plus; label: string; title: string; onClick(): void; disabled?: boolean };
 
-function InsertMenu({ items, disabled, active }: { items: InsertItem[]; disabled: boolean; active: boolean }) {
+function InsertMenu({ items, disabled, active, extra }: { items: InsertItem[]; disabled: boolean; active: boolean; extra?(close: () => void): ReactNode }) {
     const [open, setOpen] = useState(false);
     const anchor = useRef<HTMLSpanElement>(null);
     useEffect(() => {
@@ -1823,6 +2209,7 @@ function InsertMenu({ items, disabled, active }: { items: InsertItem[]; disabled
                     {items.map(({ icon: Icon, label, title, onClick, disabled: off }) => (
                         <button key={label} title={title} disabled={off} onClick={() => { setOpen(false); onClick(); }}><Icon size={15} /> {label}</button>
                     ))}
+                    {extra?.(() => setOpen(false))}
                 </span>
             )}
         </span>

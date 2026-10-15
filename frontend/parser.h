@@ -41,6 +41,7 @@ namespace templide::parser {
             REVIEW,
             ASSET,
             CONSTANT,
+            CELL,
 
             IF,
             ELSE_IF,
@@ -123,6 +124,7 @@ namespace templide::parser {
             NUMBERS,
             DASHES,
             PARAGRAPHS, // 기호 없이 문단만 나눈다
+            PLAIN,      // [a, b, c] 앞에 아무 말도 없는 list<T> 값
         };
         struct ASTList : ASTNode {
             ListKind kind;
@@ -229,6 +231,8 @@ namespace templide::parser {
         struct ASTInclude : ASTNode {
             std::string name;
             bool relative;
+            Token path_token{};          // 경로를 시작하는 토큰(<이나 "...")
+            std::size_t path_length = 0; // 경로 전체(<...>나 "...")의 바이트 수. 오류를 경로에 칠할 때 쓴다
             ASTInclude(Token token, std::string name, bool relative) : ASTNode(INCLUDE, token), name(std::move(name)), relative(relative) {}
         };
         struct ASTEnum : ASTNode {
@@ -349,6 +353,14 @@ namespace templide::parser {
         TEMPLIDE_AST_DEF_NAMED_NODE_BLOCK(ASTTarget, TARGET)
         TEMPLIDE_AST_DEF_NAMED_NODE_BLOCK(ASTTheme, THEME)
 
+        // cell(ROW, COLUMN) { NAME = VALUE; ... } put table 블록 안에서 표의 칸 하나를 고친다. 번호는 1부터다
+        struct ASTCell : ASTNode {
+            ASTNode* row = nullptr;
+            ASTNode* column = nullptr;
+            std::vector<ASTNode*> body; // NAME = VALUE; 대입만 들어 있다
+            ASTCell(Token token) : ASTNode(CELL, token) {}
+        };
+
         // put NAME [as ALIAS] { ... }
         struct ASTPut : ASTNode {
             std::string name;
@@ -356,6 +368,7 @@ namespace templide::parser {
             ASTName* alias = nullptr; // 없으면 nullptr
             std::vector<ASTNode*> body; // NAME = VALUE; 대입만 들어 있다
             std::vector<ASTAnimate*> animations; // 블록 안의 animate 문장
+            std::vector<ASTCell*> cells;         // 블록 안의 cell 문장
             ASTPut(Token token) : ASTNode(PUT, token) {}
         };
 
@@ -645,7 +658,7 @@ namespace templide::parser {
                 case TokenType::FSTRING_BEGIN:
                     return parse_fstring(token);
                 case TokenType::LBRACKET:
-                    fail(token, "A list must follow 'bullets', 'numbers' or 'dashes'");
+                    return parse_list(token, ast::ListKind::PLAIN);
                 case TokenType::LPAREN: {
                     auto *node = parse_expression();
                     expect(TokenType::RPAREN, "')' after expression");
@@ -880,13 +893,40 @@ namespace templide::parser {
             node->alias = parse_alias();
             parse_block(node->body, &Parser::parse_put_statement);
             split_animations(node->body, node->animations);
+            split_cells(node->body, node->cells);
             return node;
         }
 
-        // put 블록 안의 NAME = VALUE; 또는 animate ...;
+        // put 블록 안의 NAME = VALUE;, animate ...; 또는 cell(ROW, COLUMN) { ... }
         ast::ASTNode* parse_put_statement(Token token) {
             if (is_keyword(token, "animate") && peek().type != TokenType::ASSIGN) { return parse_animate(token, false); }
+            if (is_keyword(token, "cell") && peek().type == TokenType::LPAREN) { return parse_cell(token); }
             return parse_property_statement(token);
+        }
+
+        // cell(ROW, COLUMN) { NAME = VALUE; ... }
+        ast::ASTCell* parse_cell(Token token) {
+            auto *node = new ast::ASTCell(token);
+            expect(TokenType::LPAREN, "'(' after 'cell'");
+            node->row = parse_expression();
+            expect(TokenType::COMMA, "',' between the row and the column of 'cell'");
+            node->column = parse_expression();
+            expect(TokenType::RPAREN, "')' after the column of 'cell'");
+            parse_block(node->body, &Parser::parse_property_statement);
+            return node;
+        }
+
+        // 블록의 cell 문장을 body에서 cells로 옮긴다
+        static void split_cells(vector<ast::ASTNode*>& body, vector<ast::ASTCell*>& cells) {
+            vector<ast::ASTNode*> rest;
+            for (auto *statement : body) {
+                if (statement->type == ast::CELL) {
+                    cells.push_back(static_cast<ast::ASTCell*>(statement));
+                } else {
+                    rest.push_back(statement);
+                }
+            }
+            body = std::move(rest);
         }
 
         // 블록의 animate 문장을 body에서 animations로 옮긴다
@@ -929,8 +969,21 @@ namespace templide::parser {
             fail_unexpected(token);
         }
 
+        // 타입 이름. int처럼 한 단어이거나 list<text>, list<list<text>>처럼 list<...>를 겹친 것이다.
+        // 겹친 것은 원문 전체를 하나의 토큰으로 합친다
+        Token parse_type_name(const string& message) {
+            Token first = expect(TokenType::IDENTIFIER, message);
+            if (first.value != "list" || peek().type != TokenType::LT) {
+                return first;
+            }
+            next();
+            parse_type_name("element type after 'list<'");
+            Token close = expect(TokenType::GT, "'>' after the element type of list");
+            return merge(first, close);
+        }
+
         ast::ASTVar* parse_var(Token token) {
-            Token type_name = expect(TokenType::IDENTIFIER, "type after 'var'");
+            Token type_name = parse_type_name("type after 'var'");
             Token name = expect(TokenType::IDENTIFIER, "variable name after type");
             ast::ASTNode *default_value = nullptr;
             if (accept(TokenType::ASSIGN)) {
@@ -1060,7 +1113,7 @@ namespace templide::parser {
                 return;
             }
             do {
-                Token type_name = expect(TokenType::IDENTIFIER, "parameter type");
+                Token type_name = parse_type_name("parameter type");
                 Token parameter_name = expect(TokenType::IDENTIFIER, "parameter name after type");
                 parameters.push_back(new ast::ASTParameter(type_name, new ast::ASTName(type_name), new ast::ASTName(parameter_name)));
             } while (accept(TokenType::COMMA));
@@ -1219,16 +1272,22 @@ namespace templide::parser {
             }
             if (peek().type == TokenType::STRING) {
                 Token path = next();
-                return new ast::ASTInclude(token, unescape(path, path.value.substr(1, path.value.size() - 2)), true);
+                auto* node = new ast::ASTInclude(token, unescape(path, path.value.substr(1, path.value.size() - 2)), true);
+                node->path_token = path;
+                node->path_length = path.value.size();
+                return node;
             }
-            expect(TokenType::LT, "'<' or a quoted path after '#include'");
+            const Token open = expect(TokenType::LT, "'<' or a quoted path after '#include'");
             // <std/layout/simple1>처럼 '/'로 하위 폴더를 쓸 수 있다
             string name(expect(TokenType::IDENTIFIER, "library name").value);
             while (accept(TokenType::SLASH)) {
                 name += "/" + string(expect(TokenType::IDENTIFIER, "library name after '/'").value);
             }
-            expect(TokenType::GT, "'>' after library name");
-            return new ast::ASTInclude(token, name, false);
+            const Token close = expect(TokenType::GT, "'>' after library name");
+            auto* node = new ast::ASTInclude(token, name, false);
+            node->path_token = open;
+            node->path_length = static_cast<std::size_t>(close.value.data() + close.value.size() - open.value.data());
+            return node;
         }
 
         ast::ASTNode* parse_file_statement(Token token) {

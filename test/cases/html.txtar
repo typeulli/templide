@@ -1,0 +1,1597 @@
+-- actions_script/main.tlide --
+/* html에서는 run(...)이 target의 script에 든 JS 함수를 부른다 (k: 누를 때, kh: 마우스를 올릴 때). 링크와 파일 열기는 주소로 나온다 */
+#include <std/stddef>
+
+slide {
+    put text_box { text = "run"; x = 10px; y = 10px; width = 100px; height = 30px; action = run("onClick", @slide.number, 1, 2.5, true, "s", 10px); }
+    put text_box { text = "주소"; x = 10px; y = 50px; width = 100px; height = 30px; link = "https://example.com/a?b=1&c=2"; }
+    put text_box { text = "슬라이드 2"; x = 10px; y = 90px; width = 100px; height = 30px; link = slide(2); }
+    put text_box { text = "다음"; x = 10px; y = 130px; width = 100px; height = 30px; link = next_slide; }
+    put shape { kind = rect; x = 150px; y = 10px; width = 100px; height = 30px; action = action_file("docs/report.pdf"); }
+    put shape { kind = rect; x = 150px; y = 50px; width = 100px; height = 30px; hover_action = run("onHover"); action_highlight = true; }
+    put text_box { text = action(run("go", 7)) "글자 실행" hover_action(slide(1)) " 올리면"; x = 300px; y = 10px; width = 300px; height = 30px; }
+    put text_box { text = "앞 " link("https://example.org") "링크 글자"; x = 300px; y = 50px; width = 300px; height = 30px; }
+}
+
+slide {
+    put text_box { text = "둘째"; x = 10px; y = 10px; width = 100px; height = 30px; }
+}
+
+target out { path = "page.html"; type = html; script = "app.js"; }
+-- actions_script/main.json --
+{
+  "v": 1,
+  "title": "out",
+  "author": "templide",
+  "w": 1280,
+  "h": 720,
+  "themes": [
+    {
+      "dk1": "#000000",
+      "lt1": "#ffffff",
+      "dk2": "#44546a",
+      "lt2": "#e7e6e6",
+      "accent1": "#4472c4",
+      "accent2": "#ed7d31",
+      "accent3": "#a5a5a5",
+      "accent4": "#ffc000",
+      "accent5": "#5b9bd5",
+      "accent6": "#70ad47",
+      "hlink": "#0563c1",
+      "folHlink": "#954f72",
+      "tx1": "#000000",
+      "bg1": "#ffffff",
+      "tx2": "#44546a",
+      "bg2": "#e7e6e6"
+    }
+  ],
+  "layouts": [],
+  "slides": [
+    {
+      "num": 1,
+      "th": 0,
+      "bg": {"k": "s", "c": "#ffffff"},
+      "els": [
+        {
+          "id": 1,
+          "x": 10,
+          "y": 10,
+          "w": 100,
+          "h": 30,
+          "k": {"run": "onClick", "a": [1, 1, 2.5, true, "s", "10px"]},
+          "t": "tb",
+          "g": {"p": "rect"},
+          "tx": {
+            "ins": [9.6, 4.8, 9.6, 4.8],
+            "an": "t",
+            "ps": [
+              {
+                "rs": [
+                  {
+                    "t": "run",
+                    "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                    "sz": 24,
+                    "c": "#000000"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 2,
+          "x": 10,
+          "y": 50,
+          "w": 100,
+          "h": 30,
+          "k": {"url": "https://example.com/a?b=1&c=2"},
+          "t": "tb",
+          "g": {"p": "rect"},
+          "tx": {
+            "ins": [9.6, 4.8, 9.6, 4.8],
+            "an": "t",
+            "ps": [
+              {
+                "rs": [
+                  {
+                    "t": "주소",
+                    "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                    "sz": 24,
+                    "c": "#000000"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 3,
+          "x": 10,
+          "y": 90,
+          "w": 100,
+          "h": 30,
+          "k": {"slide": 2},
+          "t": "tb",
+          "g": {"p": "rect"},
+          "tx": {
+            "ins": [9.6, 4.8, 9.6, 4.8],
+            "an": "t",
+            "ps": [
+              {
+                "rs": [
+                  {
+                    "t": "슬라이드 2",
+                    "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                    "sz": 24,
+                    "c": "#000000"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 4,
+          "x": 10,
+          "y": 130,
+          "w": 100,
+          "h": 30,
+          "k": {"jump": "next_slide"},
+          "t": "tb",
+          "g": {"p": "rect"},
+          "tx": {
+            "ins": [9.6, 4.8, 9.6, 4.8],
+            "an": "t",
+            "ps": [
+              {
+                "rs": [
+                  {
+                    "t": "다음",
+                    "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                    "sz": 24,
+                    "c": "#000000"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 5,
+          "x": 150,
+          "y": 10,
+          "w": 100,
+          "h": 30,
+          "k": {"url": "docs/report.pdf", "file": 1},
+          "t": "sp",
+          "g": {"p": "rect"},
+          "f": {"k": "s", "c": "#4472c4"},
+          "l": {"c": "#2f528f", "w": 1.333},
+          "tx": {"ins": [9.6, 4.8, 9.6, 4.8], "an": "ctr", "ps": []}
+        },
+        {
+          "id": 6,
+          "x": 150,
+          "y": 50,
+          "w": 100,
+          "h": 30,
+          "k": {"hl": 1},
+          "kh": {"run": "onHover", "a": []},
+          "t": "sp",
+          "g": {"p": "rect"},
+          "f": {"k": "s", "c": "#4472c4"},
+          "l": {"c": "#2f528f", "w": 1.333},
+          "tx": {"ins": [9.6, 4.8, 9.6, 4.8], "an": "ctr", "ps": []}
+        },
+        {
+          "id": 7,
+          "x": 300,
+          "y": 10,
+          "w": 300,
+          "h": 30,
+          "t": "tb",
+          "g": {"p": "rect"},
+          "tx": {
+            "ins": [9.6, 4.8, 9.6, 4.8],
+            "an": "t",
+            "ps": [
+              {
+                "rs": [
+                  {
+                    "t": "글자 실행",
+                    "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                    "sz": 24,
+                    "u": "sng",
+                    "c": "#0563c1",
+                    "k": {"run": "go", "a": [7]}
+                  },
+                  {
+                    "t": " 올리면",
+                    "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                    "sz": 24,
+                    "u": "sng",
+                    "c": "#0563c1",
+                    "k": {"run": "go", "a": [7]},
+                    "kh": {"slide": 1}
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 8,
+          "x": 300,
+          "y": 50,
+          "w": 300,
+          "h": 30,
+          "t": "tb",
+          "g": {"p": "rect"},
+          "tx": {
+            "ins": [9.6, 4.8, 9.6, 4.8],
+            "an": "t",
+            "ps": [
+              {
+                "rs": [
+                  {
+                    "t": "앞 ",
+                    "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                    "sz": 24,
+                    "c": "#000000"
+                  },
+                  {
+                    "t": "링크 글자",
+                    "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                    "sz": 24,
+                    "u": "sng",
+                    "c": "#0563c1",
+                    "k": {"url": "https://example.org"}
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "num": 2,
+      "th": 0,
+      "bg": {"k": "s", "c": "#ffffff"},
+      "els": [
+        {
+          "id": 1,
+          "x": 10,
+          "y": 10,
+          "w": 100,
+          "h": 30,
+          "t": "tb",
+          "g": {"p": "rect"},
+          "tx": {
+            "ins": [9.6, 4.8, 9.6, 4.8],
+            "an": "t",
+            "ps": [
+              {
+                "rs": [
+                  {
+                    "t": "둘째",
+                    "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                    "sz": 24,
+                    "c": "#000000"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
+-- actions_script/app.js --
+function onClick(page, n, ratio, flag, text, size) {
+    console.log("click", page, n, ratio, flag, text, size);
+}
+function onHover() {}
+function go(n) {}
+-- css_angles_size.tlide --
+/* target의 크기(w, h)와 angles = css(그라데이션, 그림자 각도). pptx/angles_css와 같은 문서다 */
+#include <std/stddef>
+
+slide {
+    put shape {
+        kind = rect; x = 20px; y = 20px; width = 200px; height = 100px;
+        fill = linear(0, hex(F00), hex(00F));
+        shadow = hex(000000); shadow_distance = 6px; shadow_angle = 90;
+    }
+    put shape { kind = rect; x = 240px; y = 20px; width = 200px; height = 100px; fill = linear(90, hex(F00), hex(00F)); }
+    put text_box { text = "퍼센트 위치"; x = 10%; y = 80%; width = 50%; height = 10%; }
+}
+
+target out { path = "css_angles_size.html"; type = html; angles = css; width = 800px; height = 450px; }
+-- css_angles_size.json --
+{
+  "v": 1,
+  "title": "out",
+  "author": "templide",
+  "w": 800,
+  "h": 450,
+  "themes": [
+    {
+      "dk1": "#000000",
+      "lt1": "#ffffff",
+      "dk2": "#44546a",
+      "lt2": "#e7e6e6",
+      "accent1": "#4472c4",
+      "accent2": "#ed7d31",
+      "accent3": "#a5a5a5",
+      "accent4": "#ffc000",
+      "accent5": "#5b9bd5",
+      "accent6": "#70ad47",
+      "hlink": "#0563c1",
+      "folHlink": "#954f72",
+      "tx1": "#000000",
+      "bg1": "#ffffff",
+      "tx2": "#44546a",
+      "bg2": "#e7e6e6"
+    }
+  ],
+  "layouts": [],
+  "slides": [
+    {
+      "num": 1,
+      "th": 0,
+      "bg": {"k": "s", "c": "#ffffff"},
+      "els": [
+        {
+          "id": 1,
+          "x": 20,
+          "y": 20,
+          "w": 200,
+          "h": 100,
+          "fx": {"sh": {"c": "#000000", "b": 5.333, "dx": 6, "dy": 0}},
+          "t": "sp",
+          "g": {"p": "rect"},
+          "f": {"k": "lin", "a": 0, "st": [[0, "#ff0000"], [1, "#0000ff"]], "sm": 1},
+          "l": {"c": "#2f528f", "w": 1.333},
+          "tx": {"ins": [9.6, 4.8, 9.6, 4.8], "an": "ctr", "ps": []}
+        },
+        {
+          "id": 2,
+          "x": 240,
+          "y": 20,
+          "w": 200,
+          "h": 100,
+          "t": "sp",
+          "g": {"p": "rect"},
+          "f": {"k": "lin", "a": 90, "st": [[0, "#ff0000"], [1, "#0000ff"]], "sm": 1},
+          "l": {"c": "#2f528f", "w": 1.333},
+          "tx": {"ins": [9.6, 4.8, 9.6, 4.8], "an": "ctr", "ps": []}
+        },
+        {
+          "id": 3,
+          "x": 80,
+          "y": 360,
+          "w": 400,
+          "h": 45,
+          "t": "tb",
+          "g": {"p": "rect"},
+          "tx": {
+            "ins": [9.6, 4.8, 9.6, 4.8],
+            "an": "t",
+            "ps": [
+              {
+                "rs": [
+                  {
+                    "t": "퍼센트 위치",
+                    "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                    "sz": 24,
+                    "c": "#000000"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
+-- fields.tlide --
+/* html에서 @slide.number와 @date는 run의 fld 값(slidenum, datetime1)으로 나온다. 날짜 글자는 $DATE로 바꿔 비교한다 */
+#include <std/stddef>
+
+slide {
+    put text_box { text = "쪽 " @slide.number " / 날짜 " @date; x = 10px; y = 10px; width = 400px; height = 30px; }
+}
+
+target out { path = "fields.html"; type = html; }
+-- fields.json --
+{
+  "v": 1,
+  "title": "out",
+  "author": "templide",
+  "w": 1280,
+  "h": 720,
+  "themes": [
+    {
+      "dk1": "#000000",
+      "lt1": "#ffffff",
+      "dk2": "#44546a",
+      "lt2": "#e7e6e6",
+      "accent1": "#4472c4",
+      "accent2": "#ed7d31",
+      "accent3": "#a5a5a5",
+      "accent4": "#ffc000",
+      "accent5": "#5b9bd5",
+      "accent6": "#70ad47",
+      "hlink": "#0563c1",
+      "folHlink": "#954f72",
+      "tx1": "#000000",
+      "bg1": "#ffffff",
+      "tx2": "#44546a",
+      "bg2": "#e7e6e6"
+    }
+  ],
+  "layouts": [],
+  "slides": [
+    {
+      "num": 1,
+      "th": 0,
+      "bg": {"k": "s", "c": "#ffffff"},
+      "els": [
+        {
+          "id": 1,
+          "x": 10,
+          "y": 10,
+          "w": 400,
+          "h": 30,
+          "t": "tb",
+          "g": {"p": "rect"},
+          "tx": {
+            "ins": [9.6, 4.8, 9.6, 4.8],
+            "an": "t",
+            "ps": [
+              {
+                "rs": [
+                  {
+                    "t": "쪽 ",
+                    "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                    "sz": 24,
+                    "c": "#000000"
+                  },
+                  {
+                    "t": "1",
+                    "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                    "sz": 24,
+                    "c": "#000000",
+                    "fld": "slidenum"
+                  },
+                  {
+                    "t": " / 날짜 ",
+                    "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                    "sz": 24,
+                    "c": "#000000"
+                  },
+                  {
+                    "t": "$DATE",
+                    "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                    "sz": 24,
+                    "c": "#000000",
+                    "fld": "datetime1"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
+-- image_basic/main.tlide --
+/* html은 그림을 data: 주소로 덱에 넣는다 (pic.png는 4x2px). fit과 crop은 그린 위치와 자르기로 나온다 */
+#include <std/stddef>
+
+image pic = file("pic.png");
+
+slide {
+    background = pic;
+    put image { data = pic; x = 20px; y = 20px; width = 200px; height = 200px; }
+    put image { data = pic; x = 240px; y = 20px; width = 200px; height = 200px; fit = contain; }
+    put image { data = file("pic.png"); x = 460px; y = 20px; width = 200px; height = 200px; fit = cover; }
+    put image { data = "pic.png"; x = 680px; y = 20px; width = 200px; height = 100px; crop_left = 25%; crop_right = 25%; kind = ellipse; alt = "그림 설명"; }
+}
+
+target out { path = "image_basic.html"; type = html; }
+-- image_basic/main.json --
+{
+  "v": 1,
+  "title": "out",
+  "author": "templide",
+  "w": 1280,
+  "h": 720,
+  "themes": [
+    {
+      "dk1": "#000000",
+      "lt1": "#ffffff",
+      "dk2": "#44546a",
+      "lt2": "#e7e6e6",
+      "accent1": "#4472c4",
+      "accent2": "#ed7d31",
+      "accent3": "#a5a5a5",
+      "accent4": "#ffc000",
+      "accent5": "#5b9bd5",
+      "accent6": "#70ad47",
+      "hlink": "#0563c1",
+      "folHlink": "#954f72",
+      "tx1": "#000000",
+      "bg1": "#ffffff",
+      "tx2": "#44546a",
+      "bg2": "#e7e6e6"
+    }
+  ],
+  "layouts": [],
+  "slides": [
+    {
+      "num": 1,
+      "th": 0,
+      "bg": {
+        "k": "img",
+        "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAIAAADwyuo0AAAAEElEQVR42mOQm/AfjhiQOQCnWg1pWowh/gAAAABJRU5ErkJggg=="
+      },
+      "els": [
+        {
+          "id": 1,
+          "x": 20,
+          "y": 20,
+          "w": 200,
+          "h": 200,
+          "t": "pic",
+          "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAIAAADwyuo0AAAAEElEQVR42mOQm/AfjhiQOQCnWg1pWowh/gAAAABJRU5ErkJggg==",
+          "g": {"p": "rect"}
+        },
+        {
+          "id": 2,
+          "x": 240,
+          "y": 70,
+          "w": 200,
+          "h": 100,
+          "t": "pic",
+          "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAIAAADwyuo0AAAAEElEQVR42mOQm/AfjhiQOQCnWg1pWowh/gAAAABJRU5ErkJggg==",
+          "g": {"p": "rect"}
+        },
+        {
+          "id": 3,
+          "x": 460,
+          "y": 20,
+          "w": 200,
+          "h": 200,
+          "t": "pic",
+          "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAIAAADwyuo0AAAAEElEQVR42mOQm/AfjhiQOQCnWg1pWowh/gAAAABJRU5ErkJggg==",
+          "crop": [0.25, 0, 0.25, 0],
+          "g": {"p": "rect"}
+        },
+        {
+          "id": 4,
+          "x": 680,
+          "y": 20,
+          "w": 200,
+          "h": 100,
+          "alt": "그림 설명",
+          "t": "pic",
+          "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAIAAADwyuo0AAAAEElEQVR42mOQm/AfjhiQOQCnWg1pWowh/gAAAABJRU5ErkJggg==",
+          "crop": [0.25, 0, 0.25, 0],
+          "g": {"p": "ellipse"}
+        }
+      ]
+    }
+  ]
+}
+-- image_basic/pic.png (base64) --
+iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAIAAADwyuo0AAAAEElEQVR42mOQm/AfjhiQOQCnWg1p
+Wowh/gAAAABJRU5ErkJggg==
+-- master_layouts.tlide --
+/* layout(개체 틀과 배경)은 layouts에, 테마 색은 themes에, slide의 title과 body는 개체 틀을 채운 개체로 나온다 */
+#include <std/stddef>
+
+theme calm {
+    accent1 = hex(2E86AB);
+    heading_font = font("Georgia");
+}
+
+master deck {
+    theme = calm;
+    case content {
+        background = hex(F5F5F5);
+        put placeholder { role = title; x = 60px; y = 30px; width = 1160px; height = 80px; }
+        put placeholder { role = body; x = 60px; y = 130px; width = 1160px; height = 520px; }
+        put text_box { text = @slide.number; x = 1180px; y = 680px; width = 60px; height = 30px; }
+    }
+}
+
+slide {
+    layout = deck.content;
+    title = "본문 제목";
+    body = bullets ["첫째", "둘째"];
+    put shape { kind = rect; x = 60px; y = 660px; width = 100px; height = 20px; fill = theme.accent1; }
+}
+
+target out { path = "master_layouts.html"; type = html; }
+-- master_layouts.json --
+{
+  "v": 1,
+  "title": "out",
+  "author": "templide",
+  "w": 1280,
+  "h": 720,
+  "themes": [
+    {
+      "dk1": "#000000",
+      "lt1": "#ffffff",
+      "dk2": "#44546a",
+      "lt2": "#e7e6e6",
+      "accent1": "#2e86ab",
+      "accent2": "#ed7d31",
+      "accent3": "#a5a5a5",
+      "accent4": "#ffc000",
+      "accent5": "#5b9bd5",
+      "accent6": "#70ad47",
+      "hlink": "#0563c1",
+      "folHlink": "#954f72",
+      "tx1": "#000000",
+      "bg1": "#ffffff",
+      "tx2": "#44546a",
+      "bg2": "#e7e6e6"
+    }
+  ],
+  "layouts": [
+    {
+      "els": [
+        {
+          "x": 1180,
+          "y": 680,
+          "w": 60,
+          "h": 30,
+          "t": "tb",
+          "g": {"p": "rect"},
+          "tx": {
+            "ins": [9.6, 4.8, 9.6, 4.8],
+            "an": "t",
+            "ps": [
+              {
+                "rs": [
+                  {
+                    "t": "‹#›",
+                    "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                    "sz": 24,
+                    "c": "#000000",
+                    "fld": "slidenum"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "slides": [
+    {
+      "num": 1,
+      "th": 0,
+      "lay": 0,
+      "bg": {"k": "s", "c": "#f5f5f5"},
+      "els": [
+        {
+          "id": 1,
+          "x": 60,
+          "y": 660,
+          "w": 100,
+          "h": 20,
+          "t": "sp",
+          "g": {"p": "rect"},
+          "f": {"k": "s", "c": "#2e86ab"},
+          "l": {"c": "#1f617d", "w": 1.333},
+          "tx": {"ins": [9.6, 4.8, 9.6, 4.8], "an": "ctr", "ps": []}
+        },
+        {
+          "id": 2,
+          "x": 60,
+          "y": 130,
+          "w": 1160,
+          "h": 520,
+          "t": "tb",
+          "g": {"p": "rect"},
+          "tx": {
+            "ins": [9.6, 4.8, 9.6, 4.8],
+            "an": "t",
+            "ps": [
+              {
+                "lvl": 0,
+                "bu": {"ch": "•"},
+                "ml": 36,
+                "ind": -36,
+                "rs": [
+                  {
+                    "t": "첫째",
+                    "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                    "sz": 37.333,
+                    "c": "#000000"
+                  }
+                ]
+              },
+              {
+                "lvl": 0,
+                "bu": {"ch": "•"},
+                "ml": 36,
+                "ind": -36,
+                "rs": [
+                  {
+                    "t": "둘째",
+                    "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                    "sz": 37.333,
+                    "c": "#000000"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 3,
+          "x": 60,
+          "y": 30,
+          "w": 1160,
+          "h": 80,
+          "t": "tb",
+          "g": {"p": "rect"},
+          "tx": {
+            "ins": [9.6, 4.8, 9.6, 4.8],
+            "an": "t",
+            "ps": [
+              {
+                "rs": [
+                  {
+                    "t": "본문 제목",
+                    "f": "\"Georgia\",\"templide latin Calibri\",\"Batang\",\"바탕\",\"AppleMyungjo\",\"Noto Serif KR\",\"Noto Serif CJK KR\",serif",
+                    "sz": 58.667,
+                    "c": "#000000"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
+-- table_basic.tlide --
+/* 표 하나의 덱 JSON. t = "tbl", cols와 rows(px), 병합에 가려진 칸을 뺀 cells(r, c, rs, cs, 채우기 f, 선 b, 여백 ins, 글 tx) */
+#include <std/stddef>
+#include <std/styles>
+
+slide {
+    put table {
+        x = 80px; y = 120px; width = 1000px; height = 300px;
+        cells = [
+            ["이름", "1분기", "2분기", "비고"],
+            ["서울", "10", bold "20", "긴 글이 들어가면 행이 늘어난다"],
+            ["부산", "5", "7", ""],
+            ["합계", "", "", ""]
+        ];
+        col_widths = [300px, 200px, 200px, 300px];
+        header_rows = 1;
+        header_cols = 1;
+        banded_rows = true;
+        line_color = hex(808080);
+        padding = 10px;
+        align = center;
+        cell(4, 2) { col_span = 2; fill = hex(FFE699); anchor = bottom; }
+        cell(2, 4) { row_span = 2; fill = hex(C6E0B4); line_color = hex(FF0000); line_width = 3px; align = left; }
+        cell(1, 1) { line_color_bottom = hex(0000FF); line_width_bottom = 4px; padding_left = 24px; }
+    }
+}
+
+target page { path = "table.html"; type = html; }
+-- table_basic.json --
+{
+  "v": 1,
+  "title": "page",
+  "author": "templide",
+  "w": 1280,
+  "h": 720,
+  "themes": [
+    {
+      "dk1": "#000000",
+      "lt1": "#ffffff",
+      "dk2": "#44546a",
+      "lt2": "#e7e6e6",
+      "accent1": "#4472c4",
+      "accent2": "#ed7d31",
+      "accent3": "#a5a5a5",
+      "accent4": "#ffc000",
+      "accent5": "#5b9bd5",
+      "accent6": "#70ad47",
+      "hlink": "#0563c1",
+      "folHlink": "#954f72",
+      "tx1": "#000000",
+      "bg1": "#ffffff",
+      "tx2": "#44546a",
+      "bg2": "#e7e6e6"
+    }
+  ],
+  "layouts": [],
+  "slides": [
+    {
+      "num": 1,
+      "th": 0,
+      "bg": {"k": "s", "c": "#ffffff"},
+      "els": [
+        {
+          "id": 1,
+          "x": 80,
+          "y": 120,
+          "w": 1000,
+          "h": 300,
+          "t": "tbl",
+          "cols": [300, 200, 200, 300],
+          "rows": [75, 75, 75, 75],
+          "cells": [
+            {
+              "r": 0,
+              "c": 0,
+              "th": 1,
+              "f": {"k": "s", "c": "#f2f2f2"},
+              "an": "ctr",
+              "ins": [24, 10, 10, 10],
+              "b": [{"c": "#808080", "w": 1}, {"c": "#808080", "w": 1}, null, null],
+              "tx": {
+                "ps": [
+                  {
+                    "al": "ctr",
+                    "rs": [
+                      {
+                        "t": "이름",
+                        "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                        "sz": 24,
+                        "b": 1,
+                        "c": "#000000"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "r": 0,
+              "c": 1,
+              "th": 1,
+              "f": {"k": "s", "c": "#f2f2f2"},
+              "an": "ctr",
+              "ins": [10, 10, 10, 10],
+              "b": [{"c": "#808080", "w": 1}, {"c": "#808080", "w": 1}, null, null],
+              "tx": {
+                "ps": [
+                  {
+                    "al": "ctr",
+                    "rs": [
+                      {
+                        "t": "1분기",
+                        "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                        "sz": 24,
+                        "b": 1,
+                        "c": "#000000"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "r": 0,
+              "c": 2,
+              "th": 1,
+              "f": {"k": "s", "c": "#f2f2f2"},
+              "an": "ctr",
+              "ins": [10, 10, 10, 10],
+              "b": [{"c": "#808080", "w": 1}, {"c": "#808080", "w": 1}, null, null],
+              "tx": {
+                "ps": [
+                  {
+                    "al": "ctr",
+                    "rs": [
+                      {
+                        "t": "2분기",
+                        "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                        "sz": 24,
+                        "b": 1,
+                        "c": "#000000"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "r": 0,
+              "c": 3,
+              "th": 1,
+              "f": {"k": "s", "c": "#f2f2f2"},
+              "an": "ctr",
+              "ins": [10, 10, 10, 10],
+              "b": [{"c": "#808080", "w": 1}, {"c": "#808080", "w": 1}, {"c": "#808080", "w": 1}, null],
+              "tx": {
+                "ps": [
+                  {
+                    "al": "ctr",
+                    "rs": [
+                      {
+                        "t": "비고",
+                        "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                        "sz": 24,
+                        "b": 1,
+                        "c": "#000000"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "r": 1,
+              "c": 0,
+              "th": 1,
+              "f": {"k": "s", "c": "#f2f2f2"},
+              "an": "ctr",
+              "ins": [10, 10, 10, 10],
+              "b": [{"c": "#808080", "w": 1}, {"c": "#0000ff", "w": 4}, null, null],
+              "tx": {
+                "ps": [
+                  {
+                    "al": "ctr",
+                    "rs": [
+                      {
+                        "t": "서울",
+                        "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                        "sz": 24,
+                        "b": 1,
+                        "c": "#000000"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "r": 1,
+              "c": 1,
+              "f": {"k": "s", "c": "#f7f7f7"},
+              "an": "ctr",
+              "ins": [10, 10, 10, 10],
+              "b": [{"c": "#808080", "w": 1}, {"c": "#808080", "w": 1}, null, null],
+              "tx": {
+                "ps": [
+                  {
+                    "al": "ctr",
+                    "rs": [
+                      {
+                        "t": "10",
+                        "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                        "sz": 24,
+                        "c": "#000000"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "r": 1,
+              "c": 2,
+              "f": {"k": "s", "c": "#f7f7f7"},
+              "an": "ctr",
+              "ins": [10, 10, 10, 10],
+              "b": [{"c": "#808080", "w": 1}, {"c": "#808080", "w": 1}, null, null],
+              "tx": {
+                "ps": [
+                  {
+                    "al": "ctr",
+                    "rs": [
+                      {
+                        "t": "20",
+                        "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                        "sz": 24,
+                        "b": 1,
+                        "c": "#000000"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "r": 1,
+              "c": 3,
+              "rs": 2,
+              "f": {"k": "s", "c": "#c6e0b4"},
+              "an": "ctr",
+              "ins": [10, 10, 10, 10],
+              "b": [{"c": "#ff0000", "w": 3}, {"c": "#ff0000", "w": 3}, {"c": "#ff0000", "w": 3}, null],
+              "tx": {
+                "ps": [
+                  {
+                    "rs": [
+                      {
+                        "t": "긴 글이 들어가면 행이 늘어난다",
+                        "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                        "sz": 24,
+                        "c": "#000000"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "r": 2,
+              "c": 0,
+              "th": 1,
+              "f": {"k": "s", "c": "#f2f2f2"},
+              "an": "ctr",
+              "ins": [10, 10, 10, 10],
+              "b": [{"c": "#808080", "w": 1}, {"c": "#808080", "w": 1}, null, null],
+              "tx": {
+                "ps": [
+                  {
+                    "al": "ctr",
+                    "rs": [
+                      {
+                        "t": "부산",
+                        "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                        "sz": 24,
+                        "b": 1,
+                        "c": "#000000"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "r": 2,
+              "c": 1,
+              "an": "ctr",
+              "ins": [10, 10, 10, 10],
+              "b": [{"c": "#808080", "w": 1}, {"c": "#808080", "w": 1}, null, null],
+              "tx": {
+                "ps": [
+                  {
+                    "al": "ctr",
+                    "rs": [
+                      {
+                        "t": "5",
+                        "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                        "sz": 24,
+                        "c": "#000000"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "r": 2,
+              "c": 2,
+              "an": "ctr",
+              "ins": [10, 10, 10, 10],
+              "b": [{"c": "#808080", "w": 1}, {"c": "#808080", "w": 1}, null, null],
+              "tx": {
+                "ps": [
+                  {
+                    "al": "ctr",
+                    "rs": [
+                      {
+                        "t": "7",
+                        "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                        "sz": 24,
+                        "c": "#000000"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "r": 3,
+              "c": 0,
+              "th": 1,
+              "f": {"k": "s", "c": "#f2f2f2"},
+              "an": "ctr",
+              "ins": [10, 10, 10, 10],
+              "b": [{"c": "#808080", "w": 1}, {"c": "#808080", "w": 1}, null, {"c": "#808080", "w": 1}],
+              "tx": {
+                "ps": [
+                  {
+                    "al": "ctr",
+                    "rs": [
+                      {
+                        "t": "합계",
+                        "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                        "sz": 24,
+                        "b": 1,
+                        "c": "#000000"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "r": 3,
+              "c": 1,
+              "cs": 2,
+              "f": {"k": "s", "c": "#ffe699"},
+              "an": "b",
+              "ins": [10, 10, 10, 10],
+              "b": [{"c": "#808080", "w": 1}, {"c": "#808080", "w": 1}, null, {"c": "#808080", "w": 1}],
+              "tx": {"ps": []}
+            },
+            {
+              "r": 3,
+              "c": 3,
+              "f": {"k": "s", "c": "#f7f7f7"},
+              "an": "ctr",
+              "ins": [10, 10, 10, 10],
+              "b": [
+                {"c": "#808080", "w": 1},
+                {"c": "#ff0000", "w": 3},
+                {"c": "#808080", "w": 1},
+                {"c": "#808080", "w": 1}
+              ],
+              "tx": {"ps": []}
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+-- text_shapes.tlide --
+/* html은 슬라이드를 덱 JSON(templide-deck)으로 파일 하나에 담는다. 위치와 크기는 px, 글자는 문단과 run으로 나온다 */
+#include <std/stddef>
+
+style big { font-size = 32pt; font-weight = bold; color = hex(C0392B); }
+
+slide {
+    background = hex(F8F9FA);
+    put text_box { text = big "제목" " 이어지는 글"; x = 40px; y = 30px; width = 600px; height = 80px; anchor = middle; }
+    put text_box { text = bullets ["첫째", numbers ["안쪽 번호"], "셋째"]; x = 40px; y = 130px; width = 400px; height = 200px; }
+    put shape { kind = roundRect; x = 480px; y = 130px; width = 160px; height = 100px; radius = 12px; fill = linear(90, hex(3498DB), hex(2C3E50)); line_color = hex(111111); line_width = 2px; text = "도형"; }
+    put shape { kind = star5; x = 660px; y = 130px; width = 100px; height = 100px; fill = rgba(241, 196, 15, 0.8); shadow = hex(000000); shadow_blur = 6px; shadow_distance = 4px; rotation = 15; }
+    put line { x1 = 40px; y1 = 360px; x2 = 440px; y2 = 360px; end_arrow = triangle; }
+}
+
+target out { path = "text_shapes.html"; type = html; title = "시험 문서"; author = "작성자"; }
+-- text_shapes.json --
+{
+  "v": 1,
+  "title": "시험 문서",
+  "author": "작성자",
+  "w": 1280,
+  "h": 720,
+  "themes": [
+    {
+      "dk1": "#000000",
+      "lt1": "#ffffff",
+      "dk2": "#44546a",
+      "lt2": "#e7e6e6",
+      "accent1": "#4472c4",
+      "accent2": "#ed7d31",
+      "accent3": "#a5a5a5",
+      "accent4": "#ffc000",
+      "accent5": "#5b9bd5",
+      "accent6": "#70ad47",
+      "hlink": "#0563c1",
+      "folHlink": "#954f72",
+      "tx1": "#000000",
+      "bg1": "#ffffff",
+      "tx2": "#44546a",
+      "bg2": "#e7e6e6"
+    }
+  ],
+  "layouts": [],
+  "slides": [
+    {
+      "num": 1,
+      "th": 0,
+      "bg": {"k": "s", "c": "#f8f9fa"},
+      "els": [
+        {
+          "id": 1,
+          "x": 40,
+          "y": 30,
+          "w": 600,
+          "h": 80,
+          "t": "tb",
+          "g": {"p": "rect"},
+          "tx": {
+            "ins": [9.6, 4.8, 9.6, 4.8],
+            "an": "ctr",
+            "ps": [
+              {
+                "rs": [
+                  {
+                    "t": "제목",
+                    "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                    "sz": 42.667,
+                    "b": 1,
+                    "c": "#c0392b"
+                  },
+                  {
+                    "t": " 이어지는 글",
+                    "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                    "sz": 42.667,
+                    "b": 1,
+                    "c": "#c0392b"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 2,
+          "x": 40,
+          "y": 130,
+          "w": 400,
+          "h": 200,
+          "t": "tb",
+          "g": {"p": "rect"},
+          "tx": {
+            "ins": [9.6, 4.8, 9.6, 4.8],
+            "an": "t",
+            "ps": [
+              {
+                "lvl": 0,
+                "bu": {"ch": "•"},
+                "ml": 36,
+                "ind": -36,
+                "rs": [
+                  {
+                    "t": "첫째",
+                    "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                    "sz": 24,
+                    "c": "#000000"
+                  }
+                ]
+              },
+              {
+                "lvl": 1,
+                "bu": {"n": "arabicPeriod"},
+                "ml": 72,
+                "ind": -36,
+                "rs": [
+                  {
+                    "t": "안쪽 번호",
+                    "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                    "sz": 24,
+                    "c": "#000000"
+                  }
+                ]
+              },
+              {
+                "lvl": 0,
+                "bu": {"ch": "•"},
+                "ml": 36,
+                "ind": -36,
+                "rs": [
+                  {
+                    "t": "셋째",
+                    "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                    "sz": 24,
+                    "c": "#000000"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 3,
+          "x": 480,
+          "y": 130,
+          "w": 160,
+          "h": 100,
+          "t": "sp",
+          "g": {"p": "roundRect", "a": {"adj": 12000}},
+          "f": {"k": "lin", "a": 180, "st": [[0, "#3498db"], [1, "#2c3e50"]], "sm": 1},
+          "l": {"c": "#111111", "w": 2},
+          "tx": {
+            "ins": [9.6, 4.8, 9.6, 4.8],
+            "an": "ctr",
+            "ps": [
+              {
+                "al": "ctr",
+                "rs": [
+                  {
+                    "t": "도형",
+                    "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                    "sz": 24,
+                    "c": "#ffffff"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 4,
+          "x": 660,
+          "y": 130,
+          "w": 100,
+          "h": 100,
+          "r": 15,
+          "fx": {"sh": {"c": "#000000", "b": 6, "dx": 2.828, "dy": 2.828}},
+          "t": "sp",
+          "g": {"p": "star5"},
+          "f": {"k": "s", "c": "rgba(241,196,15,0.8)"},
+          "l": {"c": "#2f528f", "w": 1.333},
+          "tx": {"ins": [9.6, 4.8, 9.6, 4.8], "an": "ctr", "ps": []}
+        },
+        {
+          "id": 5,
+          "x": 40,
+          "y": 360,
+          "w": 400,
+          "h": 0,
+          "t": "ln",
+          "g": {"p": "line"},
+          "l": {"c": "#4472c4", "w": 0.667, "te": "triangle"}
+        }
+      ]
+    }
+  ]
+}
+-- transitions_animations.tlide --
+/* 화면 전환(tr), 자동 넘김(adv), 애니메이션(an: 개체 번호, 효과 키, 시작 방식, 길이와 지연), 발표자 메모(notes), 구역(sec), 숨김(hid) */
+#include <std/stddef>
+
+section "시작";
+
+slide {
+    transition fade.through_black 1s;
+    advance_after = 4s;
+    put text_box as a { text = "A"; x = 20px; y = 20px; width = 200px; height = 40px; }
+    put shape as b { kind = ellipse; x = 20px; y = 80px; width = 60px; height = 60px; }
+    animate a enter fade 0.5s;
+    animate a enter fly.left 1s with_previous delay 0.2s;
+    animate b emphasis spin after_previous;
+    animate b exit wipe.up 400ms on_click;
+    animate b move path "M 0 0 L 100 0 L 100 100";
+    comment "발표자 메모";
+}
+
+section "다음";
+
+slide {
+    hidden = true;
+    transition push.down;
+}
+
+slide {
+    transition wipe.right 250ms;
+    review { text = "검토"; author = "김"; x = 10px; y = 20px; }
+}
+
+target out { path = "transitions_animations.html"; type = html; loop = true; }
+-- transitions_animations.json --
+{
+  "v": 1,
+  "title": "out",
+  "author": "templide",
+  "w": 1280,
+  "h": 720,
+  "loop": 1,
+  "themes": [
+    {
+      "dk1": "#000000",
+      "lt1": "#ffffff",
+      "dk2": "#44546a",
+      "lt2": "#e7e6e6",
+      "accent1": "#4472c4",
+      "accent2": "#ed7d31",
+      "accent3": "#a5a5a5",
+      "accent4": "#ffc000",
+      "accent5": "#5b9bd5",
+      "accent6": "#70ad47",
+      "hlink": "#0563c1",
+      "folHlink": "#954f72",
+      "tx1": "#000000",
+      "bg1": "#ffffff",
+      "tx2": "#44546a",
+      "bg2": "#e7e6e6"
+    }
+  ],
+  "layouts": [],
+  "slides": [
+    {
+      "num": 1,
+      "th": 0,
+      "bg": {"k": "s", "c": "#ffffff"},
+      "els": [
+        {
+          "id": 1,
+          "n": "a",
+          "x": 20,
+          "y": 20,
+          "w": 200,
+          "h": 40,
+          "t": "tb",
+          "g": {"p": "rect"},
+          "tx": {
+            "ins": [9.6, 4.8, 9.6, 4.8],
+            "an": "t",
+            "ps": [
+              {
+                "rs": [
+                  {
+                    "t": "A",
+                    "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                    "sz": 24,
+                    "c": "#000000"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 2,
+          "n": "b",
+          "x": 20,
+          "y": 80,
+          "w": 60,
+          "h": 60,
+          "t": "sp",
+          "g": {"p": "ellipse"},
+          "f": {"k": "s", "c": "#4472c4"},
+          "l": {"c": "#2f528f", "w": 1.333},
+          "tx": {"ins": [9.6, 4.8, 9.6, 4.8], "an": "ctr", "ps": []}
+        }
+      ],
+      "adv": 4000,
+      "tr": {"k": "fade", "o": "through_black", "d": 1000},
+      "sec": "시작",
+      "notes": [
+        {
+          "rs": [
+            {
+              "t": "발표자 메모",
+              "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+              "sz": 16,
+              "c": "#000000"
+            }
+          ]
+        }
+      ],
+      "an": [
+        {"el": 1, "key": "enter.fade", "st": "on_click", "d": 500},
+        {"el": 1, "key": "enter.fly.left", "st": "with_previous", "d": 1000, "dl": 200},
+        {"el": 2, "key": "emphasis.spin", "st": "after_previous"},
+        {"el": 2, "key": "exit.wipe.up", "st": "on_click", "d": 400},
+        {
+          "el": 2,
+          "key": "move.right",
+          "st": "on_click",
+          "path": "M 0 0 L 0.078125 0 L 0.078125 0.138889 E"
+        }
+      ]
+    },
+    {
+      "num": 2,
+      "th": 0,
+      "bg": {"k": "s", "c": "#ffffff"},
+      "els": [],
+      "hid": 1,
+      "tr": {"k": "push", "o": "down", "d": 500},
+      "sec": "다음"
+    },
+    {
+      "num": 3,
+      "th": 0,
+      "bg": {"k": "s", "c": "#ffffff"},
+      "els": [],
+      "tr": {"k": "wipe", "o": "right", "d": 250},
+      "sec": "다음",
+      "rv": [{"tx": "검토", "au": "김", "x": 10, "y": 20}]
+    }
+  ]
+}
+-- web_index/main.tlide --
+/* type = web은 path 폴더에 index.html과 라이브러리를 쓰고, 그림은 media 폴더의 파일을 가리킨다 (덱 JSON은 html과 같은 모양이다) */
+#include <std/stddef>
+
+slide {
+    put image { data = file("pic.png"); x = 20px; y = 20px; width = 200px; height = 100px; }
+    put text_box { text = "web"; x = 20px; y = 140px; width = 200px; height = 30px; }
+}
+
+target out { path = "site"; type = web; }
+-- web_index/main.json --
+{
+  "v": 1,
+  "title": "out",
+  "author": "templide",
+  "w": 1280,
+  "h": 720,
+  "themes": [
+    {
+      "dk1": "#000000",
+      "lt1": "#ffffff",
+      "dk2": "#44546a",
+      "lt2": "#e7e6e6",
+      "accent1": "#4472c4",
+      "accent2": "#ed7d31",
+      "accent3": "#a5a5a5",
+      "accent4": "#ffc000",
+      "accent5": "#5b9bd5",
+      "accent6": "#70ad47",
+      "hlink": "#0563c1",
+      "folHlink": "#954f72",
+      "tx1": "#000000",
+      "bg1": "#ffffff",
+      "tx2": "#44546a",
+      "bg2": "#e7e6e6"
+    }
+  ],
+  "layouts": [],
+  "slides": [
+    {
+      "num": 1,
+      "th": 0,
+      "bg": {"k": "s", "c": "#ffffff"},
+      "els": [
+        {
+          "id": 1,
+          "x": 20,
+          "y": 20,
+          "w": 200,
+          "h": 100,
+          "t": "pic",
+          "src": "media/image1.png",
+          "g": {"p": "rect"}
+        },
+        {
+          "id": 2,
+          "x": 20,
+          "y": 140,
+          "w": 200,
+          "h": 30,
+          "t": "tb",
+          "g": {"p": "rect"},
+          "tx": {
+            "ins": [9.6, 4.8, 9.6, 4.8],
+            "an": "t",
+            "ps": [
+              {
+                "rs": [
+                  {
+                    "t": "web",
+                    "f": "\"Calibri\",\"Malgun Gothic\",\"templide latin Calibri\",\"맑은 고딕\",\"Apple SD Gothic Neo\",\"Noto Sans KR\",\"Noto Sans CJK KR\",sans-serif",
+                    "sz": 24,
+                    "c": "#000000"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
+-- web_index/pic.png (base64) --
+iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAIAAADwyuo0AAAAEElEQVR42mOQm/AfjhiQOQCnWg1p
+Wowh/gAAAABJRU5ErkJggg==

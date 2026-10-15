@@ -9,7 +9,7 @@
         put skeuo_button { text = "시작"; x = 100px; y = 380px; width = 200px; height = 56px; }
     }
 
-top에서 bottom으로 위에서 아래로 바뀌는 채우기에, 위쪽 안쪽의 반사광(gloss), 테두리(border), 아래로 떨어지는 그림자(shade)를 더한다.
+위쪽의 top에서 아래쪽의 bottom으로 바뀌는 채우기에, 위쪽 안쪽의 반사광(gloss), 테두리(border), 아래로 떨어지는 그림자(shade)를 더한다.
 */
 #include <std/stddef>
 

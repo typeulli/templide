@@ -2,7 +2,7 @@
 
 export const objectNames: Record<string, string> = {
     text_box: 'Text box', shape: 'Shape', image: 'Picture', line: 'Line', group: 'Group', backdrop: 'Backdrop blur', connector: 'Connector',
-    freeform: 'Freeform', placeholder: 'Placeholder', video: 'Video', audio: 'Audio',
+    freeform: 'Freeform', placeholder: 'Placeholder', video: 'Video', audio: 'Audio', table: 'Table',
 };
 
 export const propertyNames: Record<string, string> = {
@@ -24,6 +24,8 @@ export const propertyNames: Record<string, string> = {
     hide_icon: 'Hide icon during show', across_slides: 'Play across slides', volume: 'Volume', trim_start: 'Trim start', trim_end: 'Trim end',
     fade_in: 'Fade in', fade_out: 'Fade out', background: 'Background', hidden: 'Hide slide', advance_after: 'Advance automatically',
     transition_sound: 'Transition sound', title: 'Title', author: 'Author',
+    cells: 'Cells', col_widths: 'Column widths', row_heights: 'Row heights', header_rows: 'Header rows', header_cols: 'Header columns', banded_rows: 'Banded rows',
+    banded_cols: 'Banded columns', header_fill: 'Header fill', band_fill: 'Band fill', align: 'Horizontal alignment',
 };
 
 export const enumNames: Record<string, string> = {

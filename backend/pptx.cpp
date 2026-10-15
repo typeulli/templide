@@ -2,6 +2,7 @@
 #include "backend.h"
 #include "pptx_animations.h"
 #include "raster.h"
+#include "table.h"
 #include "../middleend/geometry.h"
 
 #include <miniz.h>
@@ -966,6 +967,8 @@ namespace templide::backend::pptx {
                     xml = placeholder_xml(id, element, common, element_where);
                 } else if (element.object == "video" || element.object == "audio") {
                     xml = media_xml(id, element, common, element_where);
+                } else if (element.object == "table") {
+                    xml = table_xml(id, element, common, element_where);
                 } else {
                     error(element_where + ": the pptx backend does not support this object");
                 }
@@ -1056,6 +1059,97 @@ namespace templide::backend::pptx {
                     + styled_fill_xml(common) + ln_xml(common, true) + effect_xml(common) + "</p:spPr>"
                     + shape_style + text_body_xml(*text, body_properties_xml(element, false, "ctr"), "ctr") + "</p:sp>";
                 return rect ? xml : "";
+            }
+
+            // 표의 칸 하나. 병합한 칸은 gridSpan, rowSpan을 쓰고 가려진 칸은 hMerge, vMerge로 표시한다 (글은 비어 있다)
+            std::string table_cell_xml(const table::Cell& cell, const std::string& where) {
+                std::string attributes;
+                if (cell.column_span > 1) {
+                    attributes += attribute("gridSpan", static_cast<Emu>(cell.column_span));
+                }
+                if (cell.row_span > 1) {
+                    attributes += attribute("rowSpan", static_cast<Emu>(cell.row_span));
+                }
+                if (cell.covered && cell.column > cell.owner_column) {
+                    attributes += " hMerge=\"1\"";
+                }
+                if (cell.covered && cell.row > cell.owner_row) {
+                    attributes += " vMerge=\"1\"";
+                }
+                std::string text = "<a:txBody><a:bodyPr/><a:lstStyle/>";
+                if (cell.text.paragraphs.empty()) {
+                    text += "<a:p><a:endParaRPr/></a:p>";
+                }
+                for (const auto& paragraph : cell.text.paragraphs) {
+                    text += paragraph_xml(paragraph, "");
+                }
+                text += "</a:txBody>";
+                const auto pixels = [](double value) { return static_cast<Emu>(std::llround(value * emu_per_px)); };
+                static const std::map<std::string, std::string> anchors = {{"top", "t"}, {"middle", "ctr"}, {"bottom", "b"}};
+                const auto anchor_code = anchors.find(cell.anchor);
+                std::string properties = attribute("marL", pixels(cell.padding[0])) + attribute("marR", pixels(cell.padding[2]))
+                    + attribute("marT", pixels(cell.padding[1])) + attribute("marB", pixels(cell.padding[3]))
+                    + attribute("anchor", anchor_code != anchors.end() ? anchor_code->second : "ctr");
+                std::string lines;
+                // lnL, lnR, lnT, lnB 순서. 선이 없는 쪽은 선 없음으로 적어 PowerPoint가 기본 선을 넣지 않게 한다
+                for (const auto& [index, tag] : {std::pair{std::size_t{0}, "a:lnL"}, std::pair{std::size_t{2}, "a:lnR"}, std::pair{std::size_t{1}, "a:lnT"}, std::pair{std::size_t{3}, "a:lnB"}}) {
+                    const table::Line& line = cell.border[index];
+                    if (line.width <= 0) {
+                        lines += std::string("<") + tag + " w=\"0\"><a:noFill/></" + tag + ">";
+                        continue;
+                    }
+                    lines += std::string("<") + tag + attribute("w", pixels(line.width)) + " cap=\"flat\" cmpd=\"sng\" algn=\"ctr\">" + solid_fill_xml(line.color)
+                        + (line.dash.empty() ? "" : "<a:prstDash" + attribute("val", line.dash) + "/>") + "<a:round/></" + tag + ">";
+                }
+                const std::string fill = cell.fill ? fill_xml(*cell.fill, where + ", fill") : "";
+                return "<a:tc" + attributes + ">" + text + "<a:tcPr" + properties + ">" + lines + (fill.empty() ? "<a:noFill/>" : fill) + "</a:tcPr></a:tc>";
+            }
+
+            // 표(table). 스타일은 아무것도 더하지 않는 '스타일 없음, 눈금 없음'이고, 칸마다 채우기와 네 변의 선을 적는다.
+            // 열 너비와 행 높이는 비율대로 표 크기에 나눈다. 글이 길면 PowerPoint가 행을 늘린다
+            std::string table_xml(int id, const ir::Element& element, const Common& common, const std::string& where) {
+                const auto rect = element_rect(element, where);
+                const auto resolved = table::resolve(element);
+                if (!resolved) {
+                    error(where + ": 'cells' must be a list of rows with at least one cell");
+                    return "";
+                }
+                if (!rect) {
+                    return "";
+                }
+                const auto weights = [&](const std::vector<ir::Number>& numbers, Emu reference) {
+                    std::vector<double> result;
+                    for (const auto& number : numbers) {
+                        result.push_back(static_cast<double>(to_emu(number, reference)));
+                    }
+                    return result;
+                };
+                const auto widths = table::divide_integer(weights(resolved->column_widths, slide_width_), resolved->columns, rect->cx);
+                const auto heights = table::divide_integer(weights(resolved->row_heights, slide_height_), resolved->rows, rect->cy);
+                std::string grid = "<a:tblGrid>";
+                for (const long long width : widths) {
+                    grid += "<a:gridCol" + attribute("w", static_cast<Emu>(width)) + "/>";
+                }
+                grid += "</a:tblGrid>";
+                std::string rows;
+                for (std::size_t r = 0; r < resolved->rows; ++r) {
+                    rows += "<a:tr" + attribute("h", static_cast<Emu>(heights[r])) + ">";
+                    for (std::size_t c = 0; c < resolved->columns; ++c) {
+                        rows += table_cell_xml(resolved->at(r, c), where);
+                    }
+                    rows += "</a:tr>";
+                }
+                const auto flag = [&](const char* name) {
+                    const auto* value = std::get_if<bool>(find_property(element, name));
+                    return value != nullptr && *value;
+                };
+                const std::string flags = std::string(resolved->header_rows > 0 ? " firstRow=\"1\"" : "") + (resolved->header_columns > 0 ? " firstCol=\"1\"" : "")
+                    + (flag("banded_rows") ? " bandRow=\"1\"" : "") + (flag("banded_cols") ? " bandCol=\"1\"" : "");
+                return "<p:graphicFrame><p:nvGraphicFramePr>" + cnvpr_xml(id, element, "Table", common)
+                    + "<p:cNvGraphicFramePr><a:graphicFrameLocks noGrp=\"1\"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr>"
+                    "<p:xfrm><a:off" + attribute("x", rect->x) + attribute("y", rect->y) + "/><a:ext" + attribute("cx", rect->cx) + attribute("cy", rect->cy) + "/></p:xfrm>"
+                    "<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/table\"><a:tbl><a:tblPr" + flags
+                    + "><a:tableStyleId>{2D5ABB26-0587-4C30-8999-92F81FD0307C}</a:tableStyleId></a:tblPr>" + grid + rows + "</a:tbl></a:graphicData></a:graphic></p:graphicFrame>";
             }
 
             // title, subtitle, body 개체 틀. idx는 slide의 개체 틀과 짝을 맞추는 번호다

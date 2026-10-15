@@ -2,6 +2,7 @@
 
 #include "html.h"
 #include "pdf.h"
+#include "png.h"
 #include "pptx.h"
 #include "../middleend/tasset.h"
 
@@ -26,14 +27,17 @@ namespace templide::backend {
         if (target.type == "pdf") {
             return pdf::write(document, target, base_dir, libs_dir, dry_run);
         }
+        if (target.type == "png") {
+            return png::write(document, target, base_dir, libs_dir, dry_run);
+        }
         return {"Unsupported target type: " + target.type};
     }
 
     std::vector<Warning> target_warnings(const ir::Document& document, const ir::Target& target) {
         std::vector<Warning> result;
         const bool pptx = target.type == "pptx";
-        // pdf는 JS 함수를 부르는 곳이 없는 정적 출력이라 pptx처럼 run(...)과 script를 쓰지 못한다
-        const bool no_script = pptx || target.type == "pdf";
+        // pdf와 png는 JS 함수를 부르는 곳이 없는 정적 출력이라 pptx처럼 run(...)과 script를 쓰지 못한다
+        const bool no_script = pptx || target.type == "pdf" || target.type == "png";
         const auto add = [&](const std::string& where, const std::string& message) {
             if (std::none_of(result.begin(), result.end(), [&](const Warning& each) { return each.where == where && each.message == message; })) {
                 result.push_back({where, message});
@@ -71,6 +75,12 @@ namespace templide::backend {
         };
         if (no_script && !target.script.empty()) {
             add(target.script_where, "script is only loaded by html and web targets; the " + target.type + " target '" + target.name + "' ignores it");
+        }
+        if (target.type != "png" && !target.scale_where.empty()) {
+            add(target.scale_where, "scale only applies to png targets; the " + target.type + " target '" + target.name + "' ignores it");
+        }
+        if (target.type != "png" && !target.transparent_where.empty()) {
+            add(target.transparent_where, "transparent only applies to png targets; the " + target.type + " target '" + target.name + "' ignores it");
         }
         for (const std::size_t index : target.masters) {
             for (const auto& layout : document.masters.at(index).layouts) {

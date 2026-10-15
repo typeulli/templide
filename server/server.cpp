@@ -4,6 +4,8 @@
 #include "navigation.h"
 #include "../backend/backend.h"
 #include "../backend/html.h"
+#include "../backend/png.h"
+#include "../backend/table.h"
 #include "../middleend/analyzer.h"
 #include "../middleend/tasset.h"
 #include "../middleend/color.h"
@@ -386,6 +388,18 @@ namespace templide::server {
             return result;
         }
 
+        // 문단은 줄바꿈으로 잇고, run들은 이어 붙인 글
+        std::string plain_text(const ir::Text& text) {
+            std::string result;
+            for (std::size_t i = 0; i < text.paragraphs.size(); ++i) {
+                result += i > 0 ? "\n" : "";
+                for (const auto& run : text.paragraphs[i].runs) {
+                    result += run.text;
+                }
+            }
+            return result;
+        }
+
         // 속성 패널에 보여 줄 지금 값. 길이는 px로 풀고(%는 슬라이드 크기로), 시간은 ms, 그 밖의 수는 단위를 뗀 값이다.
         // 그라데이션, 무늬, 그림, 링크, 실행 설정은 {gradient}, {pattern}, {image}, {link}, {action} 객체다
         json value_json(const std::string& name, const ir::Value& value, SlideSize size) {
@@ -439,6 +453,19 @@ namespace templide::server {
             }
             if (const auto* string = std::get_if<std::string>(&value)) {
                 return *string;
+            }
+            if (const auto* list = std::get_if<ir::List>(&value)) {
+                // col_widths, row_heights의 %는 표의 크기를 따라가므로 슬라이드 가로, 세로로 푼다
+                const std::string item_name = name == "col_widths" ? "width" : name == "row_heights" ? "height" : name;
+                json items = json::array();
+                for (const auto& item : list->items) {
+                    if (const auto* text = std::get_if<ir::Text>(&item)) {
+                        items.push_back(plain_text(*text));
+                    } else {
+                        items.push_back(value_json(item_name, item, size));
+                    }
+                }
+                return items;
             }
             return nullptr;
         }
@@ -699,6 +726,10 @@ namespace templide::server {
                 const SourceText& source = it->second;
                 const std::size_t begin = std::min(source.line_starts[diagnostic.line - 1] + diagnostic.column - 1, source.text.size());
                 std::size_t end = begin;
+                if (diagnostic.length > 0) {
+                    end = std::min(begin + diagnostic.length, source.text.size());
+                    return range_of(compiled, {diagnostic.path, begin, end});
+                }
                 while (end < source.text.size() && (std::isalnum(static_cast<unsigned char>(source.text[end])) || source.text[end] == '_')) {
                     ++end;
                 }
@@ -750,6 +781,60 @@ namespace templide::server {
                 return result;
             }
 
+            // include한 파일(문서 밖)의 오류를 문서에서 그 파일을 include한 줄에도 알린다. 그 파일을 열지 않아도 왜 안 되는지 보이도록,
+            // 줄마다 첫 오류 하나만 적는다. 파일 안의 위치는 그 파일의 진단이 가리킨다
+            void include_errors(const Compiled& compiled, const std::string& main_path, std::map<std::string, json>& by_uri) const {
+                std::map<std::string, const middleend::Include*> entered; // 파일 -> 그 파일을 처음 include한 줄
+                for (const auto& include : compiled.result.includes) {
+                    entered.try_emplace(include.to, &include);
+                }
+                struct Summary {
+                    std::string first;
+                    std::size_t count = 0;
+                };
+                std::map<const middleend::Include*, Summary> summaries;
+                std::vector<const middleend::Include*> order;
+                for (const auto& diagnostic : compiled.result.diagnostics) {
+                    if (diagnostic.path == main_path) {
+                        continue;
+                    }
+                    // 문서가 직접 include한 줄에 닿을 때까지 거슬러 올라간다
+                    const middleend::Include* line = nullptr;
+                    std::string current = diagnostic.path;
+                    for (std::size_t depth = 0; depth <= compiled.result.includes.size(); ++depth) {
+                        const auto it = entered.find(current);
+                        if (it == entered.end()) {
+                            break;
+                        }
+                        if (it->second->from == main_path) {
+                            line = it->second;
+                            break;
+                        }
+                        current = it->second->from;
+                    }
+                    if (line == nullptr) {
+                        continue;
+                    }
+                    Summary& summary = summaries[line];
+                    if (summary.count++ == 0) {
+                        const std::size_t slash = diagnostic.path.find_last_of("/\\");
+                        const std::string name = slash == std::string::npos ? diagnostic.path : diagnostic.path.substr(slash + 1);
+                        summary.first = "Error in included file " + name + (diagnostic.line > 0 ? ":" + std::to_string(diagnostic.line) + ":" + std::to_string(diagnostic.column) : "") + ": " + diagnostic.message;
+                        order.push_back(line);
+                    }
+                }
+                for (const auto* line : order) {
+                    const Summary& summary = summaries.at(line);
+                    const std::string message = summary.first + (summary.count > 1 ? " (and " + std::to_string(summary.count - 1) + " more)" : "");
+                    by_uri[uri_of(main_path)].push_back({
+                        {"range", diagnostic_range(compiled, middleend::Diagnostic{main_path, line->line, line->column, message, line->length})},
+                        {"severity", 1},
+                        {"source", "templide"},
+                        {"message", message},
+                    });
+                }
+            }
+
             void publish(const std::string& key, const Compiled& compiled) {
                 std::map<std::string, json> by_uri;
                 // 오류는 severity 1, 컴파일은 되지만 알릴 것(sRGB 밖의 색 등)은 2
@@ -763,6 +848,7 @@ namespace templide::server {
                         });
                     }
                 }
+                include_errors(compiled, documents_.at(key).path.string(), by_uri);
                 by_uri.try_emplace(documents_.at(key).uri, json::array());
                 // 이번에 오류가 없어진 파일도 빈 목록을 보내 지운다
                 for (const auto& uri : published_[key]) {
@@ -952,14 +1038,91 @@ namespace templide::server {
                     assets.push_back({{"bundle", asset.bundle}, {"written", asset.written}, {"default", asset.is_default}, {"hasBy", asset.has_by},
                                       {"namespaces", asset.namespaces}, {"aliases", asset.aliases}, {"entries", asset.entries}});
                 }
+                // 분석기가 읽은 파일들(문서와 #include한 파일). package면 컴파일러 옆 packages 폴더의 표준 라이브러리다
+                json files = json::array();
+                if (const auto compiled = compiled_.find(it->first); compiled != compiled_.end()) {
+                    const std::string packages = file_key(packages_dir_);
+                    for (const auto& [path, source] : compiled->second.sources) {
+                        const std::string key = file_key(backend::utf8_path(path));
+                        files.push_back({{"path", path}, {"package", key.size() > packages.size() && key.compare(0, packages.size(), packages) == 0 && key[packages.size()] == '/'}});
+                    }
+                }
                 return {
-                    {"assets", assets}, {"constants", symbols.constants}, {"styles", symbols.styles},
+                    {"assets", assets}, {"constants", symbols.constants}, {"styles", symbols.styles}, {"files", files},
                     {"objects", objects}, {"templates", templates}, {"enums", symbols.enums}, {"masters", masters}, {"themes", symbols.themes},
                     {"commonProperties", vars(symbols.common_properties)}, {"textProperties", vars(symbols.text_properties)},
-                    {"styleProperties", vars(symbols.style_properties)}, {"slideProperties", vars(symbols.slide_properties)},
+                    {"styleProperties", vars(symbols.style_properties)}, {"slideProperties", vars(symbols.slide_properties)}, {"cellProperties", vars(symbols.cell_properties)},
                     {"transitions", symbols.transitions}, {"animations", symbols.animations}, {"endlessAnimations", symbols.endless_animations},
                     {"themeColors", symbols.theme_colors},
                 };
+            }
+
+            // 표 편집에 필요한 것. 칸마다 글과 출처, 병합과 서식을 풀어 낸 값, cell 블록들, 줄과 칸을 끼우고 뺄 수 있는지
+            json table_info(const Compiled& compiled, const ir::Element& element, SlideSize size) const {
+                json result = json::object();
+                const auto resolved = backend::table::resolve(element);
+                const auto* grid = std::get_if<ir::List>(backend::find_property(element, "cells"));
+                if (!resolved || grid == nullptr) {
+                    return result;
+                }
+                result["rows"] = resolved->rows;
+                result["columns"] = resolved->columns;
+                bool editable = grid->origin.kind == ir::Origin::Kind::LITERAL;
+                json cells = json::array();
+                for (std::size_t r = 0; r < resolved->rows; ++r) {
+                    const auto* row = std::get_if<ir::List>(&grid->items[r]);
+                    editable = editable && row != nullptr && row->origin.kind == ir::Origin::Kind::LITERAL;
+                    json line = json::array();
+                    for (std::size_t c = 0; c < resolved->columns; ++c) {
+                        const backend::table::Cell& cell = resolved->at(r, c);
+                        json entry = {{"covered", cell.covered}, {"rowSpan", cell.row_span}, {"columnSpan", cell.column_span}, {"header", cell.header},
+                                      {"anchor", cell.anchor}, {"align", cell.align}, {"padding", cell.padding}};
+                        if (row != nullptr && c < row->items.size()) {
+                            if (const auto* text = std::get_if<ir::Text>(&row->items[c])) {
+                                entry["text"] = plain_text(*text);
+                                json paragraphs = json::array();
+                                for (const auto& paragraph : text->paragraphs) {
+                                    json runs = json::array();
+                                    for (const auto& run : paragraph.runs) {
+                                        runs.push_back(origin_json(compiled, run.origin));
+                                    }
+                                    paragraphs.push_back(std::move(runs));
+                                }
+                                entry["runs"] = std::move(paragraphs);
+                            }
+                            if (c < row->origins.size()) {
+                                entry["origin"] = origin_json(compiled, row->origins[c]);
+                            }
+                        }
+                        if (cell.fill) {
+                            entry["fill"] = value_json("fill", *cell.fill, size);
+                        }
+                        json borders = json::array();
+                        for (const auto& line_style : cell.border) {
+                            borders.push_back(line_style.width > 0 ? json{{"color", hex_color(line_style.color)}, {"width", line_style.width}, {"dash", line_style.dash}} : json());
+                        }
+                        entry["border"] = std::move(borders);
+                        line.push_back(std::move(entry));
+                    }
+                    cells.push_back(std::move(line));
+                }
+                result["cells"] = std::move(cells);
+                result["editable"] = editable;
+                json styles = json::array();
+                for (const auto& style : element.cell_styles) {
+                    json properties = json::object();
+                    json values = json::object();
+                    for (const auto& property : style.properties) {
+                        properties[property.name] = origin_json(compiled, property.origin);
+                        if (json value = value_json(property.name, property.value, size); !value.is_null()) {
+                            values[property.name] = std::move(value);
+                        }
+                    }
+                    styles.push_back({{"row", style.row - 1}, {"column", style.column - 1}, {"source", origin_json(compiled, style.source)},
+                                      {"properties", std::move(properties)}, {"values", std::move(values)}});
+                }
+                result["cellStyles"] = std::move(styles);
+                return result;
             }
 
             void add_elements(const Compiled& compiled, const std::vector<ir::Element>& elements, SlideSize size, json& out) const {
@@ -990,6 +1153,9 @@ namespace templide::server {
                         }
                         entry["properties"] = std::move(properties);
                         entry["values"] = std::move(values);
+                        if (element.object == "table") {
+                            entry["table"] = table_info(compiled, element, size);
+                        }
                         if (element.from_template) {
                             json instance = json::object();
                             json instance_values = json::object();
@@ -1506,8 +1672,8 @@ namespace templide::server {
                     units += length == 4 ? 2 : 1;
                     offset += length;
                 }
-                const Completion result = complete(symbols != symbols_.end() ? symbols->second : middleend::Symbols{}, source.text, offset, packages_dir_);
-                const json range = {{"start", position(source, result.replace_from)}, {"end", position(source, offset)}};
+                const Completion result = complete(symbols != symbols_.end() ? symbols->second : middleend::Symbols{}, source.text, offset, packages_dir_, document->second.path);
+                const json range = {{"start", position(source, result.replace_from)}, {"end", position(source, result.replace_to == std::string::npos ? offset : result.replace_to)}};
                 json items = json::array();
                 for (const auto& item : result.items) {
                     json entry = {
@@ -1978,7 +2144,10 @@ namespace templide::server {
                     warnings.push_back(warning.path + ":" + std::to_string(warning.line) + ":" + std::to_string(warning.column) + ": warning: " + warning.message);
                 }
                 const auto errors = backend::write_target(document, *target, base, libs_dir_, warnings);
-                const std::filesystem::path output = (base / backend::utf8_path(target->path)).lexically_normal();
+                std::filesystem::path output = (base / backend::utf8_path(target->path)).lexically_normal();
+                if (target->type == "png") {
+                    output = backend::png::numbered_path(output, 1); // 슬라이드마다 파일이 하나씩이라 첫 파일을 알린다
+                }
                 return {{"path", backend::display(output)}, {"type", target->type}, {"errors", errors}, {"warnings", warnings}};
             }
 
@@ -2121,6 +2290,30 @@ namespace templide::server {
                             throw std::runtime_error("No slide " + std::to_string(page));
                         }
                         result = editor.paste(document.slides[page - 1], op.at("text").get<std::string>());
+                    } else if (kind == "table") {
+                        const std::string action = op.at("action").get<std::string>();
+                        const ir::Element& table = element();
+                        const auto row = op.value("row", std::size_t{0});
+                        const auto column = op.value("column", std::size_t{0});
+                        if (action == "text") {
+                            result = editor.table_set_text(table, row, column, op.at("text").get<std::string>());
+                        } else if (action == "insert_row" || action == "insert_column") {
+                            result = editor.table_insert(table, action == "insert_row", op.at("index").get<std::size_t>());
+                        } else if (action == "remove_row" || action == "remove_column") {
+                            result = editor.table_remove(table, action == "remove_row", op.at("index").get<std::size_t>());
+                        } else if (action == "merge") {
+                            result = editor.table_merge(table, row, column, op.at("rows").get<std::size_t>(), op.at("columns").get<std::size_t>());
+                        } else if (action == "split") {
+                            result = editor.table_split(table, row, column);
+                        } else if (action == "cell_set") {
+                            result = editor.table_set_cell(table, row, column, op.at("name").get<std::string>(), new_value(op));
+                        } else if (action == "cell_unset") {
+                            result = editor.table_unset_cell(table, row, column, op.at("name").get<std::string>());
+                        } else if (action == "sizes") {
+                            result = editor.table_set_sizes(table, op.at("axis").get<std::string>() == "columns", op.at("values").get<std::vector<double>>());
+                        } else {
+                            throw std::runtime_error("Unknown table action: " + action);
+                        }
                     } else if (kind == "delete") {
                         result = editor.remove(element());
                     } else if (kind == "size") {

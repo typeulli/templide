@@ -15,6 +15,16 @@ namespace templide::middleend {
         std::size_t line;   // 위치가 없으면 0
         std::size_t column;
         std::string message;
+        std::size_t length = 0; // 칠할 바이트 수. 0이면 그 자리의 낱말 하나
+    };
+
+    // #include 한 줄. 편집기가 include한 파일의 오류를 이 줄에도 알리는 데 쓴다
+    struct Include {
+        std::string from; // #include가 적힌 파일의 경로
+        std::string to;   // include한 파일의 경로
+        std::size_t line;   // 경로(<...>나 "...")의 위치
+        std::size_t column;
+        std::size_t length;
     };
 
     // 편집기 자동 완성에 쓰는 이름들. type은 int, float, string, text, color, bool, enum 이름 등이다
@@ -55,6 +65,7 @@ namespace templide::middleend {
         std::vector<SymbolVar> text_properties;   // 글이 있는 object에 붙는 속성
         std::vector<SymbolVar> style_properties;  // style 선언과 style(...) 안의 속성
         std::vector<SymbolVar> slide_properties;
+    std::vector<SymbolVar> cell_properties;   // put table 안 cell(행, 열) 블록의 속성
         std::map<std::string, std::vector<std::string>> transitions; // 종류 -> 옵션 (옵션이 없으면 비어 있다)
         std::map<std::string, std::vector<std::string>> animations;  // "종류.효과" -> 옵션 (첫 옵션이 기본값, 옵션이 없으면 비어 있다)
         std::vector<std::string> endless_animations;                 // 끝나는 시간이 없어 길이를 정할 수 없는 "종류.효과"
@@ -67,6 +78,7 @@ namespace templide::middleend {
         std::vector<Diagnostic> warnings; // 컴파일은 되지만 알릴 것 (sRGB 밖의 색 등)
         // 읽은 파일의 경로와 내용. IR의 SourceRange와 Diagnostic이 이 경로를 쓴다
         std::vector<std::pair<std::string, std::string>> sources;
+        std::vector<Include> includes; // 읽은 순서
         Symbols symbols;
     };
 

@@ -89,6 +89,20 @@ namespace templide::server {
         EditResult insert_into(const ir::Origin& block, const std::string& statement) const;
         // element를 만든 put(또는 group) 문장에 'as name'을 붙이거나 바꾼다. template이 만든 element는 바깥쪽 put이다
         EditResult rename(const ir::Element& element, const std::string& name) const;
+        // ---- 표(table object). row, column은 0부터다. 칸의 글을 바꾸고, 줄과 칸을 끼우고 빼고, 병합하고, 칸 서식과 열 너비, 행 높이를 바꾼다
+        // 칸에 글을 적는다. 글이 문자열 리터럴 하나뿐이면 그 리터럴만, 아니면 칸의 식 전체를 새 문자열 리터럴로 바꾼다
+        EditResult table_set_text(const ir::Element& element, std::size_t row, std::size_t column, const std::string& text) const;
+        // index번째 줄(행 또는 열) 앞에 빈 줄을 끼운다. index가 줄 수와 같으면 맨 끝이다. cell 블록, col_widths, header_*도 맞춘다
+        EditResult table_insert(const ir::Element& element, bool rows, std::size_t index) const;
+        EditResult table_remove(const ir::Element& element, bool rows, std::size_t index) const;
+        // (row, column)에서 시작하는 직사각형을 병합한다. 다른 칸은 비우고 그 칸의 cell 블록은 지운다
+        EditResult table_merge(const ir::Element& element, std::size_t row, std::size_t column, std::size_t row_span, std::size_t column_span) const;
+        EditResult table_split(const ir::Element& element, std::size_t row, std::size_t column) const;
+        // 칸 하나의 서식. 칸의 cell 블록이 없으면 만들고, 비게 되면 지운다
+        EditResult table_set_cell(const ir::Element& element, std::size_t row, std::size_t column, const std::string& property, const NewValue& value) const;
+        EditResult table_unset_cell(const ir::Element& element, std::size_t row, std::size_t column, const std::string& property) const;
+        // col_widths(columns) 또는 row_heights를 px 값들로 다시 쓴다
+        EditResult table_set_sizes(const ir::Element& element, bool columns, const std::vector<double>& pixels) const;
         // 원문 내용. 없으면 nullptr
         const std::string* source_text(const std::string& path) const { return text_of(path); }
 

@@ -156,12 +156,31 @@ namespace templide::ir {
         std::vector<Paragraph> paragraphs;
     };
 
-    using Value = std::variant<bool, Number, std::string, Color, EnumValue, Text, Gradient, Image, Pattern, Link, Action>;
+    struct List;
+    using Value = std::variant<bool, Number, std::string, Color, EnumValue, Text, Gradient, Image, Pattern, Link, Action, List>;
+
+    // list<T> 값. [a, b, c]. 항목은 모두 T 타입이고, T가 list면 항목도 List다
+    struct List {
+        std::vector<Value> items;
+        std::vector<Origin> origins; // items와 같은 길이. 각 항목을 적은 곳. 편집기가 빈 칸에 글을 넣을 때 쓴다
+        Origin origin;               // 리스트 전체를 적은 곳 ([ ... ] 리터럴). 적지 않았거나 고칠 수 없으면 LOCKED
+        std::vector<SourceRange> ranges; // items와 같은 길이. 각 항목을 적은 식의 원문 범위 (고칠 수 없는 항목도 있다). 편집기가 항목을 끼우고 빼는 데 쓴다
+    };
 
     struct Property {
         std::string name;
         Value value;
         Origin origin;
+    };
+
+    // put table 블록 안의 cell(행, 열) { ... } 하나. row, column은 1부터이고 properties는 그 안에 적은 속성이다
+    struct CellStyle {
+        int row = 0;
+        int column = 0;
+        std::vector<Property> properties;
+        Origin source;        // cell 문장(BLOCK). 화면에서 서식을 바꿀 때 속성을 이 블록에 넣는다
+        Origin row_origin;    // cell(행, 열)에 적은 행과 열 번호. 정수 리터럴이면 LITERAL, 계산한 값이면 LOCKED. 행을 끼우고 뺄 때 번호를 고친다
+        Origin column_origin;
     };
 
     // stddef에 선언된 object(text_box, image 등) 하나. object가 "group"이면 children을 묶는다
@@ -179,6 +198,8 @@ namespace templide::ir {
         bool from_template = false;
         // from_template일 때 바깥쪽 put에 적은 x, y, width, height. 화면에서 끌거나 크기를 바꾸면 이 값을 바꿔 template 전체를 바꾼다
         std::vector<Property> instance;
+        // object가 table일 때 put 블록에 적은 cell(행, 열) { ... } 문장들
+        std::vector<CellStyle> cell_styles;
     };
 
     struct Layout {
@@ -289,6 +310,12 @@ namespace templide::ir {
         // 편집기를 위한 것. target 블록(BLOCK)과 적은 속성(title, author, loop)의 값
         Origin source;
         std::map<std::string, Origin> origins;
+        // png만 쓴다. scale은 슬라이드 크기(px)에 곱하는 배율이고, transparent면 슬라이드 배경을 그리지 않는다.
+        // *_where는 적은 곳(파일:줄:칸)이고, 적지 않았으면 비어 있다. png가 아닌 target에 적으면 경고를 낸다
+        double scale = 1;
+        bool transparent = false;
+        std::string scale_where;
+        std::string transparent_where;
     };
 
     struct Document {

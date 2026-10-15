@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cstdio>
 #include <cmath>
 #include <ctime>
@@ -17,6 +18,7 @@
 #include <functional>
 #include <limits>
 #include <map>
+#include <memory>
 #include <set>
 #include <sstream>
 #include <tuple>
@@ -42,14 +44,23 @@ namespace templide::middleend {
             // Link는 url 문자열, slide(번호), slide_jump 값을 받고, Ref는 put ... as로 붙인 개체 이름이다.
             // Action은 Link가 받는 값과 run(...), program(...), macro(...), action_file(...)을 받는다.
             // Image, Video, Audio는 그림, 비디오, 오디오 파일이고 File(file(...), asset(...))이나 문자열 경로를 받는다
-            enum class Kind { Any, Error, Bool, Int, Float, String, Text, Color, Enum, Gradient, Image, Fill, Background, Pattern, Link, SlideRef, Ref, Action, Video, Audio, File, Font };
+            // List는 element 타입의 값을 [a, b, c]로 나열한 list<T>다
+            enum class Kind { Any, Error, Bool, Int, Float, String, Text, Color, Enum, Gradient, Image, Fill, Background, Pattern, Link, SlideRef, Ref, Action, Video, Audio, File, Font, List };
             Kind kind = Kind::Any;
             const EnumInfo* enumeration = nullptr;
+            std::shared_ptr<const Type> element; // kind가 List일 때 항목의 타입
         };
         using Kind = Type::Kind;
 
+        Type list_of(const Type& element) {
+            return Type{Kind::List, nullptr, std::make_shared<const Type>(element)};
+        }
+
         bool same_type(const Type& a, const Type& b) {
-            return a.kind == b.kind && a.enumeration == b.enumeration;
+            if (a.kind != b.kind || a.enumeration != b.enumeration) {
+                return false;
+            }
+            return a.kind != Kind::List || same_type(*a.element, *b.element);
         }
 
         // from 타입의 값을 to 자리에 넣을 수 있는지. 에러 타입은 이미 보고했으므로 통과시킨다
@@ -101,6 +112,7 @@ namespace templide::middleend {
                 case Kind::Audio: return "audio";
                 case Kind::File: return "file";
                 case Kind::Font: return "font";
+                case Kind::List: return "list<" + type_name(*type.element) + ">";
             }
             return "unknown";
         }
@@ -580,6 +592,8 @@ namespace templide::middleend {
                     {"rotation_x", {Measure::Angle}}, {"rotation_y", {Measure::Angle}}, {"perspective", {Measure::Angle, 0, 180}},
                     {"opacity", {Measure::Ratio, 0, 1}}, {"reflection", {Measure::Ratio, 0, 1}}, {"reflection_size", {Measure::Ratio, 0, 1}},
                     {"columns", {Measure::Ratio, 1, 16, true}},
+                    {"header_rows", {Measure::Ratio, 0, 1000, true}}, {"header_cols", {Measure::Ratio, 0, 1000, true}},
+                    {"col_span", {Measure::Ratio, 1, 1000, true}}, {"row_span", {Measure::Ratio, 1, 1000, true}},
                 };
                 for (const char* name : {"line_width", "shadow_blur", "shadow_distance", "inner_shadow_blur", "inner_shadow_distance", "glow_size", "soft_edge",
                                          "reflection_distance", "reflection_blur", "bevel_width", "bevel_height", "depth", "radius", "padding", "padding_left",
@@ -621,6 +635,7 @@ namespace templide::middleend {
                 case ast::ListKind::NUMBERS: return ir::ListKind::NUMBERS;
                 case ast::ListKind::DASHES: return ir::ListKind::DASHES;
                 case ast::ListKind::PARAGRAPHS: return ir::ListKind::NONE;
+                case ast::ListKind::PLAIN: return ir::ListKind::NONE;
             }
             return ir::ListKind::NONE;
         }
@@ -880,7 +895,7 @@ namespace templide::middleend {
                     builtin_names_.insert(name);
                 }
                 add_builtin_enum("font_weight", {"normal", "bold"});
-                add_builtin_enum("target_type", {"pptx", "html", "web", "pdf"});
+                add_builtin_enum("target_type", {"pptx", "html", "web", "pdf", "png"});
                 add_builtin_enum("angle_convention", {"powerpoint", "css"});
                 add_builtin_enum("text_align", {"left", "center", "right", "justify"});
                 add_builtin_enum("font_style", {"normal", "italic"});
@@ -1000,6 +1015,7 @@ namespace templide::middleend {
                 for (const auto& source : sources_) {
                     result.sources.emplace_back(source.path, source.text);
                 }
+                result.includes = std::move(includes_);
                 result.symbols = std::move(symbols_);
                 return result;
             }
@@ -1079,6 +1095,9 @@ namespace templide::middleend {
                 for (const auto& [name, type] : slide_properties()) {
                     symbols_.slide_properties.push_back({name, type_name(type), "", false});
                 }
+                for (const auto& [name, type] : cell_properties()) {
+                    symbols_.cell_properties.push_back({name, type_name(type), "", false});
+                }
                 for (const auto& [kind, options] : transition_options()) {
                     std::vector<std::string> named;
                     for (const auto& option : options) {
@@ -1138,6 +1157,7 @@ namespace templide::middleend {
             std::filesystem::path main_folder_; // 그림, 미디어 경로의 기준
             // Token의 string_view가 가리키므로 원소의 주소가 바뀌면 안 된다
             std::deque<Source> sources_;
+            std::vector<Include> includes_;
             std::set<std::filesystem::path> loaded_;
             std::vector<const ast::ASTNode*> statements_;
 
@@ -1228,7 +1248,7 @@ namespace templide::middleend {
                     std::ifstream file(path, std::ios::binary);
                     if (!file) {
                         if (include != nullptr) {
-                            error(include->token, std::string(include->relative ? "Cannot find file: " : "Cannot find package: ") + path.string());
+                            include_error(include, std::string(include->relative ? "Cannot find file: " : "Cannot find package: ") + path.string());
                         } else {
                             diagnostics_.push_back({path.string(), 0, 0, "Cannot open file"});
                         }
@@ -1240,7 +1260,7 @@ namespace templide::middleend {
                     auto decoded = decode_source(buffer.str(), decode_error);
                     if (!decoded) {
                         if (include != nullptr) {
-                            error(include->token, path.string() + " " + decode_error);
+                            include_error(include, path.string() + " " + decode_error);
                         } else {
                             diagnostics_.push_back({path.string(), 0, 0, path.string() + " " + decode_error});
                         }
@@ -1266,7 +1286,9 @@ namespace templide::middleend {
                         const auto* include = static_cast<const ast::ASTInclude*>(statement);
                         const std::string file = include->name + ".tlide";
                         const std::filesystem::path base = include->relative ? path.parent_path() : packages_dir_;
-                        load((base / std::filesystem::path(std::u8string(file.begin(), file.end()))).lexically_normal(), include);
+                        const std::filesystem::path target = (base / std::filesystem::path(std::u8string(file.begin(), file.end()))).lexically_normal();
+                        includes_.push_back({source.path, target.string(), include->path_token.line, include->path_token.column, include->path_length});
+                        load(target, include);
                     } else {
                         statements_.push_back(statement);
                     }
@@ -1375,7 +1397,9 @@ namespace templide::middleend {
                         return locked("computed");
                     }
                 }
-                if (!is_literal(expr)) {
+                // [a, b, c] 리터럴은 항목이 무엇이든 식 전체를 바꿀 수 있다
+                const bool plain_list = expr->type == ast::LIST && static_cast<const ast::ASTList*>(expr)->kind == ast::ListKind::PLAIN;
+                if (!plain_list && !is_literal(expr)) {
                     return locked("computed");
                 }
                 if (in_package(expr)) {
@@ -1424,6 +1448,14 @@ namespace templide::middleend {
 
             void error(const Token& token, const std::string& message) {
                 Diagnostic diagnostic{path_of(token), token.line, token.column, message};
+                if (reported_.insert({diagnostic.path, diagnostic.line, diagnostic.column, diagnostic.message}).second) {
+                    diagnostics_.push_back(std::move(diagnostic));
+                }
+            }
+
+            // include한 파일을 읽지 못한 오류. #이 아니라 <...>나 "..." 경로에 칠한다
+            void include_error(const ast::ASTInclude* include, const std::string& message) {
+                Diagnostic diagnostic{path_of(include->token), include->path_token.line, include->path_token.column, message, include->path_length};
                 if (reported_.insert({diagnostic.path, diagnostic.line, diagnostic.column, diagnostic.message}).second) {
                     diagnostics_.push_back(std::move(diagnostic));
                 }
@@ -1681,7 +1713,21 @@ namespace templide::middleend {
             // 이름과 타입 검사
 
             Type resolve_type(const ast::ASTName* name) {
-                const std::string& type = name->name;
+                std::string type;
+                for (const char c : name->name) {
+                    if (!std::isspace(static_cast<unsigned char>(c))) {
+                        type += c;
+                    }
+                }
+                return resolve_type_name(type, name->token);
+            }
+
+            // 타입 이름 하나. list<T>는 안쪽 T를 다시 풀어 list_of로 묶는다
+            Type resolve_type_name(const std::string& type, const Token& at) {
+                if (type.starts_with("list<") && type.ends_with(">")) {
+                    const Type element = resolve_type_name(type.substr(5, type.size() - 6), at);
+                    return element.kind == Kind::Error ? element : list_of(element);
+                }
                 if (type == "int") { return Type{Kind::Int}; }
                 if (type == "float") { return Type{Kind::Float}; }
                 if (type == "string") { return Type{Kind::String}; }
@@ -1693,10 +1739,11 @@ namespace templide::middleend {
                 if (type == "video") { return Type{Kind::Video}; }
                 if (type == "audio") { return Type{Kind::Audio}; }
                 if (type == "font") { return Type{Kind::Font}; }
+                if (type == "fill") { return Type{Kind::Fill}; }
                 if (const auto it = enums_.find(type); it != enums_.end()) {
                     return Type{Kind::Enum, &it->second};
                 }
-                error(name->token, "Unknown type: " + type);
+                error(at, "Unknown type: " + type);
                 return Type{Kind::Error};
             }
 
@@ -1813,6 +1860,15 @@ namespace templide::middleend {
                         continue;
                     }
                     vars.push_back(property);
+                }
+                // 표는 칸 안쪽 여백을 padding 하나로, 또는 방향마다 따로 정할 수 있다
+                if (static_cast<const ast::ASTObject*>(object)->name == "table") {
+                    for (const char* side : {"left", "top", "right", "bottom"}) {
+                        const std::string name = std::string("padding_") + side;
+                        if (find_var(vars, name) == nullptr) {
+                            vars.push_back({name, Type{Kind::Float}, nullptr, true});
+                        }
+                    }
                 }
                 if (!has_text) {
                     return;
@@ -1986,6 +2042,7 @@ namespace templide::middleend {
                 if (objects_.contains(put->name)) {
                     check_object_properties(put);
                 }
+                check_cells(put, scope);
             }
 
             // 세부값만 있고 기본값이 없는 것, object가 쓸 수 없는 공통 속성
@@ -2026,6 +2083,43 @@ namespace templide::middleend {
                 }
                 if (put->name == "backdrop") {
                     forbid("fill", "A backdrop has no fill; it is filled with the blurred background");
+                }
+                if (put->name == "table") {
+                    for (const char* property : {"rotation", "flip", "radius", "opacity", "shadow", "inner_shadow", "glow", "soft_edge", "reflection", "bevel", "depth",
+                                                 "rotation_x", "rotation_y", "perspective", "line_cap", "line_join", "line_compound"}) {
+                        forbid(property, std::string("A table has no '") + property + "'");
+                    }
+                }
+            }
+
+            // put table 안 cell(행, 열) 블록의 속성. 정한 것만 그 칸에 적용되고, 안 정한 것은 표의 값을 따른다
+            std::vector<std::pair<std::string, Type>> cell_properties() const {
+                std::vector<std::pair<std::string, Type>> result = {
+                    {"col_span", Type{Kind::Int}}, {"row_span", Type{Kind::Int}}, {"fill", Type{Kind::Fill}},
+                    {"anchor", enums_.contains("text_anchor") ? enum_type("text_anchor") : Type{Kind::Any}}, {"align", enum_type("text_align")},
+                    {"padding", Type{Kind::Float}}, {"padding_left", Type{Kind::Float}}, {"padding_top", Type{Kind::Float}},
+                    {"padding_right", Type{Kind::Float}}, {"padding_bottom", Type{Kind::Float}},
+                    {"line_color", Type{Kind::Color}}, {"line_width", Type{Kind::Float}}, {"line_dash", enum_type("dash_style")},
+                };
+                for (const char* side : {"left", "top", "right", "bottom"}) {
+                    result.emplace_back(std::string("line_color_") + side, Type{Kind::Color});
+                    result.emplace_back(std::string("line_width_") + side, Type{Kind::Float});
+                }
+                return result;
+            }
+
+            // put 블록의 cell 문장. 표(table)에만 쓴다
+            void check_cells(const ast::ASTPut* put, const Scope& scope) {
+                for (const auto* cell : put->cells) {
+                    if (put->name != "table") {
+                        error(cell->token, "'cell' can only be used in a put table");
+                    }
+                    check_as(cell->row, scope, Type{Kind::Int});
+                    check_as(cell->column, scope, Type{Kind::Int});
+                    std::set<std::string> assigned;
+                    for (const auto* statement : cell->body) {
+                        check_assignment(static_cast<const ast::ASTAssign*>(statement), scope, assigned, cell_properties(), "cell");
+                    }
                 }
             }
 
@@ -2281,7 +2375,8 @@ namespace templide::middleend {
                         error(assign->name->token, "A target has no master; the master comes from each slide's layout");
                         continue;
                     }
-                    if (name != "path" && name != "type" && name != "width" && name != "height" && name != "title" && name != "author" && name != "loop" && name != "angles" && name != "script") {
+                    if (name != "path" && name != "type" && name != "width" && name != "height" && name != "title" && name != "author" && name != "loop" && name != "angles" && name != "script"
+                        && name != "scale" && name != "transparent") {
                         error(assign->name->token, "Unknown target property: " + name);
                         continue;
                     }
@@ -2291,7 +2386,7 @@ namespace templide::middleend {
                     }
                     if (name == "path" || name == "title" || name == "author" || name == "script") {
                         check_as(assign->expression, Scope{}, Type{Kind::String});
-                    } else if (name == "loop") {
+                    } else if (name == "loop" || name == "transparent") {
                         check_as(assign->expression, Scope{}, Type{Kind::Bool});
                     } else if (name == "type") {
                         check_as(assign->expression, Scope{}, enum_type("target_type"));
@@ -2322,6 +2417,12 @@ namespace templide::middleend {
 
             // expr의 타입. expected는 enum 값의 이름을 찾거나 text로 해석할 때 쓴다
             Type check(const ast::ASTNode* expr, const Scope& scope, const Type& expected) {
+                if (expected.kind == Kind::List && expr->type == ast::LIST && static_cast<const ast::ASTList*>(expr)->kind == ast::ListKind::PLAIN) {
+                    for (const auto* item : static_cast<const ast::ASTList*>(expr)->items) {
+                        check_as(item, scope, *expected.element);
+                    }
+                    return expected;
+                }
                 if (expected.kind == Kind::Text) {
                     return check_text(expr, scope, false);
                 }
@@ -2742,6 +2843,10 @@ namespace templide::middleend {
                             check_text(part, scope, in_item);
                             break;
                         case ast::LIST:
+                            if (static_cast<const ast::ASTList*>(part)->kind == ast::ListKind::PLAIN) {
+                                error(part->token, "A list must follow 'bullets', 'numbers' or 'dashes'");
+                                break;
+                            }
                             if (in_item) {
                                 error(part->token, "A nested list must be a separate item of the outer list");
                             }
@@ -2761,7 +2866,9 @@ namespace templide::middleend {
 
             void check_list(const ast::ASTList* list, const Scope& scope) {
                 for (const auto* item : list->items) {
-                    if (item->type == ast::LIST) {
+                    if (item->type == ast::LIST && static_cast<const ast::ASTList*>(item)->kind == ast::ListKind::PLAIN) {
+                        error(item->token, "A list must follow 'bullets', 'numbers' or 'dashes'");
+                    } else if (item->type == ast::LIST) {
                         check_list(static_cast<const ast::ASTList*>(item), scope);
                     } else {
                         check_text(item, scope, true);
@@ -3195,6 +3302,15 @@ namespace templide::middleend {
                     } else if (name == "script") {
                         result.script = std::get<std::string>(evaluate(assign->expression, Env{}, Type{Kind::String}));
                         result.script_where = where_of(location(assign->expression));
+                    } else if (name == "scale") {
+                        const ir::Number scale = as_number(evaluate(assign->expression, Env{}, Type{Kind::Float}));
+                        if (check_number(scale, Rule{Measure::Ratio, 0.1, 10}, "'scale'", location(assign->expression))) {
+                            result.scale = scalar(scale).value_or(1);
+                        }
+                        result.scale_where = where_of(location(assign->expression));
+                    } else if (name == "transparent") {
+                        result.transparent = std::get<bool>(evaluate(assign->expression, Env{}, Type{Kind::Bool}));
+                        result.transparent_where = where_of(location(assign->expression));
                     }
                 }
                 // slide들이 쓰는 master를 처음 쓰인 순서대로 모은다. 매개변수 값이 다르면 master도 여러 개가 된다
@@ -3429,6 +3545,203 @@ namespace templide::middleend {
                 }
             }
 
+            // 칸의 글이 비었는지
+            static bool is_empty_text(const ir::Text& text) {
+                for (const auto& paragraph : text.paragraphs) {
+                    for (const auto& run : paragraph.runs) {
+                        if (!run.text.empty() || !run.field.empty()) {
+                            return false;
+                        }
+                    }
+                }
+                return true;
+            }
+
+            // put table. cells, col_widths, row_heights가 서로 맞는지 보고, cell(행, 열) 문장을 계산해 element.cell_styles에 넣는다.
+            // 병합한 칸은 겹치거나 표 밖으로 나가면 안 되고, 병합에 가려지는 칸의 글은 비어 있어야 한다
+            void build_table(const ast::ASTPut* put, const Env& env, const Env& self, ir::Element& element, const std::map<std::string, const ast::ASTNode*>& sources) {
+                const auto at = [&](const std::string& name) -> const Token& {
+                    const auto it = sources.find(name);
+                    return it != sources.end() ? location(it->second) : put->token;
+                };
+                const auto property = [&](const std::string& name) -> const ir::Value* {
+                    for (const auto& each : element.properties) {
+                        if (each.name == name) {
+                            return &each.value;
+                        }
+                    }
+                    return nullptr;
+                };
+                const auto* grid = std::get_if<ir::List>(property("cells"));
+                if (grid == nullptr) {
+                    return;
+                }
+                const std::size_t rows = grid->items.size();
+                std::size_t columns = 0;
+                bool ragged = false;
+                for (std::size_t r = 0; r < rows; ++r) {
+                    const auto* row = std::get_if<ir::List>(&grid->items[r]);
+                    if (row == nullptr) {
+                        ragged = true;
+                    } else if (r == 0) {
+                        columns = row->items.size();
+                    } else if (row->items.size() != columns) {
+                        error(at("cells"), "Row " + std::to_string(r + 1) + " of 'cells' has " + std::to_string(row->items.size()) + " cells, but row 1 has " + std::to_string(columns));
+                        ragged = true;
+                    }
+                }
+                if (rows == 0 || columns == 0) {
+                    error(at("cells"), "A table needs at least one row and one column");
+                    return;
+                }
+                if (ragged) {
+                    return;
+                }
+                const auto check_sizes = [&](const std::string& name, std::size_t count, const std::string& what) {
+                    const auto* list = std::get_if<ir::List>(property(name));
+                    if (list == nullptr || list->items.empty()) {
+                        return;
+                    }
+                    if (list->items.size() != count) {
+                        error(at(name), "'" + name + "' has " + std::to_string(list->items.size()) + " values, but the table has " + std::to_string(count) + " " + what);
+                    }
+                    for (const auto& item : list->items) {
+                        const auto* number = std::get_if<ir::Number>(&item);
+                        if (number != nullptr && check_number(*number, Rule{Measure::Position, 0}, "A value of '" + name + "'", at(name))) {
+                            double total = 0;
+                            for (const auto& term : number->terms) {
+                                total += term.second;
+                            }
+                            if (total <= 0) {
+                                error(at(name), "A value of '" + name + "' must be more than 0");
+                            }
+                        }
+                    }
+                };
+                check_sizes("col_widths", columns, "columns");
+                check_sizes("row_heights", rows, "rows");
+                const auto check_header = [&](const std::string& name, std::size_t limit, const std::string& what) {
+                    if (const auto* number = std::get_if<ir::Number>(property(name)); number != nullptr) {
+                        if (const auto value = scalar(*number); value && *value > static_cast<double>(limit)) {
+                            error(at(name), "'" + name + "' is " + ir::format_scalar(*value) + ", but the table has only " + std::to_string(limit) + " " + what);
+                        }
+                    }
+                };
+                check_header("header_rows", rows, "rows");
+                check_header("header_cols", columns, "columns");
+
+                struct Region {
+                    std::size_t row;
+                    std::size_t column;
+                    std::size_t row_span;
+                    std::size_t column_span;
+                    const ast::ASTCell* node;
+                };
+                std::vector<Region> regions;
+                std::set<std::pair<std::size_t, std::size_t>> seen;
+                const auto types = cell_properties();
+                for (const auto* node : put->cells) {
+                    ir::CellStyle style;
+                    style.source = block_of(node, env);
+                    style.row_origin = origin_of(node->row, env, Type{Kind::Int});
+                    style.column_origin = origin_of(node->column, env, Type{Kind::Int});
+                    const auto row = scalar(as_number(evaluate(node->row, self, Type{Kind::Int})));
+                    const auto column = scalar(as_number(evaluate(node->column, self, Type{Kind::Int})));
+                    bool valid = true;
+                    for (const auto& [number, expression, what] : {std::tuple{row, node->row, "row"}, std::tuple{column, node->column, "column"}}) {
+                        if (!number || *number != std::floor(*number)) {
+                            error(location(expression), std::string("A cell ") + what + " must be a whole number without a unit");
+                            valid = false;
+                        }
+                    }
+                    if (valid && (*row < 1 || *row > static_cast<double>(rows) || *column < 1 || *column > static_cast<double>(columns))) {
+                        error(node->token, "cell(" + ir::format_scalar(*row) + ", " + ir::format_scalar(*column) + ") is outside the table, which has "
+                                               + std::to_string(rows) + " rows and " + std::to_string(columns) + " columns");
+                        valid = false;
+                    }
+                    std::size_t row_span = 1;
+                    std::size_t column_span = 1;
+                    for (const auto* statement : node->body) {
+                        const auto* assign = static_cast<const ast::ASTAssign*>(statement);
+                        const std::string& name = assign->name->name;
+                        const auto type = std::find_if(types.begin(), types.end(), [&](const auto& each) { return each.first == name; });
+                        if (type == types.end()) {
+                            continue;
+                        }
+                        ir::Value value = evaluate(assign->expression, self, type->second);
+                        if (const auto* number = std::get_if<ir::Number>(&value)) {
+                            if (const auto rule = property_rules().find(name); rule != property_rules().end()) {
+                                check_number(*number, rule->second, "'" + name + "'", location(assign->expression));
+                            }
+                            if (const auto span = scalar(*number); span && *span >= 1 && (name == "col_span" || name == "row_span")) {
+                                (name == "col_span" ? column_span : row_span) = static_cast<std::size_t>(*span);
+                            }
+                        }
+                        check_paint(value, name, location(assign->expression));
+                        style.properties.push_back({name, std::move(value), assigned_origin(assign, env, type->second)});
+                    }
+                    if (valid) {
+                        style.row = static_cast<int>(*row);
+                        style.column = static_cast<int>(*column);
+                        const auto r = static_cast<std::size_t>(*row);
+                        const auto c = static_cast<std::size_t>(*column);
+                        if (!seen.insert({r, c}).second) {
+                            error(node->token, "Duplicate cell(" + std::to_string(r) + ", " + std::to_string(c) + ")");
+                        } else if (r + row_span - 1 > rows || c + column_span - 1 > columns) {
+                            error(node->token, "The merged cell at cell(" + std::to_string(r) + ", " + std::to_string(c) + ") reaches outside the table, which has "
+                                                   + std::to_string(rows) + " rows and " + std::to_string(columns) + " columns");
+                        } else {
+                            regions.push_back({r, c, row_span, column_span, node});
+                        }
+                    }
+                    element.cell_styles.push_back(std::move(style));
+                }
+
+                // 병합한 칸이 덮는 자리. 다른 병합과 겹치거나, 병합에 가려지는 칸에 cell 블록이 있거나, 글이 있으면 에러다
+                std::vector<int> owner(rows * columns, -1);
+                const auto name_of = [](const Region& region) { return "cell(" + std::to_string(region.row) + ", " + std::to_string(region.column) + ")"; };
+                for (std::size_t i = 0; i < regions.size(); ++i) {
+                    const Region& region = regions[i];
+                    if (region.row_span * region.column_span == 1) {
+                        continue;
+                    }
+                    for (std::size_t r = region.row; r < region.row + region.row_span; ++r) {
+                        for (std::size_t c = region.column; c < region.column + region.column_span; ++c) {
+                            int& slot = owner[(r - 1) * columns + (c - 1)];
+                            if (slot != -1) {
+                                error(region.node->token, "The merged cell at " + name_of(region) + " overlaps the merged cell at " + name_of(regions[static_cast<std::size_t>(slot)]));
+                            } else {
+                                slot = static_cast<int>(i);
+                            }
+                        }
+                    }
+                }
+                for (std::size_t i = 0; i < regions.size(); ++i) {
+                    const Region& region = regions[i];
+                    const int slot = owner[(region.row - 1) * columns + (region.column - 1)];
+                    // 병합한 칸이 다른 병합과 겹치는 것은 위에서 알렸으므로, 병합하지 않은 칸의 cell 블록만 본다
+                    if (slot != -1 && static_cast<std::size_t>(slot) != i && region.row_span * region.column_span == 1) {
+                        error(region.node->token, name_of(region) + " is covered by the merged cell at " + name_of(regions[static_cast<std::size_t>(slot)]) + ", so it cannot have its own cell block");
+                    }
+                    if (region.row_span * region.column_span == 1) {
+                        continue;
+                    }
+                    for (std::size_t r = region.row; r < region.row + region.row_span; ++r) {
+                        for (std::size_t c = region.column; c < region.column + region.column_span; ++c) {
+                            if (r == region.row && c == region.column) {
+                                continue;
+                            }
+                            const auto* row = std::get_if<ir::List>(&grid->items[r - 1]);
+                            const auto* text = std::get_if<ir::Text>(&row->items[c - 1]);
+                            if (text != nullptr && !is_empty_text(*text)) {
+                                error(at("cells"), "The cell in row " + std::to_string(r) + ", column " + std::to_string(c) + " is covered by the merged cell at " + name_of(region)
+                                                       + ", so its text must be empty (\"\")");
+                            }
+                        }
+                    }
+                }
+            }
+
             // template은 펼치고, object는 element로 만든다
             void instantiate(const ast::ASTPut* put, const Env& env, std::vector<ir::Element>& out, int depth) {
                 if (depth >= max_expansion_depth) {
@@ -3498,6 +3811,9 @@ namespace templide::middleend {
                         sources[assign->name->name] = assign->expression;
                     }
                     check_element(element, sources, put->token);
+                    if (put->name == "table") {
+                        build_table(put, env, self, element, sources);
+                    }
                     // 연결점 표의 도형 종류. shape, backdrop, image가 아닌 개체는 사각형처럼 연결한다
                     std::string kind = "rect";
                     const bool has_kind = put->name == "shape" || put->name == "backdrop" || put->name == "image";
@@ -3538,7 +3854,22 @@ namespace templide::middleend {
                 out.push_back(std::move(group));
             }
 
+            // [a, b, c]. 항목은 expected.element 타입으로 계산한다
+            ir::List evaluate_list(const ast::ASTList* list, const Env& env, const Type& expected) {
+                ir::List result;
+                result.origin = origin_of(list, env, expected);
+                for (const auto* item : list->items) {
+                    result.items.push_back(evaluate(item, env, *expected.element));
+                    result.origins.push_back(origin_of(item, env, *expected.element));
+                    result.ranges.push_back(range_of(item));
+                }
+                return result;
+            }
+
             ir::Value evaluate(const ast::ASTNode* expr, const Env& env, const Type& expected) {
+                if (expected.kind == Kind::List && expr->type == ast::LIST && static_cast<const ast::ASTList*>(expr)->kind == ast::ListKind::PLAIN) {
+                    return evaluate_list(static_cast<const ast::ASTList*>(expr), env, expected);
+                }
                 if (expected.kind == Kind::Text) {
                     return build_text(expr, env);
                 }

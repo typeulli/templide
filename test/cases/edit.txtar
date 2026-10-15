@@ -1,0 +1,298 @@
+-- table_cells_format.tlide --
+/* 칸의 글과 서식. 글이 문자열 하나뿐인 칸은 그 리터럴만 바꾸고(감싼 style이 남는다), cell 블록이 없으면 만들고, 마지막 속성을 지우면 블록도 지운다 */
+#include <std/stddef>
+
+slide {
+    put table {
+        x = 80px; y = 120px; width = 1120px; height = 300px;
+        cells = [
+            ["이름", "1분기"],
+            ["서울", (style(font-weight = bold) "20")]
+        ];
+    }
+}
+
+target out { path = "out.pptx"; type = pptx; }
+-- table_cells_format.expected --
+$ {"op": "table", "id": "@table", "action": "text", "row": 0, "column": 0, "text": "열 \"A\"\n둘째 줄"}
+[diff]
+-            ["이름", "1분기"],
++            ["열 \"A\"\n둘째 줄", "1분기"],
+
+$ {"op": "table", "id": "@table", "action": "text", "row": 1, "column": 1, "text": "30"}
+[diff]
+-            ["서울", (style(font-weight = bold) "20")]
++            ["서울", (style(font-weight = bold) "30")]
+
+$ {"op": "table", "id": "@table", "action": "cell_set", "row": 1, "column": 0, "name": "fill", "color": "#FFE699"}
+[diff]
++        cell(2, 1) { fill = hex(FFE699); }
+
+$ {"op": "table", "id": "@table", "action": "cell_set", "row": 1, "column": 0, "name": "align", "enum": "center"}
+[diff]
+-        cell(2, 1) { fill = hex(FFE699); }
++        cell(2, 1) { fill = hex(FFE699); align = center; }
+
+$ {"op": "table", "id": "@table", "action": "cell_set", "row": 1, "column": 0, "name": "line_width_bottom", "length": 3}
+[diff]
+-        cell(2, 1) { fill = hex(FFE699); align = center; }
++        cell(2, 1) { fill = hex(FFE699); align = center; line_width_bottom = 3px; }
+
+$ {"op": "table", "id": "@table", "action": "cell_unset", "row": 1, "column": 0, "name": "fill"}
+[diff]
+-        cell(2, 1) { fill = hex(FFE699); align = center; line_width_bottom = 3px; }
++        cell(2, 1) { align = center; line_width_bottom = 3px; }
+
+$ {"op": "table", "id": "@table", "action": "cell_unset", "row": 1, "column": 0, "name": "align"}
+[diff]
+-        cell(2, 1) { align = center; line_width_bottom = 3px; }
++        cell(2, 1) { line_width_bottom = 3px; }
+
+$ {"op": "table", "id": "@table", "action": "cell_unset", "row": 1, "column": 0, "name": "line_width_bottom"}
+[diff]
+-        cell(2, 1) { line_width_bottom = 3px; }
+
+$ {"op": "table", "id": "@table", "action": "sizes", "axis": "columns", "values": [300, 820]}
+[diff]
++        col_widths = [300px, 820px];
+
+$ {"op": "table", "id": "@table", "action": "sizes", "axis": "rows", "values": [100, 200]}
+[diff]
++        row_heights = [100px, 200px];
+
+$ {"op": "table", "id": "@table", "action": "sizes", "axis": "columns", "values": [300]}
+[error] The number of sizes does not match the table
+-- table_cells_format.edits --
+{"op": "table", "id": "@table", "action": "text", "row": 0, "column": 0, "text": "열 \"A\"\n둘째 줄"}
+{"op": "table", "id": "@table", "action": "text", "row": 1, "column": 1, "text": "30"}
+{"op": "table", "id": "@table", "action": "cell_set", "row": 1, "column": 0, "name": "fill", "color": "#FFE699"}
+{"op": "table", "id": "@table", "action": "cell_set", "row": 1, "column": 0, "name": "align", "enum": "center"}
+{"op": "table", "id": "@table", "action": "cell_set", "row": 1, "column": 0, "name": "line_width_bottom", "length": 3}
+{"op": "table", "id": "@table", "action": "cell_unset", "row": 1, "column": 0, "name": "fill"}
+{"op": "table", "id": "@table", "action": "cell_unset", "row": 1, "column": 0, "name": "align"}
+{"op": "table", "id": "@table", "action": "cell_unset", "row": 1, "column": 0, "name": "line_width_bottom"}
+{"op": "table", "id": "@table", "action": "sizes", "axis": "columns", "values": [300, 820]}
+{"op": "table", "id": "@table", "action": "sizes", "axis": "rows", "values": [100, 200]}
+{"op": "table", "id": "@table", "action": "sizes", "axis": "columns", "values": [300]}
+-- table_locked.tlide --
+/* template 안에서 정한 표와 cells를 계산한 표는 줄과 칸을 고칠 수 없다. 편집기는 이유를 보여 준다 */
+#include <std/stddef>
+
+template fixed {
+    put table { x = 0; y = 0; width = 200; height = 100; cells = [["a", "b"], ["c", "d"]]; }
+}
+
+slide {
+    put fixed { }
+}
+
+target out { path = "out.pptx"; type = pptx; }
+-- table_locked.expected --
+$ {"op": "table", "id": "@table", "action": "insert_row", "index": 1}
+[error] This value is written inside a template definition; change it in the code
+
+$ {"op": "table", "id": "@table", "action": "text", "row": 0, "column": 0, "text": "x"}
+[error] This value is written inside a template definition; change it in the code
+
+$ {"op": "table", "id": "@table", "action": "cell_set", "row": 0, "column": 0, "name": "fill", "color": "#FF0000"}
+[error] This value is written inside a template definition; change it in the code
+
+$ {"op": "table", "id": "@table", "action": "merge", "row": 0, "column": 0, "rows": 1, "columns": 2}
+[error] This value is written inside a template definition; change it in the code
+-- table_locked.edits --
+{"op": "table", "id": "@table", "action": "insert_row", "index": 1}
+{"op": "table", "id": "@table", "action": "text", "row": 0, "column": 0, "text": "x"}
+{"op": "table", "id": "@table", "action": "cell_set", "row": 0, "column": 0, "name": "fill", "color": "#FF0000"}
+{"op": "table", "id": "@table", "action": "merge", "row": 0, "column": 0, "rows": 1, "columns": 2}
+-- table_merge.tlide --
+/* 병합하면 가려지는 칸의 글을 비우고 왼쪽 위 칸에 span을 적는다. 겹치면 거절하고, 풀면 span과 (비게 된) cell 블록을 지운다 */
+#include <std/stddef>
+
+slide {
+    put table {
+        x = 80px; y = 120px; width = 1120px; height = 300px;
+        cells = [
+            ["a", "b", "c"],
+            ["d", "e", "f"],
+            ["g", "h", "i"]
+        ];
+        cell(2, 2) { fill = hex(EEE); }
+    }
+}
+
+target out { path = "out.pptx"; type = pptx; }
+-- table_merge.expected --
+$ {"op": "table", "id": "@table", "action": "merge", "row": 0, "column": 0, "rows": 1, "columns": 2}
+[diff]
+-            ["a", "b", "c"],
++            ["a", "", "c"],
++        cell(1, 1) { col_span = 2; }
+
+$ {"op": "table", "id": "@table", "action": "merge", "row": 1, "column": 1, "rows": 2, "columns": 2}
+[diff]
+-            ["d", "e", "f"],
+-            ["g", "h", "i"]
++            ["d", "e", ""],
++            ["g", "", ""]
+-        cell(2, 2) { fill = hex(EEE); }
++        cell(2, 2) { fill = hex(EEE); row_span = 2; col_span = 2; }
+
+$ {"op": "table", "id": "@table", "action": "merge", "row": 0, "column": 1, "rows": 2, "columns": 1}
+[error] The selection overlaps a merged cell; split it first
+
+$ {"op": "table", "id": "@table", "action": "merge", "row": 2, "column": 2, "rows": 2, "columns": 1}
+[error] The selection reaches outside the table
+
+$ {"op": "table", "id": "@table", "action": "split", "row": 1, "column": 1}
+[diff]
+-        cell(2, 2) { fill = hex(EEE); row_span = 2; col_span = 2; }
++        cell(2, 2) { fill = hex(EEE); }
+
+$ {"op": "table", "id": "@table", "action": "split", "row": 0, "column": 0}
+[diff]
+-        cell(1, 1) { col_span = 2; }
+
+$ {"op": "table", "id": "@table", "action": "split", "row": 0, "column": 0}
+[error] This cell is not merged
+-- table_merge.edits --
+{"op": "table", "id": "@table", "action": "merge", "row": 0, "column": 0, "rows": 1, "columns": 2}
+{"op": "table", "id": "@table", "action": "merge", "row": 1, "column": 1, "rows": 2, "columns": 2}
+{"op": "table", "id": "@table", "action": "merge", "row": 0, "column": 1, "rows": 2, "columns": 1}
+{"op": "table", "id": "@table", "action": "merge", "row": 2, "column": 2, "rows": 2, "columns": 1}
+{"op": "table", "id": "@table", "action": "split", "row": 1, "column": 1}
+{"op": "table", "id": "@table", "action": "split", "row": 0, "column": 0}
+{"op": "table", "id": "@table", "action": "split", "row": 0, "column": 0}
+-- table_structure.tlide --
+/* 표의 줄과 칸을 끼우고 빼면 cells, col_widths, row_heights, header_rows, 그리고 cell(행, 열)의 번호와 병합 크기가 함께 바뀐다 */
+#include <std/stddef>
+#include <std/styles>
+
+slide {
+    put table {
+        x = 80px; y = 120px; width = 1120px; height = 300px;
+        cells = [
+            ["이름", "1분기", "2분기"],
+            ["서울", "10", bold "20"],
+            ["합계", "", ""]
+        ];
+        col_widths = [400px, 360px, 360px];
+        header_rows = 1;
+        cell(3, 2) {
+            col_span = 2;
+            fill = hex(EEE);
+        }
+    }
+}
+
+target out { path = "out.pptx"; type = pptx; }
+-- table_structure.expected --
+$ {"op": "table", "id": "@table", "action": "insert_row", "index": 1}
+[diff]
++            ["", "", ""],
+-        cell(3, 2) {
++        cell(4, 2) {
+
+$ {"op": "table", "id": "@table", "action": "insert_row", "index": 0}
+[diff]
++            ["", "", ""],
+-        header_rows = 1;
+-        cell(4, 2) {
++        header_rows = 2;
++        cell(5, 2) {
+
+$ {"op": "table", "id": "@table", "action": "insert_row", "index": 5}
+[diff]
+-            ["합계", "", ""]
++            ["합계", "", ""],
++            ["", "", ""]
+
+$ {"op": "table", "id": "@table", "action": "remove_row", "index": 0}
+[diff]
+-            ["", "", ""],
+-        header_rows = 2;
+-        cell(5, 2) {
++        header_rows = 1;
++        cell(4, 2) {
+
+$ {"op": "table", "id": "@table", "action": "remove_row", "index": 4}
+[diff]
+-            ["합계", "", ""],
+-            ["", "", ""]
++            ["합계", "", ""]
+
+$ {"op": "table", "id": "@table", "action": "insert_column", "index": 1}
+[diff]
+-            ["이름", "1분기", "2분기"],
+-            ["", "", ""],
+-            ["서울", "10", bold "20"],
+-            ["합계", "", ""]
++            ["이름", "", "1분기", "2분기"],
++            ["", "", "", ""],
++            ["서울", "", "10", bold "20"],
++            ["합계", "", "", ""]
+-        col_widths = [400px, 360px, 360px];
++        col_widths = [400px, 360px, 360px, 360px];
+-        cell(4, 2) {
++        cell(4, 3) {
+
+$ {"op": "table", "id": "@table", "action": "insert_column", "index": 3}
+[diff]
+-            ["이름", "", "1분기", "2분기"],
+-            ["", "", "", ""],
+-            ["서울", "", "10", bold "20"],
+-            ["합계", "", "", ""]
++            ["이름", "", "1분기", "", "2분기"],
++            ["", "", "", "", ""],
++            ["서울", "", "10", "", bold "20"],
++            ["합계", "", "", "", ""]
+-        col_widths = [400px, 360px, 360px, 360px];
++        col_widths = [400px, 360px, 360px, 360px, 360px];
+-            col_span = 2;
++            col_span = 3;
+
+$ {"op": "table", "id": "@table", "action": "remove_column", "index": 0}
+[diff]
+-            ["이름", "", "1분기", "", "2분기"],
+-            ["", "", "", "", ""],
+-            ["서울", "", "10", "", bold "20"],
+-            ["합계", "", "", "", ""]
++            ["", "1분기", "", "2분기"],
++            ["", "", "", ""],
++            ["", "10", "", bold "20"],
++            ["", "", "", ""]
+-        col_widths = [400px, 360px, 360px, 360px, 360px];
++        col_widths = [360px, 360px, 360px, 360px];
+-        cell(4, 3) {
++        cell(4, 2) {
+
+$ {"op": "table", "id": "@table", "action": "remove_column", "index": 3}
+[diff]
+-            ["", "1분기", "", "2분기"],
+-            ["", "", "", ""],
+-            ["", "10", "", bold "20"],
+-            ["", "", "", ""]
++            ["", "1분기", ""],
++            ["", "", ""],
++            ["", "10", ""],
++            ["", "", ""]
+-        col_widths = [360px, 360px, 360px, 360px];
++        col_widths = [360px, 360px, 360px];
+-            col_span = 3;
++            col_span = 2;
+
+$ {"op": "table", "id": "@table", "action": "remove_row", "index": 99}
+[error] No such position
+-- table_structure.edits --
+# 줄: 가운데에 끼우면 뒤의 cell 번호가 하나 밀리고, 머리글(첫 줄) 앞에 끼우면 머리글이 하나 늘어난다
+{"op": "table", "id": "@table", "action": "insert_row", "index": 1}
+{"op": "table", "id": "@table", "action": "insert_row", "index": 0}
+{"op": "table", "id": "@table", "action": "insert_row", "index": 5}
+{"op": "table", "id": "@table", "action": "remove_row", "index": 0}
+{"op": "table", "id": "@table", "action": "remove_row", "index": 4}
+# 칸: col_widths에도 한 항목이 끼고, 병합한 칸 한가운데에 끼우면 병합이 늘어난다
+{"op": "table", "id": "@table", "action": "insert_column", "index": 1}
+{"op": "table", "id": "@table", "action": "insert_column", "index": 3}
+{"op": "table", "id": "@table", "action": "remove_column", "index": 0}
+{"op": "table", "id": "@table", "action": "remove_column", "index": 3}
+# 없는 자리와 마지막 하나는 거절된다
+{"op": "table", "id": "@table", "action": "remove_row", "index": 99}

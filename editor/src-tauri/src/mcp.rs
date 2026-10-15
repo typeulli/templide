@@ -17,9 +17,11 @@ pub struct Mcp {
     next: AtomicU64,
 }
 
-const INSTRUCTIONS: &str = "Connected to the templide slide editor. The .tlide document open in the editor may have unsaved changes, \
-so read it with read_document and change it with edit_document instead of editing the file directly (the user can undo with Ctrl+Z). \
-After editing, check the result visually with render_slide.";
+const INSTRUCTIONS: &str = "Connected to the templide slide editor (.tlide documents). The open document may have unsaved changes, \
+so read it with read_document and change it with edit_document instead of editing the file on disk (the user can undo with Ctrl+Z). \
+Start with get_editor_state (open files, current slide, errors); use get_selection when the user says \"this\" or \"the selected one\". \
+Before writing syntax you are unsure of, call get_language_guide (no argument lists the topics; it also gives the objects and properties this compiler knows). \
+get_resources shows the included packages and .tasset files. After editing, fix the errors in the reply and check the result with render_slide.";
 
 fn random_token() -> String {
     use std::hash::{BuildHasher, Hasher};

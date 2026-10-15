@@ -1,0 +1,72 @@
+/*
+표(table)를 쓰는 예제.
+cells에 행마다 칸의 글을 늘어놓고, 병합이나 칸 하나만의 서식은 cell(행, 열) { ... }로 쓴다 (행과 열 번호는 1부터).
+header_rows와 banded_rows는 머리글과 줄무늬를 칠하고, 열 너비와 행 높이는 비율로 정한다.
+같은 표를 pptx, 웹, PNG 그림으로 내보낸다
+*/
+#include <std/stddef>
+
+style title {
+    font-size = 32pt;
+    font-weight = bold;
+}
+style good { color = hex(1E8449); font-weight = bold; }
+style bad { color = hex(C0392B); font-weight = bold; }
+style head { color = hex(FFFFFF); }
+
+/* 머리글과 줄무늬 */
+
+slide {
+    put text_box {
+        text = title "분기별 매출";
+        x = 80px; y = 40px; width = 1120px; height = 60px;
+        anchor = middle;
+    }
+    put table {
+        x = 80px; y = 130px; width = 1120px; height = 300px;
+        cells = [
+            [head "지점", head "1분기", head "2분기", head "3분기", head "증감"],
+            ["서울", "120", "135", "150", good "+25%"],
+            ["부산", "80", "75", "70", bad "-12%"],
+            ["대구", "60", "66", "72", good "+20%"],
+            ["합계", "260", "276", "292", good "+12%"]
+        ];
+        col_widths = [2, 1, 1, 1, 1];
+        header_rows = 1;
+        header_fill = hex(2C3E50);
+        banded_rows = true;
+        align = center;
+        line_color = hex(D5D8DC);
+    }
+    transition fade 0.5s;
+}
+
+/* 병합과 칸마다 다른 서식 */
+
+slide {
+    put text_box {
+        text = title "병합한 칸";
+        x = 80px; y = 40px; width = 1120px; height = 60px;
+        anchor = middle;
+    }
+    put table {
+        x = 80px; y = 130px; width = 1120px; height = 320px;
+        cells = [
+            ["일정", "월", "화", "수"],
+            ["오전", "회의", "", "발표"],
+            ["오후", "", "", "정리"],
+            ["메모", "점심은 12시 30분, 장소는 본관 식당. 회의가 길어지면 행이 저절로 늘어난다", "", ""]
+        ];
+        col_widths = [1, 2, 2, 2];
+        header_rows = 1;
+        header_cols = 1;
+        padding = 12px;
+        cell(2, 3) { row_span = 2; fill = hex(FCF3CF); align = center; }
+        cell(3, 2) { fill = hex(EBF5FB); }
+        cell(4, 2) { col_span = 3; align = left; anchor = top; line_color_top = hex(2C3E50); line_width_top = 3px; }
+    }
+}
+
+target deck { path = "tables.pptx"; type = pptx; }
+target web { path = "tables.html"; type = html; }
+target shots { path = "tables.png"; type = png; scale = 2; }
