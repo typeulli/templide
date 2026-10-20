@@ -336,7 +336,7 @@ function register(m: typeof Monaco, lsp: Lsp) {
                         range,
                         options: {
                             before: { content: '\u00a0', inlineClassName: 'tlide-swatch ' + swatchClass(each.color), inlineClassNameAffectsLetterSpacing: true },
-                            hoverMessage: { value: t('테마 색입니다. 테마에서 바꿉니다') },
+                            hoverMessage: { value: t('이 색은 테마에서 정합니다. 테마 설정에서 바꿀 수 있습니다.') },
                         },
                     });
                 }

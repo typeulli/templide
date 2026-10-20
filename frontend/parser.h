@@ -140,6 +140,8 @@ namespace templide::parser {
         struct ASTCall : ASTNode {
             ASTName* name;
             std::vector<ASTNode*> arguments;
+            // 이름으로 넘긴 인자(이름 = 값). layout의 master 호출에서만 쓸 수 있다. 위치로 넘긴 인자 뒤에만 온다
+            std::vector<std::pair<ASTName*, ASTNode*>> named;
             ASTCall(Token token, ASTName* name, std::vector<ASTNode*> arguments) : ASTNode(CALL, token), name(name), arguments(std::move(arguments)) {}
         };
         struct ASTMember : ASTNode {
@@ -383,11 +385,11 @@ namespace templide::parser {
             std::vector<ASTNode*> body;
             ASTSlide(Token token) : ASTNode(SLIDE, token) {}
         };
-        // master NAME(매개변수) { theme = ...; case ... }
+        // master NAME { var 타입 이름 = 기본값; theme = ...; case ... }
         struct ASTMaster : ASTNode {
             std::string name;
             Token name_token{}; // 이름 토큰. 편집기가 이름의 위치를 찾는 데 쓴다
-            std::vector<ASTParameter*> parameters;
+            std::vector<ASTNode*> vars;       // var 선언(ASTVar). master의 매개변수이고 template처럼 기본값을 쓸 수 있다
             std::vector<ASTNode*> body;       // case만 들어 있다
             std::vector<ASTNode*> properties; // theme = ...; 같은 대입
             ASTMaster(Token token) : ASTNode(MASTER, token) {}
@@ -403,6 +405,8 @@ namespace templide::parser {
     }
 
     struct ParseError {
+        std::string code;    // 진단 코드 (middleend/diagnostic_catalog.cpp)
+        std::string help;    // 고치는 방법. 없으면 비어 있다
         std::string message;
         std::size_t line;
         std::size_t column;
@@ -415,6 +419,13 @@ namespace templide::parser {
             type = token.type;
         }
     };
+    // `#fmt 옵션 값`. 문서의 뜻에는 영향이 없어서 AST에 넣지 않고 모아 둔다 (tlide fmt가 읽는다)
+    struct FmtDirective {
+        Token hash;
+        Token key;
+        Token value;
+    };
+
     struct Parser {
         // 블록 안의 문장 하나를 파싱하는 함수. 블록 종류마다 허용하는 문장이 다르다
         using StatementParser = ast::ASTNode* (Parser::*)(Token);
@@ -423,13 +434,16 @@ namespace templide::parser {
         Lexor& lexer;
         ParseError error;
         vector<ParseError> errors; // 문장 단위로 복구하며 찾은 오류 모두. error는 그 첫 번째
+        vector<FmtDirective> fmt_directives; // 파일에 쓴 #fmt 줄들 (쓴 순서)
         std::optional<Token> lookahead;
+        std::optional<Token> second; // lookahead 다음 토큰 (lookahead가 있을 때만 있다)
         const char* consumed_end = nullptr; // 마지막으로 읽은 토큰의 끝
         explicit Parser(string path, Lexor& lexer) : path(std::move(path)), lexer(lexer), error() {}
 
         Token next() {
             Token token = lookahead.has_value() ? *lookahead : lexer.next();
-            lookahead.reset();
+            lookahead = second;
+            second.reset();
             consumed_end = token.value.data() + token.value.size();
             return token;
         }
@@ -448,6 +462,15 @@ namespace templide::parser {
             return *lookahead;
         }
 
+        // peek() 다음 토큰
+        Token peek_second() {
+            peek();
+            if (!second.has_value()) {
+                second = lexer.next();
+            }
+            return *second;
+        }
+
         bool accept(TokenType type) {
             if (peek().type != type) {
                 return false;
@@ -459,13 +482,14 @@ namespace templide::parser {
         Token expect(TokenType type, const string& message) {
             Token token = next();
             if (token.type != type) {
-                fail(token, "Expected " + message + ", but got " + describe(token));
+                fail("E1001", token, "Expected " + message + ", but got " + describe(token));
             }
             return token;
         }
 
-        [[noreturn]] static void fail(const Token& token, const string& message) {
+        [[noreturn]] static void fail(const char* code, const Token& token, const string& message) {
             ParseError parse_error{};
+            parse_error.code = code;
             parse_error.message = message;
             parse_error.setToken(token);
             throw parse_error;
@@ -473,12 +497,12 @@ namespace templide::parser {
 
         [[noreturn]] static void fail_unexpected(const Token& token) {
             if (is_keyword(token, "else")) {
-                fail(token, "'else' without preceding 'if'");
+                fail("E1002", token, "'else' without preceding 'if'");
             }
             if (token.type == TokenType::IDENTIFIER) {
-                fail(token, "Unexpected identifier: " + string(token.value));
+                fail("E1003", token, "Unexpected identifier: " + string(token.value));
             }
-            fail(token, "Unexpected token: " + describe(token));
+            fail("E1004", token, "Unexpected token: " + describe(token));
         }
 
         static string describe(const Token& token) {
@@ -516,7 +540,7 @@ namespace templide::parser {
                     case 'n': result += '\n'; break;
                     case 't': result += '\t'; break;
                     case '"': case '\\': case '{': case '}': result += c; break;
-                    default: fail(token, "Unknown escape '\\" + string(1, c) + "' in string (\\n, \\t, \\\", \\\\, \\{, \\})");
+                    default: fail("E1005", token, "Unknown escape '\\" + string(1, c) + "' in string (\\n, \\t, \\\", \\\\, \\{, \\})");
                 }
             }
             return result;
@@ -646,7 +670,7 @@ namespace templide::parser {
                     if (token.value == "style") {
                         return parse_inline_style(token);
                     }
-                    return new ast::ASTCall(token, new ast::ASTName(token), parse_arguments());
+                    return parse_call(token);
                 }
                 case TokenType::NUMBER:
                     return parse_number(token);
@@ -668,7 +692,7 @@ namespace templide::parser {
                     // 음수 리터럴. -10px처럼 '-' 바로 뒤에 숫자가 붙어 있어야 한다
                     Token digits = next();
                     if (digits.type != TokenType::NUMBER || !adjacent(token, digits)) {
-                        fail(digits, "Expected a number right after '-'");
+                        fail("E1006", digits, "Expected a number right after '-'");
                     }
                     Token number = merge(token, digits);
                     number.type = TokenType::NUMBER;
@@ -679,7 +703,7 @@ namespace templide::parser {
                     return new ast::ASTContext(token, new ast::ASTName(name));
                 }
                 default:
-                    fail(token, "Expected expression, but got " + describe(token));
+                    fail("E1007", token, "Expected expression, but got " + describe(token));
             }
         }
 
@@ -693,7 +717,7 @@ namespace templide::parser {
                     value = new ast::ASTInt(token);
                 }
             } catch (const std::out_of_range&) {
-                fail(token, "Number literal out of range: " + string(token.value));
+                fail("E1008", token, "Number literal out of range: " + string(token.value));
             }
             Token unit = peek();
             if ((unit.type == TokenType::IDENTIFIER || unit.type == TokenType::PERCENT) && adjacent(token, unit)) {
@@ -721,7 +745,7 @@ namespace templide::parser {
                     case TokenType::FSTRING_END:
                         return node;
                     default:
-                        fail(part, "Unterminated f-string");
+                        fail("E1009", part, "Unterminated f-string");
                 }
             }
         }
@@ -736,6 +760,34 @@ namespace templide::parser {
             } while (accept(TokenType::COMMA));
             expect(TokenType::RBRACKET, "']' after list items");
             return node;
+        }
+
+        // 이름(인자, ..., 이름 = 값, ...). 이름으로 넘긴 인자는 위치로 넘긴 인자 뒤에 와야 한다
+        ast::ASTCall* parse_call(Token token) {
+            auto *call = new ast::ASTCall(token, new ast::ASTName(token), {});
+            expect(TokenType::LPAREN, "'('");
+            if (accept(TokenType::RPAREN)) {
+                return call;
+            }
+            do {
+                if (peek().type == TokenType::IDENTIFIER && peek_second().type == TokenType::ASSIGN) {
+                    auto *name = new ast::ASTName(next());
+                    next();
+                    for (const auto& [seen, value] : call->named) {
+                        if (seen->name == name->name) {
+                            fail("E1010", name->token, "Duplicate argument: " + name->name);
+                        }
+                    }
+                    call->named.emplace_back(name, parse_expression());
+                } else {
+                    if (!call->named.empty()) {
+                        fail("E1011", peek(), "A positional argument cannot follow a named argument");
+                    }
+                    call->arguments.push_back(parse_expression());
+                }
+            } while (accept(TokenType::COMMA));
+            expect(TokenType::RPAREN, "')' after arguments");
+            return call;
         }
 
         vector<ast::ASTNode*> parse_arguments() {
@@ -770,7 +822,7 @@ namespace templide::parser {
         vector<ast::ASTNode*> parse_arguments(const Token& callee, std::size_t count) {
             auto arguments = parse_arguments();
             if (arguments.size() != count) {
-                fail(callee, string(callee.value) + "() expects " + std::to_string(count) + " arguments, but got " + std::to_string(arguments.size()));
+                fail("E1012", callee, string(callee.value) + "() expects " + std::to_string(count) + " arguments, but got " + std::to_string(arguments.size()));
             }
             return arguments;
         }
@@ -780,14 +832,14 @@ namespace templide::parser {
             expect(TokenType::LPAREN, "'(' after 'hex'");
             Token digits = next();
             if (digits.type != TokenType::NUMBER && digits.type != TokenType::IDENTIFIER) {
-                fail(digits, "Expected hex digits, but got " + describe(digits));
+                fail("E1013", digits, "Expected hex digits, but got " + describe(digits));
             }
             while ((peek().type == TokenType::NUMBER || peek().type == TokenType::IDENTIFIER) && adjacent(digits, peek())) {
                 digits = merge(digits, next());
             }
             for (const char c : digits.value) {
                 if (!std::isxdigit(static_cast<unsigned char>(c))) {
-                    fail(digits, "Invalid hex color: " + string(digits.value));
+                    fail("E1014", digits, "Invalid hex color: " + string(digits.value));
                 }
             }
             expect(TokenType::RPAREN, "')' after hex digits");
@@ -860,9 +912,13 @@ namespace templide::parser {
                     case TokenType::SEMICOLON:
                         break;
                     case TokenType::END_OF_FILE:
-                        fail(token, "Unexpected end of file in block");
+                        fail("E1015", token, "Unexpected end of file in block");
                     default:
                         try {
+                            if (token.type == TokenType::HASH) {
+                                parse_fmt(token); // 블록 안에 쓸 수 있는 지시문은 #fmt뿐이다
+                                break;
+                            }
                             body.push_back(spanned((this->*parse_statement)(token), token.value.data()));
                         } catch (const ParseError& parse_error) {
                             if (recover(parse_error)) {
@@ -1019,7 +1075,7 @@ namespace templide::parser {
                 Token minus = next();
                 Token part = next();
                 if (part.type != TokenType::IDENTIFIER || !adjacent(minus, part)) {
-                    fail(part, "Expected identifier after '-' in property name, but got " + describe(part));
+                    fail("E1016", part, "Expected identifier after '-' in property name, but got " + describe(part));
                 }
                 name = merge(name, part);
             }
@@ -1074,7 +1130,7 @@ namespace templide::parser {
             Token name = expect(TokenType::IDENTIFIER, "variable name after type");
             Token in = next();
             if (!is_keyword(in, "in")) {
-                fail(in, "Expected 'in', but got " + describe(in));
+                fail("E1017", in, "Expected 'in', but got " + describe(in));
             }
             auto *node = new ast::ASTFor(token, new ast::ASTName(type_name), new ast::ASTName(name));
             if (accept(TokenType::LBRACKET)) {
@@ -1135,11 +1191,14 @@ namespace templide::parser {
             auto *node = new ast::ASTMaster(token);
             node->name = string(name.value);
             node->name_token = name;
-            parse_parameters(node->parameters);
             vector<ast::ASTNode*> body;
             parse_block(body, &Parser::parse_master_statement);
             for (auto *statement : body) {
-                (statement->type == ast::ASSIGN ? node->properties : node->body).push_back(statement);
+                if (statement->type == ast::VAR) {
+                    node->vars.push_back(statement);
+                } else {
+                    (statement->type == ast::ASSIGN ? node->properties : node->body).push_back(statement);
+                }
             }
             return node;
         }
@@ -1167,29 +1226,29 @@ namespace templide::parser {
                 Token upcoming = peek();
                 if (upcoming.type == TokenType::NUMBER || upcoming.type == TokenType::LPAREN) {
                     if (node->duration != nullptr) {
-                        fail(upcoming, "Duplicate animation duration");
+                        fail("E1018", upcoming, "Duplicate animation duration");
                     }
                     node->duration = parse_additive();
                 } else if (is_keyword(upcoming, "delay")) {
                     next();
                     if (node->delay != nullptr) {
-                        fail(upcoming, "Duplicate animation delay");
+                        fail("E1019", upcoming, "Duplicate animation delay");
                     }
                     node->delay = parse_additive();
                 } else if (is_keyword(upcoming, "order")) {
                     next();
                     if (node->order != nullptr) {
-                        fail(upcoming, "Duplicate animation order");
+                        fail("E1020", upcoming, "Duplicate animation order");
                     }
                     node->order = parse_additive();
                 } else if (is_keyword(upcoming, "on_click") || is_keyword(upcoming, "with_previous") || is_keyword(upcoming, "after_previous")) {
                     next();
                     if (node->start != nullptr) {
-                        fail(upcoming, "Duplicate animation start");
+                        fail("E1021", upcoming, "Duplicate animation start");
                     }
                     node->start = new ast::ASTName(upcoming);
                 } else {
-                    fail(upcoming, "Expected duration, on_click, with_previous, after_previous, delay, order or ';', but got " + describe(upcoming));
+                    fail("E1022", upcoming, "Expected duration, on_click, with_previous, after_previous, delay, order or ';', but got " + describe(upcoming));
                 }
             }
             return node;
@@ -1222,11 +1281,11 @@ namespace templide::parser {
                     } else if (item.token.type == TokenType::STRING) {
                         item.name = unescape(item.token, item.token.value.substr(1, item.token.value.size() - 2));
                     } else {
-                        fail(item.token, "Expected '*', a file name or '}', but got " + describe(item.token));
+                        fail("E1023", item.token, "Expected '*', a file name or '}', but got " + describe(item.token));
                     }
                     Token as = next();
                     if (!is_keyword(as, "as")) {
-                        fail(as, "Expected 'as' after " + describe(item.token) + ", but got " + describe(as));
+                        fail("E1024", as, "Expected 'as' after " + describe(item.token) + ", but got " + describe(as));
                     }
                     item.alias = new ast::ASTName(expect(TokenType::IDENTIFIER, "name after 'as'"));
                     node->items.push_back(item);
@@ -1235,7 +1294,7 @@ namespace templide::parser {
             if (is_keyword(peek(), "default")) {
                 Token keyword = next();
                 if (node->is_default) {
-                    fail(keyword, "Duplicate 'default'");
+                    fail("E1025", keyword, "Duplicate 'default'");
                 }
                 node->is_default = true;
             }
@@ -1265,10 +1324,25 @@ namespace templide::parser {
             return node;
         }
 
+        // #fmt 옵션 값. 파일 어디에나(블록 안에도) 쓸 수 있고 fmt_directives에 모은다
+        void parse_fmt(Token hash) {
+            Token directive = expect(TokenType::IDENTIFIER, "directive after '#'");
+            if (directive.value != "fmt") {
+                fail("E1026", directive, "Unknown directive: #" + string(directive.value));
+            }
+            Token key = expect(TokenType::IDENTIFIER, "option name after '#fmt'");
+            Token value = next();
+            // 값은 같은 줄에 있어야 한다. 값을 빠뜨린 줄이 다음 줄의 이름(slide 같은)을 값으로 삼켜 버리지 않게 한다
+            if ((value.type != TokenType::IDENTIFIER && value.type != TokenType::NUMBER) || value.line != key.line) {
+                fail("E1027", value, "Expected a name or a number as the option value, but got " + describe(value));
+            }
+            fmt_directives.push_back({hash, key, value});
+        }
+
         ast::ASTInclude* parse_include(Token token) {
             Token directive = expect(TokenType::IDENTIFIER, "directive after '#'");
             if (directive.value != "include") {
-                fail(directive, "Unknown directive: #" + string(directive.value));
+                fail("E1026", directive, "Unknown directive: #" + string(directive.value));
             }
             if (peek().type == TokenType::STRING) {
                 Token path = next();
@@ -1323,6 +1397,7 @@ namespace templide::parser {
         }
 
         ast::ASTNode* parse_master_statement(Token token) {
+            if (is_keyword(token, "var")) { return parse_var(token); }
             if (is_keyword(token, "case")) { return parse_named_block<ast::ASTMasterCase>(token, &Parser::parse_case_statement); }
             if (token.type == TokenType::IDENTIFIER) { return parse_assign(token); }
             fail_unexpected(token);
@@ -1394,6 +1469,10 @@ namespace templide::parser {
                     continue;
                 }
                 try {
+                    if (token.type == TokenType::HASH && peek().type == TokenType::IDENTIFIER && peek().value == "fmt") {
+                        parse_fmt(token);
+                        continue;
+                    }
                     file_node->body.push_back(spanned(parse_file_statement(token), token.value.data()));
                 } catch (const ParseError& parse_error) {
                     recover(parse_error); // 파일 맨 위에는 닫을 블록이 없다

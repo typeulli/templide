@@ -1,6 +1,7 @@
 #include "html.h"
 #include "backend.h"
 #include "raster.h"
+#include "chart.h"
 #include "table.h"
 #include "../middleend/geometry.h"
 
@@ -267,7 +268,7 @@ namespace templide::backend::html {
                         const std::string title = target_.title.empty() ? target_.name : target_.title;
                         // JSON의 '<'는 모두 <로 바뀌어 있다
                         page = "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"generator\" content=\"templide\">\n"
-                            "<title>" + escape_html(title) + "</title>\n</head>\n<body>\n"
+                            "<title>" + escape_html(title) + "</title>\n" + katex_tags(true, nullptr) + "</head>\n<body>\n"
                             "<script>" + inline_script(*script) + "</script>\n"
                             "<script type=\"application/json\" id=\"templide-deck\">" + deck + "</script>\n"
                             "<script>Templide.print(document.body, JSON.parse(document.getElementById(\"templide-deck\").textContent));</script>\n"
@@ -344,6 +345,7 @@ namespace templide::backend::html {
             const ir::Target& target_;
             std::filesystem::path base_dir_;
             std::filesystem::path libs_dir_;
+            bool has_math_ = false; // math object가 있어 KaTeX가 필요하다
             bool dry_run_; // 파일을 쓰지 않고 에러만 알아본다
             bool web_ = false;
             bool print_ = false; // type = pdf, png. 전환과 애니메이션이 없는 정적 출력이다
@@ -1187,6 +1189,10 @@ namespace templide::backend::html {
                     json = media_json(result, element, element_where);
                 } else if (element.object == "table") {
                     json = table_json(result, element, element_where, text_defaults);
+                } else if (element.object == "chart") {
+                    json = chart_json(result, element, element_where);
+                } else if (element.object == "math") {
+                    json = math_json(result, element, element_where);
                 } else if (element.object == "backdrop") {
                     const auto rect = element_rect(element, element_where);
                     if (rect) {
@@ -1282,6 +1288,91 @@ namespace templide::backend::html {
                     cells.push(item);
                 }
                 result.set("t", "tbl").set("cols", columns).set("rows", rows).set("cells", cells);
+                return result;
+            }
+
+            // 수식. LaTeX는 그대로 보내고 KaTeX가 templide.js 안에서 그린다. 수식이 하나라도 있으면 KaTeX를 페이지에 넣는다
+            Json math_json(Object& result, const ir::Element& element, const std::string& where) {
+                const auto rect = element_rect(element, where);
+                const auto* source = std::get_if<std::string>(find_property(element, "latex"));
+                if (!rect || source == nullptr) {
+                    return Json();
+                }
+                has_math_ = true;
+                common_json(result, element, *rect);
+                static const std::map<std::string, std::string> aligns = {{"left", "l"}, {"right", "r"}, {"center", "ctr"}, {"justify", "ctr"}};
+                static const std::map<std::string, std::string> anchors = {{"top", "t"}, {"middle", "ctr"}, {"bottom", "b"}};
+                const auto align = aligns.find(enum_member(element, "align"));
+                const auto anchor = anchors.find(enum_member(element, "anchor"));
+                double size = 32;
+                if (const auto* number = std::get_if<ir::Number>(find_property(element, "font_size"))) {
+                    size = to_px(*number, height_);
+                }
+                const ir::Color* color = std::get_if<ir::Color>(find_property(element, "text_color"));
+                result.set("t", "mth").set("ltx", *source).set("fs", size).set("tc", color_css(color != nullptr ? *color : ir::Color{0, 0, 0, 1, ""}))
+                    .set("ha", align != aligns.end() ? align->second : "ctr").set("va", anchor != anchors.end() ? anchor->second : "ctr");
+                return result;
+            }
+
+            // 차트. 계열마다 색을 정해(정하지 않으면 테마의 강조색) 보내고, 그리는 일은 templide.js가 한다. 원은 조각마다의 색(pc)도 보낸다
+            Json chart_json(Object& result, const ir::Element& element, const std::string& where) {
+                const auto rect = element_rect(element, where);
+                const auto resolved = chart::resolve(element);
+                if (!resolved) {
+                    error(where + ": 'values' must be a list of series, each a list of numbers");
+                    return Json();
+                }
+                if (!rect) {
+                    return Json();
+                }
+                common_json(result, element, *rect);
+                const auto accent = [&](std::size_t index) { return theme_color("accent" + std::to_string(index % 6 + 1)); };
+                Array categories;
+                for (const auto& category : resolved->categories) {
+                    categories.push(category);
+                }
+                Array series;
+                for (std::size_t i = 0; i < resolved->series.size(); ++i) {
+                    const auto& each = resolved->series[i];
+                    Array values;
+                    for (const double value : each.values) {
+                        values.push(value);
+                    }
+                    Array xs;
+                    for (const double value : each.xs) {
+                        xs.push(value);
+                    }
+                    Object item;
+                    item.set("n", each.name).set("v", values).set("c", color_css(each.color.value_or(accent(i))));
+                    if (!each.xs.empty()) {
+                        item.set("x", xs);
+                    }
+                    series.push(item);
+                }
+                result.set("t", "cht").set("k", chart::kind_name(resolved->kind)).set("ser", series);
+                if (!resolved->categories.empty()) {
+                    result.set("cat", categories);
+                }
+                if (resolved->kind == chart::Kind::Pie) {
+                    Array slices;
+                    for (std::size_t i = 0; i < resolved->categories.size(); ++i) {
+                        slices.push(color_css(resolved->color_of(i).value_or(accent(i))));
+                    }
+                    result.set("pc", slices);
+                }
+                result.set("ti", resolved->title.empty() ? Json() : Json(resolved->title))
+                    .set("xt", resolved->x_title.empty() ? Json() : Json(resolved->x_title))
+                    .set("yt", resolved->y_title.empty() ? Json() : Json(resolved->y_title))
+                    .set("lg", resolved->legend == "none" ? Json() : Json(resolved->legend))
+                    .set("st", flag(resolved->stacked))
+                    .set("dl", flag(resolved->data_labels))
+                    .set("sm", flag(resolved->smooth))
+                    .set("mk", flag(resolved->markers))
+                    .set("gr", flag(resolved->gridlines))
+                    .set("min", resolved->min ? Json(*resolved->min) : Json())
+                    .set("max", resolved->max ? Json(*resolved->max) : Json())
+                    .set("fs", resolved->font_px)
+                    .set("tc", color_css(resolved->text_color));
                 return result;
             }
 
@@ -1596,6 +1687,54 @@ namespace templide::backend::html {
                 return true;
             }
 
+            // 수식이 있을 때 페이지 머리에 넣을 KaTeX. embed면 글꼴까지 CSS 안에 data URL로 넣은 글을 돌려주고,
+            // 아니면 파일을 가리키는 태그를 돌려주며 files에 출력 폴더 기준 경로와 내용을 담는다. 수식이 없으면 빈 글이다
+            std::string katex_tags(bool embed, std::vector<std::pair<std::string, std::string>>* files) {
+                if (!has_math_) {
+                    return "";
+                }
+                const auto script = read_lib("katex/katex.min.js");
+                const auto stylesheet = read_lib("katex/katex.min.css");
+                if (!script || !stylesheet) {
+                    return "";
+                }
+                std::string css;
+                std::size_t at = 0;
+                const std::string prefix = "url(fonts/";
+                while (true) {
+                    const std::size_t begin = stylesheet->find(prefix, at);
+                    if (begin == std::string::npos) {
+                        css += stylesheet->substr(at);
+                        break;
+                    }
+                    const std::size_t end = stylesheet->find(')', begin);
+                    const std::string name = stylesheet->substr(begin + prefix.size(), end - begin - prefix.size());
+                    css += stylesheet->substr(at, begin - at);
+                    const auto font = read_lib("katex/fonts/" + name);
+                    if (!font) {
+                        return "";
+                    }
+                    if (embed) {
+                        css += "url(data:font/woff2;base64," + base64(*font) + ")";
+                    } else if (files != nullptr) {
+                        css += stylesheet->substr(begin, end + 1 - begin);
+                        files->emplace_back("katex/fonts/" + name, *font);
+                    }
+                    at = end + 1;
+                }
+                if (embed) {
+                    return "<style>" + css + "</style>\n<script>" + inline_script(*script) + "</script>\n";
+                }
+                if (files != nullptr) {
+                    files->emplace_back("katex/katex.min.js", *script);
+                    files->emplace_back("katex/katex.min.css", css);
+                    if (const auto license = read_lib("katex/LICENSE")) {
+                        files->emplace_back("katex/LICENSE", *license);
+                    }
+                }
+                return "<link rel=\"stylesheet\" href=\"katex/katex.min.css\">\n<script src=\"katex/katex.min.js\"></script>\n";
+            }
+
             // html은 모든 것을 넣은 파일 하나를, web은 path 폴더에 index.html과 라이브러리, media를 쓴다
             void save(const std::string& deck) {
                 const std::array<std::string, 4> libs = {"templide.js", "reveal/reveal.js", "reveal/reveal.css", "reveal/plugin/notes.js"};
@@ -1627,12 +1766,14 @@ namespace templide::backend::html {
                     : web_ ? "<script src=\"" + escape_html(user_script_name) + "\"></script>\n" : "<script>" + inline_script(user_script) + "</script>\n";
                 const std::string title = target_.title.empty() ? target_.name : target_.title;
                 const std::string author = target_.author.empty() ? "templide" : target_.author;
+                std::vector<std::pair<std::string, std::string>> katex_files;
+                const std::string katex_head = katex_tags(!web_, &katex_files);
                 // JSON의 '<'는 모두 <로 바뀌어 있다
                 const std::string page = "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n"
                     "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<meta name=\"generator\" content=\"templide\">\n"
                     "<meta name=\"author\" content=\"" + escape_html(author) + "\">\n"
                     "<title>" + escape_html(title) + "</title>\n"
-                    + (web_ ? "<link rel=\"stylesheet\" href=\"reveal/reveal.css\">\n" : "<style>" + code[2] + "</style>\n")
+                    + (web_ ? "<link rel=\"stylesheet\" href=\"reveal/reveal.css\">\n" : "<style>" + code[2] + "</style>\n") + katex_head
                     + "</head>\n<body>\n<div class=\"reveal\"><div class=\"slides\"></div></div>\n"
                     + script(1) + script(3) + script(0) + user_script_tag
                     + "<script type=\"application/json\" id=\"templide-deck\">" + deck + "</script>\n"
@@ -1664,6 +1805,12 @@ namespace templide::backend::html {
                 }
                 if (const auto license = read_lib("reveal/LICENSE")) {
                     write_file(output / "reveal" / "LICENSE", *license);
+                }
+                for (const auto& [name, bytes] : katex_files) {
+                    std::filesystem::create_directories((output / utf8_path(name)).parent_path(), error_code);
+                    if (!write_file(output / utf8_path(name), bytes)) {
+                        return;
+                    }
                 }
                 for (const auto& [name, bytes] : media_files_) {
                     if (!write_file(output / utf8_path(name), bytes)) {

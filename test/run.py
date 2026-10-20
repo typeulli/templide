@@ -35,10 +35,15 @@ UTF-8 글이 아니거나 줄바꿈으로 끝나지 않는 내용(그림, UTF-16
                         $DIR은 작업 폴더, 값이 비면 지운다). 단계마다 새로 생긴 파일은 목록에 적고 지우므로 단계끼리 섞이지 않는다
     edit    .expected   편집기가 보내는 편집(`templide --serve`의 templide/edit)을 같은 이름의 .edits에 적은 대로 한 줄씩 적용한다.
                         .edits는 한 줄에 JSON 편집 하나이고(# 주석), "id": "@table"은 문서의 첫 table, "@table:2"는 둘째를 가리킨다.
+                        편집에 "definition": {"kind": "template", "name": "card"} (master는 "case"도)를 적으면 그 정의를 편집 화면(슬라이드 한 장)으로 열어 고친다.
                         기대 파일에는 단계마다 편집과 원문이 바뀐 줄(diff), 또는 편집이 거절된 이유가 적힌다. 편집한 뒤에도 문서는 컴파일돼야 한다
+    fmt     .expected   `templide fmt --stdout x.tlide`의 종료 코드, stdout, stderr. 결과를 다시 포맷해도 같은지(멱등성)도 본다. `#fmt`가 없는
+                        파일은 건너뛴다는 안내만 나온다. 문법 오류가 있으면 고치지 않고 오류를 알린다
     lsp     .expected   편집기가 보내는 LSP 요청에 서버(`templide --serve`)가 어떻게 답하는지. 문서를 열 때 나오는 진단(오류와 경고)과, .tlide 안의
                         표식이 가리키는 자리의 답을 적는다. ‸는 자동 완성(바꿀 범위와 목록), ⌖는 hover, 정의, 강조를 물을 자리다.
                         표식은 지우고 문서를 열며, 자리는 줄:칸(둘 다 1부터)으로 적는다. 표식이 없으면 진단만 적는다
+
+catalog/consistency는 케이스 파일이 아니라 진단 카탈로그와 소스의 호출이 맞는지 보는 검사다 (test/catalog_check.py).
 
 케이스를 더하는 법
     1. test/cases/<kind>.txtar 맨 아래에 `-- <이름>.tlide --` 구분선과 .tlide를 더한다.
@@ -85,6 +90,8 @@ from pathlib import Path
 from typing import Callable
 from xml.parsers import expat
 from xml.sax.saxutils import escape as xml_escape, quoteattr
+
+import catalog_check
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
@@ -365,10 +372,26 @@ def run_ir(box: Sandbox) -> Outcome:
 def run_error(box: Sandbox) -> Outcome:
     args = [box.source, '--check']
     proc = box.run(args)
-    if proc.code not in (0, 1):
+    if proc.code not in (0, 1, 2):  # 0 성공, 1 검사 실패, 2 파일을 읽을 수 없음
         raise CaseError(f'컴파일러가 비정상으로 끝났다 (종료 코드 {proc.code})\n{proc.err}{proc.out}')
     if box.new_files():
         raise CaseError('--check가 파일을 썼다: ' + ', '.join(box.new_files()))
+    return Outcome(transcript(args, proc))
+
+
+def run_fmt(box: Sandbox) -> Outcome:
+    args = ['fmt', '--stdout', box.source]
+    proc = box.run(args)
+    if proc.code not in (0, 1, 2):
+        raise CaseError(f'컴파일러가 비정상으로 끝났다 (종료 코드 {proc.code})\n{proc.err}{proc.out}')
+    if proc.code == 0 and proc.out.strip() and not proc.out.startswith('skipped '):
+        # 포맷한 결과를 다시 포맷하면 그대로여야 한다
+        formatted = box.work / box.source
+        formatted.write_bytes(proc.out.encode('utf-8'))
+        again = box.run(args)
+        if again.code != 0 or again.out != proc.out:
+            raise CaseError('포맷한 결과를 다시 포맷하면 결과가 달라진다 (멱등성)\n' + '\n'.join(
+                difflib.unified_diff(proc.out.split('\n'), again.out.split('\n'), 'first', 'second', lineterm='', n=2)))
     return Outcome(transcript(args, proc))
 
 
@@ -576,10 +599,13 @@ def run_edit(box: Sandbox) -> Outcome:
         server.notify('initialized', {})
         server.open(uri, text)
         for step in steps:
-            deck = server.request('templide/deck', {'uri': uri})
+            operation = dict(step)
+            # "definition"이 있으면 template, master case를 슬라이드 한 장으로 펼친 편집 화면에서 편집한다
+            scope = {'uri': uri, **({'definition': operation['definition']} if 'definition' in operation else {})}
+            operation.pop('definition', None)
+            deck = server.request('templide/deck', scope)
             if 'error' in deck:
                 raise CaseError(f'편집하기 전에 문서에 오류가 있다: {deck["error"]}')
-            operation = dict(step)
             reference = str(operation.get('id', ''))
             if reference.startswith('@'):
                 name, _, number = reference[1:].partition(':')
@@ -588,14 +614,14 @@ def run_edit(box: Sandbox) -> Outcome:
                 if index >= len(ids):
                     raise CaseError(f'{reference}에 맞는 개체가 없다')
                 operation['id'] = ids[index]
-            result = server.request('templide/edit', {'uri': uri, 'edits': [operation]})
+            result = server.request('templide/edit', {**scope, 'edits': [operation]})
             header = '$ ' + json.dumps(step, ensure_ascii=False)
             if 'error' in result:
                 records.append(f'{header}\n[error] {result["error"]}\n')
                 continue
             updated = apply_edits(text, result['edits'])
             server.change(uri, updated)
-            check = server.request('templide/deck', {'uri': uri})
+            check = server.request('templide/deck', scope)
             diff = [line for line in difflib.unified_diff(text.split('\n'), updated.split('\n'), lineterm='', n=0) if not line.startswith(('---', '+++', '@@'))]
             body = '\n'.join(diff) if diff else '(바뀐 것 없음)'
             status = f'[깨짐] {check["error"]}\n' if 'error' in check else ''
@@ -631,6 +657,17 @@ def show_range(range_: dict) -> str:
     return f'{start["line"] + 1}:{start["character"] + 1}-{end["line"] + 1}:{end["character"] + 1}'
 
 
+def normalize_strings(value, normalize):
+    """JSON 값 안의 글마다 normalize를 적용한다 (이스케이프되기 전의 경로를 알아보도록)."""
+    if isinstance(value, str):
+        return normalize(value)
+    if isinstance(value, list):
+        return [normalize_strings(item, normalize) for item in value]
+    if isinstance(value, dict):
+        return {key: normalize_strings(item, normalize) for key, item in value.items()}
+    return value
+
+
 def run_lsp(box: Sandbox) -> Outcome:
     """문서를 열어 진단을 받고, 표식(‸ 자동 완성, ⌖ hover·정의·강조) 자리마다 서버의 답을 적는다."""
     path = box.work / box.source
@@ -659,7 +696,9 @@ def run_lsp(box: Sandbox) -> Outcome:
         for name, diagnostics in sorted(shown, key=lambda item: item[0]):
             for item in sorted(diagnostics, key=lambda d: (d['range']['start']['line'], d['range']['start']['character'])):
                 severity = {1: 'error', 2: 'warning'}.get(item.get('severity'), 'info')
-                lines.append(f'{name} {show_range(item["range"])} {severity}: {box.normalize(item["message"])}')
+                code = f'[{item["code"]}]' if item.get('code') else ''
+                message = box.normalize(item['message']).replace('\n', '\n    ')
+                lines.append(f'{name} {show_range(item["range"])} {severity}{code}: {message}')
         if not shown:
             lines.append('(없음)')
         for kind, line, column in marks:
@@ -692,6 +731,16 @@ def run_lsp(box: Sandbox) -> Outcome:
                 lines.append('definition: ' + (', '.join(f'{place(item["uri"])} {show_range(item["range"])}' for item in found) or '(없음)'))
                 highlight = server.request('textDocument/documentHighlight', here) or []
                 lines.append('highlight: ' + (', '.join(show_range(item['range']) for item in highlight) or '(없음)'))
+        # 같은 이름의 .requests: 한 줄에 요청 하나({"method": ..., "params": ...}, $URI는 이 문서의 URI, # 주석)를 보내고 답을 적는다
+        requests_file = box.sidecar('.requests')
+        if requests_file.is_file():
+            for raw in requests_file.read_text(encoding='utf-8').replace('\r\n', '\n').split('\n'):
+                if not raw.strip() or raw.startswith('#'):
+                    continue
+                item = json.loads(raw.replace('$URI', uri))
+                reply = server.request(item['method'], item.get('params', {}))
+                lines.append(f'\n[request {item["method"]}]')
+                lines.append(pretty_json(normalize_strings(reply, box.normalize)))
     finally:
         server.close()
     return Outcome('\n'.join(lines) + '\n')
@@ -712,6 +761,7 @@ KINDS: dict[str, Kind] = {
     'build': Kind('.expected', run_build),
     'edit': Kind('.expected', run_edit),
     'lsp': Kind('.expected', run_lsp),
+    'fmt': Kind('.expected', run_fmt),
 }
 
 
@@ -848,6 +898,9 @@ def run_case(case: Case, exe: Path, update: bool, verbose: bool) -> Result:
     return Result(case, 'pass', text=actual)
 
 
+CATALOG_CASE = 'catalog/consistency'
+
+
 def indent(text: str, prefix: str = '    ') -> str:
     return '\n'.join(prefix + line for line in text.rstrip('\n').split('\n'))
 
@@ -865,14 +918,18 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     cases = discover()
+    check_catalog = True
     if args.filters:
         words = [word.lower() for word in args.filters]
         cases = [case for case in cases if any(word in case.id.lower() for word in words)]
+        check_catalog = any(word in CATALOG_CASE for word in words)
     if args.list:
         for case in cases:
             print(case.id)
+        if check_catalog:
+            print(CATALOG_CASE)
         return 0
-    if not cases:
+    if not cases and not check_catalog:
         print('error: 맞는 케이스가 없다', file=sys.stderr)
         return 2
     exe = find_exe(args.exe)
@@ -894,6 +951,14 @@ def main(argv: list[str] | None = None) -> int:
     passed = sum(result.status == 'pass' for result in results)
     skipped = sum(result.status == 'skip' for result in results)
     failed = sum(result.status == 'fail' for result in results)
+    if check_catalog:
+        problems = catalog_check.check()
+        print(f"{'FAIL' if problems else 'ok  '} {CATALOG_CASE}", flush=True)
+        if problems:
+            print(indent('\n'.join(problems)), flush=True)
+            failed += 1
+        else:
+            passed += 1
     print(f'\n{passed} passed, {skipped} skipped, {failed} failed ({time.time() - started:.1f}s)')
     if args.update:
         for change in ('created', 'updated'):

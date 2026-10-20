@@ -14,7 +14,10 @@ namespace templide::middleend {
     // templide.exe가 있는 폴더
     std::filesystem::path executable_dir(const char* argv0);
 
-    // templide.exe가 있는 폴더의 packages. #include <이름>을 찾는 곳
+    /**
+     * 컴파일러 실행 파일과 같은 위치에 있는 표준 패키지 폴더를 반환한다.
+     * 이 경로는 #include <이름> 형식의 파일을 찾을 때 사용한다.
+     */
     std::filesystem::path default_packages_dir(const char* argv0);
 
     // templide.exe가 있는 폴더의 libs. html 출력에 넣는 templide.js와 reveal.js가 있다

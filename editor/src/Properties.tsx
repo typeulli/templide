@@ -1,6 +1,6 @@
 // 오른쪽 패널. 개체를 고르면 그 개체의 모든 속성(속성 탭)과 애니메이션(애니메이션 탭), 아무것도 고르지 않으면 슬라이드와 문서 설정
 import { useState, type ReactNode } from 'react';
-import { ChevronDown, ChevronUp, ChevronsDown, ChevronsUp, Film, List, ListOrdered, Minus, Pilcrow, Play, Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, ChevronsDown, ChevronsUp, Film, Layers, List, ListOrdered, Minus, Pilcrow, Play, Plus, Trash2 } from 'lucide-react';
 import type { DeckResult, ElementInfo, Origin, Schema, SchemaVar, SlideInfo, Value } from './lsp';
 import {
     ActionField, BoolField, ColorField, EnumField, FileField, FontField, NumberField, PaintField, RefField, Row, Section, StepperField, TextField, NumberInput,
@@ -103,6 +103,9 @@ type ElementProps = {
     onPreview(): void;
     // 표를 골랐을 때: 고른 칸과 칸을 고치는 방법
     table?: { state: TableState | null; controls: CellControls };
+    plain?: boolean;          // 정의 편집 화면: 애니메이션 탭이 없다
+    extra?: ReactNode;        // 속성 아래에 덧붙이는 것 (정의 편집 화면의 매개변수 등)
+    onOpenTemplate?(): void;  // 템플릿이 만든 요소면 그 템플릿의 편집 화면으로
 };
 
 // 적지 않은 속성은 그 put 블록에 넣는다. template이 만든 element는 넣을 수 없다
@@ -119,15 +122,19 @@ export function ElementPanel(props: ElementProps) {
             <header className="props-title">
                 <span>{objectNames[info.object] ?? info.object}</span>
                 {info.name && <span className="name-badge" title={t('put ... as 이름')}>{info.name}</span>}
-                {info.fromTemplate && <span className="badge" title={t('템플릿이 만든 요소입니다. 템플릿에 넘긴 값만 바꿀 수 있습니다')}>{t('템플릿')}</span>}
+                {info.fromTemplate && <span className="badge" title={t('이 요소는 템플릿이 만들었으므로 템플릿에 넘긴 값만 바꿀 수 있습니다.')}>{t('템플릿')}</span>}
+                {info.fromTemplate && props.onOpenTemplate && <button className="mini-link" title={t('이 요소를 만든 템플릿의 편집 화면을 엽니다')} onClick={props.onOpenTemplate}>{t('템플릿 편집')}</button>}
             </header>
-            <div className="props-tabs">
-                <button className={tab === 'properties' ? 'active' : ''} onClick={() => setTab('properties')}>{t('속성')}</button>
-                <button className={tab === 'animations' ? 'active' : ''} onClick={() => setTab('animations')}>{t('애니메이션')}{count > 0 && <span className="count">{count}</span>}</button>
-            </div>
-            {tab === 'properties'
+            {!props.plain && (
+                <div className="props-tabs">
+                    <button className={tab === 'properties' ? 'active' : ''} onClick={() => setTab('properties')}>{t('속성')}</button>
+                    <button className={tab === 'animations' ? 'active' : ''} onClick={() => setTab('animations')}>{t('애니메이션')}{count > 0 && <span className="count">{count}</span>}</button>
+                </div>
+            )}
+            {tab === 'properties' || props.plain
                 ? <PropertyList {...props} />
                 : <ObjectAnimations schema={props.schema} slide={deck.slides[page]} id={id} media={info.object === 'video' || info.object === 'audio'} onOp={props.onAnimation} onPreview={props.onPreview} />}
+            {props.extra}
         </aside>
     );
 }
@@ -187,6 +194,10 @@ function PropertyList({ deck, schema, page, id, info, pickers, readSource, onSet
                 return <StepperField {...common} min={0} max={name === 'header_rows' ? rows : columns} />;
             }
         }
+        // 목록 값(차트의 데이터, 색 등)은 여기서 고치지 않고 코드에서 고친다
+        if (v.type.startsWith('list<')) {
+            return <Row key={name} label={common.label} lock={lockReason(common.origin)}><span className="muted small">{t('코드에서 고칩니다')}</span></Row>;
+        }
         if (name === 'kind' && v.type === 'shape_kind') {
             const all = schema.enums.shape_kind ?? [];
             return <EnumField {...common} options={[...commonKinds.filter((each) => all.includes(each)), ...all.filter((each) => !commonKinds.includes(each))]} names={shapeKindNames} />;
@@ -211,7 +222,7 @@ function PropertyList({ deck, schema, page, id, info, pickers, readSource, onSet
         if (name === 'action_sound' || name === 'hover_sound') {
             return <FileField {...common} pick={pickers.sound} />;
         }
-        if (name === 'alt') {
+        if (name === 'alt' || name === 'latex') {
             return <TextField {...common} multiline />;
         }
         switch (v.type) {
@@ -316,9 +327,10 @@ type SlideProps = {
     onDocument(op: object): void;  // document_set, document_unset
     onPreview(transition: boolean): void;
     onReviewSelect?(index: number): void;
+    onEditLayout?(master: string, layout: string): void; // layout이 가리키는 master case의 편집 화면으로
 };
 
-export function SlidePanel({ deck, schema, page, pickers, readSource, onSlide, onDocument, onPreview }: SlideProps) {
+export function SlidePanel({ deck, schema, page, pickers, readSource, onSlide, onDocument, onPreview, onEditLayout }: SlideProps) {
     const slide: SlideInfo | undefined = deck.slides[page];
     if (!slide) {
         return <aside className="props"><div className="props-empty">{t('슬라이드가 없습니다')}</div></aside>;
@@ -349,6 +361,13 @@ export function SlidePanel({ deck, schema, page, pickers, readSource, onSlide, o
                                 {cases.map((each) => <option key={each} value={each}>{each}</option>)}
                             </select>
                         </Row>
+                        {onEditLayout && layoutMaster && layoutCase && schema?.definitions.some((each) => each.kind === 'master' && each.name === layoutMaster) && (
+                            <div className="tab-actions">
+                                <button className="ghost-button" title={t('이 레이아웃(master case)의 편집 화면을 엽니다')} onClick={() => onEditLayout(layoutMaster, layoutCase)}>
+                                    <Layers size={13} /> {t('레이아웃 편집')}
+                                </button>
+                            </div>
+                        )}
                     </Section>
                 )}
                 <Section title={t('배경')} lock={slideLock}>

@@ -3,6 +3,8 @@
 #include "source_text.h"
 #include "tasset.h"
 #include "color.h"
+#include "../format/options.h"
+#include "latex.h"
 
 #include "../frontend/lexor.h"
 #include "../frontend/parser.h"
@@ -168,7 +170,7 @@ namespace templide::middleend {
         struct LayoutInfo {
             const ast::ASTMaster* master;
             const ast::ASTMasterCase* layout;
-            std::vector<ast::ASTNode*> arguments; // master의 매개변수에 넘기는 값
+            std::vector<ast::ASTNode*> arguments; // master의 매개변수마다 넘기는 값. 넘기지 않아 기본값을 쓰는 매개변수는 nullptr
         };
 
         constexpr int max_loop_iterations = 10000;
@@ -1052,7 +1054,7 @@ namespace templide::middleend {
                 for (const auto& [name, master] : masters_) {
                     SymbolMaster info;
                     for (const auto& var : signatures_.at(master)) {
-                        info.parameters.push_back(type_name(var.type));
+                        info.parameters.push_back(var_of(var));
                     }
                     for (const auto* statement : master->body) {
                         info.cases.push_back(static_cast<const ast::ASTMasterCase*>(statement)->name);
@@ -1061,6 +1063,18 @@ namespace templide::middleend {
                 }
                 for (const auto& [name, theme] : themes_) {
                     symbols_.themes.push_back(name);
+                }
+                for (const auto& [name, node] : templates_) {
+                    const ir::SourceRange range = range_of(node);
+                    symbols_.definitions.push_back({"template", name, {}, range.path, range.begin, range.end, in_package(node)});
+                }
+                for (const auto& [name, node] : masters_) {
+                    const ir::SourceRange range = range_of(node);
+                    SymbolDefinition definition{"master", name, {}, range.path, range.begin, range.end, in_package(node)};
+                    for (const auto* statement : node->body) {
+                        definition.cases.push_back(static_cast<const ast::ASTMasterCase*>(statement)->name);
+                    }
+                    symbols_.definitions.push_back(std::move(definition));
                 }
                 for (const auto& [name, constant] : constants_) {
                     symbols_.constants[name] = constant->type_name->name;
@@ -1140,7 +1154,16 @@ namespace templide::middleend {
                 if (!diagnostics_.empty()) {
                     return fail();
                 }
-                return {std::move(document), {}};
+                Result result{std::move(document), {}};
+                if (definition_request_) {
+                    build_definition(result);
+                }
+                return result;
+            }
+
+            // 편집기가 정의 하나를 슬라이드로 보려 할 때
+            void request_definition(const DefinitionRequest& request) {
+                definition_request_ = request;
             }
 
         private:
@@ -1151,6 +1174,7 @@ namespace templide::middleend {
                 std::filesystem::path file;
             };
 
+            std::optional<DefinitionRequest> definition_request_;
             std::filesystem::path packages_dir_;
             std::map<std::filesystem::path, std::string> overlays_; // file_key -> 내용
             std::string main_path_;
@@ -1248,9 +1272,13 @@ namespace templide::middleend {
                     std::ifstream file(path, std::ios::binary);
                     if (!file) {
                         if (include != nullptr) {
-                            include_error(include, std::string(include->relative ? "Cannot find file: " : "Cannot find package: ") + path.string());
+                            if (include->relative) {
+                                include_error("E2001", include, "Cannot find file: " + path.string());
+                            } else {
+                                include_error("E2153", include, "Cannot find package: " + path.string());
+                            }
                         } else {
-                            diagnostics_.push_back({path.string(), 0, 0, "Cannot open file"});
+                            diagnostics_.push_back({path.string(), 0, 0, "Cannot open file", 0, Level::Error, "E2162"});
                         }
                         return;
                     }
@@ -1260,9 +1288,9 @@ namespace templide::middleend {
                     auto decoded = decode_source(buffer.str(), decode_error);
                     if (!decoded) {
                         if (include != nullptr) {
-                            include_error(include, path.string() + " " + decode_error);
+                            include_error("E2002", include, path.string() + " " + decode_error);
                         } else {
-                            diagnostics_.push_back({path.string(), 0, 0, path.string() + " " + decode_error});
+                            diagnostics_.push_back({path.string(), 0, 0, path.string() + " " + decode_error, 0, Level::Error, "E2002"});
                         }
                         return;
                     }
@@ -1277,10 +1305,11 @@ namespace templide::middleend {
                 const ast::ASTFile* file_node = file_parser.parse();
                 if (file_node == nullptr) {
                     for (const auto& parse_error : file_parser.errors) {
-                        diagnostics_.push_back({source.path, parse_error.line, parse_error.column, parse_error.message});
+                        diagnostics_.push_back({source.path, parse_error.line, parse_error.column, parse_error.message, 0, Level::Error, parse_error.code, parse_error.help});
                     }
                     return;
                 }
+                check_fmt_directives(source.path, file_parser.fmt_directives);
                 for (const auto* statement : file_node->body) {
                     if (statement->type == ast::INCLUDE) {
                         const auto* include = static_cast<const ast::ASTInclude*>(statement);
@@ -1446,24 +1475,46 @@ namespace templide::middleend {
                 return main_path_;
             }
 
-            void error(const Token& token, const std::string& message) {
-                Diagnostic diagnostic{path_of(token), token.line, token.column, message};
+            template <typename Map>
+            static std::vector<std::string> names_of(const Map& map) {
+                std::vector<std::string> names;
+                for (const auto& entry : map) {
+                    names.push_back(entry.first);
+                }
+                return names;
+            }
+
+            static std::vector<std::string> names_of(const std::vector<VarInfo>& vars) {
+                std::vector<std::string> names;
+                for (const auto& var : vars) {
+                    names.push_back(var.name);
+                }
+                return names;
+            }
+
+            static std::vector<std::string> join_names(std::vector<std::string> first, const std::vector<std::string>& second) {
+                first.insert(first.end(), second.begin(), second.end());
+                return first;
+            }
+
+            void error(const char* code, const Token& token, const std::string& message, const std::string& help = "") {
+                Diagnostic diagnostic{path_of(token), token.line, token.column, message, 0, Level::Error, code, help};
                 if (reported_.insert({diagnostic.path, diagnostic.line, diagnostic.column, diagnostic.message}).second) {
                     diagnostics_.push_back(std::move(diagnostic));
                 }
             }
 
             // include한 파일을 읽지 못한 오류. #이 아니라 <...>나 "..." 경로에 칠한다
-            void include_error(const ast::ASTInclude* include, const std::string& message) {
-                Diagnostic diagnostic{path_of(include->token), include->path_token.line, include->path_token.column, message, include->path_length};
+            void include_error(const char* code, const ast::ASTInclude* include, const std::string& message) {
+                Diagnostic diagnostic{path_of(include->token), include->path_token.line, include->path_token.column, message, include->path_length, Level::Error, code};
                 if (reported_.insert({diagnostic.path, diagnostic.line, diagnostic.column, diagnostic.message}).second) {
                     diagnostics_.push_back(std::move(diagnostic));
                 }
             }
 
             // template을 여러 번 펼쳐도 같은 자리의 같은 경고는 한 번만 남긴다
-            void warning(const Token& token, const std::string& message) {
-                Diagnostic diagnostic{path_of(token), token.line, token.column, message};
+            void warning(const char* code, const Token& token, const std::string& message, const std::string& help = "") {
+                Diagnostic diagnostic{path_of(token), token.line, token.column, message, 0, Level::Warning, code, help};
                 if (reported_.insert({diagnostic.path, diagnostic.line, diagnostic.column, "warning: " + diagnostic.message}).second) {
                     warnings_.push_back(std::move(diagnostic));
                 }
@@ -1488,6 +1539,31 @@ namespace templide::middleend {
                 return {std::nullopt, std::move(diagnostics_)};
             }
 
+            // #fmt의 옵션 이름과 값을 검사한다. 문서의 뜻에는 영향이 없으므로 경고뿐이다
+            void check_fmt_directives(const std::string& path, const std::vector<parser::FmtDirective>& directives) {
+                if (directives.empty()) {
+                    return;
+                }
+                std::vector<format::Directive> list;
+                for (const auto& each : directives) {
+                    format::Directive directive;
+                    directive.key = std::string(each.key.value);
+                    directive.value = std::string(each.value.value);
+                    directive.line = each.key.line;
+                    directive.column = each.key.column;
+                    directive.key_length = each.key.value.size();
+                    directive.value_line = each.value.line;
+                    directive.value_column = each.value.column;
+                    directive.value_length = each.value.value.size();
+                    list.push_back(std::move(directive));
+                }
+                std::vector<format::OptionProblem> problems;
+                format::read_settings(list, &problems);
+                for (const auto& problem : problems) {
+                    warnings_.push_back(format::option_diagnostic(path, list[problem.directive], problem));
+                }
+            }
+
             // 선언 수집
 
             void add_builtin_enum(const std::string& name, std::vector<std::string> members) {
@@ -1501,11 +1577,11 @@ namespace templide::middleend {
 
             bool declare(const std::string& name, const Token& token) {
                 if (builtin_names_.contains(name)) {
-                    error(token, "'" + name + "' is a built-in name");
+                    error("E2003", token, "'" + name + "' is a built-in name");
                     return false;
                 }
                 if (!declared_names_.insert(name).second) {
-                    error(token, "'" + name + "' is already defined");
+                    error("E2004", token, "'" + name + "' is already defined");
                     return false;
                 }
                 return true;
@@ -1582,7 +1658,7 @@ namespace templide::middleend {
                             collect_asset(static_cast<const ast::ASTAsset*>(statement));
                             break;
                         case ast::IF:
-                            error(statement->token, "'if' is not supported at the top level yet");
+                            error("E2005", statement->token, "'if' is not supported at the top level yet");
                             break;
                         default:
                             break;
@@ -1619,7 +1695,7 @@ namespace templide::middleend {
                 const std::filesystem::path bundle = bundle_of(node);
                 if (node->is_default) {
                     if (default_asset_ != nullptr) {
-                        error(node->token, "Only one asset can be the default; '" + default_asset_->path + "' is already the default");
+                        error("E2006", node->token, "Only one asset can be the default; '" + default_asset_->path + "' is already the default");
                     } else {
                         default_asset_ = node;
                     }
@@ -1627,7 +1703,7 @@ namespace templide::middleend {
                 std::string message;
                 const auto entries = tasset::list(bundle, message);
                 if (!entries) {
-                    error(node->path_token, "Cannot open the asset bundle '" + node->path + "' (" + message + ")");
+                    error("E2007", node->path_token, "Cannot open the asset bundle '" + node->path + "' (" + message + ")");
                     return;
                 }
                 // 파일을 가리키는 경로는 main 폴더 기준으로 적는다. 다른 드라이브면 절대 경로다
@@ -1651,7 +1727,7 @@ namespace templide::middleend {
                 std::set<std::string> aliases;
                 for (const auto& item : node->items) {
                     if (!aliases.insert(item.alias->name).second) {
-                        error(item.alias->token, "Duplicate name '" + item.alias->name + "' in this asset");
+                        error("E2008", item.alias->token, "Duplicate name '" + item.alias->name + "' in this asset");
                         continue;
                     }
                     if (item.all) {
@@ -1667,9 +1743,9 @@ namespace templide::middleend {
                         }
                     }
                     if (matches.empty()) {
-                        error(item.token, "'" + node->path + "' has no file named '" + item.name + "'");
+                        error("E2009", item.token, "'" + node->path + "' has no file named '" + item.name + "'");
                     } else if (matches.size() > 1) {
-                        error(item.token, "'" + item.name + "' matches more than one file in '" + node->path + "' (" + join(matches) + "); write the full file name");
+                        error("E2010", item.token, "'" + item.name + "' matches more than one file in '" + node->path + "' (" + join(matches) + "); write the full file name");
                     } else {
                         add_name(item.alias->name, matches.front());
                     }
@@ -1680,11 +1756,15 @@ namespace templide::middleend {
             std::optional<std::string> resolve_asset(const std::string& name, const Token& at) {
                 const auto it = asset_names_.find(name);
                 if (it == asset_names_.end()) {
-                    error(at, assets_.empty() ? "No asset bundle is loaded; add 'asset \"file.tasset\";' first" : "No asset named '" + name + "'");
+                    if (assets_.empty()) {
+                        error("E2011", at, "No asset bundle is loaded; add 'asset \"file.tasset\";' first");
+                    } else {
+                        error("E2154", at, "No asset named '" + name + "'");
+                    }
                     return std::nullopt;
                 }
                 if (it->second.size() > 1) {
-                    error(at, "'" + name + "' is ambiguous (" + join(it->second) + "); write the full file name or name it with 'asset ... by { ... }'");
+                    error("E2012", at, "'" + name + "' is ambiguous (" + join(it->second) + "); write the full file name or name it with 'asset ... by { ... }'");
                     return std::nullopt;
                 }
                 return it->second.front();
@@ -1702,7 +1782,7 @@ namespace templide::middleend {
                 EnumInfo info{node->name, {}};
                 for (const auto* member : node->members) {
                     if (info.has(member->name)) {
-                        error(member->token, "Duplicate member '" + member->name + "' in enum '" + node->name + "'");
+                        error("E2013", member->token, "Duplicate member '" + member->name + "' in enum '" + node->name + "'");
                     } else {
                         info.members.push_back(member->name);
                     }
@@ -1743,7 +1823,8 @@ namespace templide::middleend {
                 if (const auto it = enums_.find(type); it != enums_.end()) {
                     return Type{Kind::Enum, &it->second};
                 }
-                error(at, "Unknown type: " + type);
+                error("E2014", at, "Unknown type: " + type,
+                      did_you_mean(type, join_names({"int", "float", "string", "text", "color", "bool", "ref", "image", "video", "audio", "font", "fill"}, names_of(enums_))));
                 return Type{Kind::Error};
             }
 
@@ -1751,7 +1832,7 @@ namespace templide::middleend {
                 std::vector<VarInfo> parameters;
                 for (const auto* parameter : declared) {
                     if (find_var(parameters, parameter->name->name) != nullptr) {
-                        error(parameter->name->token, "Duplicate parameter: " + parameter->name->name);
+                        error("E2015", parameter->name->token, "Duplicate parameter: " + parameter->name->name);
                     } else {
                         parameters.push_back({parameter->name->name, resolve_type(parameter->type_name), nullptr, false});
                     }
@@ -1767,7 +1848,7 @@ namespace templide::middleend {
                     }
                     const auto* var = static_cast<const ast::ASTVar*>(statement);
                     if (find_var(vars, var->name->name) != nullptr) {
-                        error(var->name->token, "Duplicate variable: " + var->name->name);
+                        error("E2016", var->name->token, "Duplicate variable: " + var->name->name);
                     } else {
                         vars.push_back({var->name->name, resolve_type(var->type_name), var->default_value, false});
                     }
@@ -1801,7 +1882,7 @@ namespace templide::middleend {
                         const auto* style = static_cast<const ast::ASTStyle*>(statement);
                         signatures_[style] = parameters_of(style->parameters);
                     } else if (statement->type == ast::MASTER) {
-                        signatures_[statement] = parameters_of(static_cast<const ast::ASTMaster*>(statement)->parameters);
+                        signatures_[statement] = vars_of(static_cast<const ast::ASTMaster*>(statement)->vars);
                     } else if (statement->type == ast::TEMPLATE) {
                         signatures_[statement] = vars_of(static_cast<const ast::ASTTemplate*>(statement)->body);
                     } else if (statement->type == ast::OBJECT) {
@@ -1822,6 +1903,7 @@ namespace templide::middleend {
                             check_defaults(statement);
                             break;
                         case ast::MASTER:
+                            check_defaults(statement);
                             check_master(static_cast<const ast::ASTMaster*>(statement));
                             break;
                         case ast::SLIDE:
@@ -1856,7 +1938,7 @@ namespace templide::middleend {
                 const bool has_text = find_var(vars, "text") != nullptr;
                 for (const auto& property : common_properties_) {
                     if (find_var(vars, property.name) != nullptr) {
-                        error(object->token, "'" + property.name + "' is a built-in property of every object");
+                        error("E2017", object->token, "'" + property.name + "' is a built-in property of every object");
                         continue;
                     }
                     vars.push_back(property);
@@ -1875,7 +1957,7 @@ namespace templide::middleend {
                 }
                 for (const auto& property : text_properties_) {
                     if (find_var(vars, property.name) != nullptr) {
-                        error(object->token, "'" + property.name + "' is a built-in property of every object with text");
+                        error("E2018", object->token, "'" + property.name + "' is a built-in property of every object with text");
                         continue;
                     }
                     vars.push_back(property);
@@ -1895,12 +1977,18 @@ namespace templide::middleend {
                 const std::string& name = assign->identifier->name;
                 const PropertyInfo* property = find_property(name);
                 if (property == nullptr) {
-                    error(assign->identifier->token, "Unknown style property: " + name);
+                    {
+                        std::vector<std::string> candidates;
+                        for (const auto& known : properties_) {
+                            candidates.push_back(known.name);
+                        }
+                        error("E2019", assign->identifier->token, "Unknown style property: " + name, did_you_mean(name, candidates));
+                    }
                     check(assign->expression, scope, Type{});
                     return;
                 }
                 if (!assigned.insert(name).second) {
-                    error(assign->identifier->token, "Duplicate style property: " + name);
+                    error("E2020", assign->identifier->token, "Duplicate style property: " + name);
                 }
                 check_as(assign->expression, scope, property->type);
             }
@@ -1919,7 +2007,7 @@ namespace templide::middleend {
                     switch (statement->type) {
                         case ast::VAR:
                             if (!allow_var) {
-                                error(statement->token, "Variables must be declared at the top level of a template");
+                                error("E2021", statement->token, "Variables must be declared at the top level of a template");
                             }
                             break;
                         case ast::PUT:
@@ -1935,7 +2023,7 @@ namespace templide::middleend {
                             check_group(static_cast<const ast::ASTGroup*>(statement), scope);
                             break;
                         case ast::ASSIGN:
-                            error(static_cast<const ast::ASTAssign*>(statement)->name->token, "Properties such as 'background' can only be set directly inside a case");
+                            error("E2022", static_cast<const ast::ASTAssign*>(statement)->name->token, "Properties such as 'background' can only be set directly inside a case");
                             break;
                         default:
                             break;
@@ -1949,11 +2037,11 @@ namespace templide::middleend {
                 for_types_[node] = type;
                 const std::string& name = node->name->name;
                 if (scope.find(name) != nullptr) {
-                    error(node->name->token, "'" + name + "' is already defined");
+                    error("E2004", node->name->token, "'" + name + "' is already defined");
                 }
                 if (node->range_start != nullptr) {
                     if (type.kind != Kind::Int && type.kind != Kind::Error) {
-                        error(node->type_name->token, "A range can only be used with int, but got " + type_name(type));
+                        error("E2023", node->type_name->token, "A range can only be used with int, but got " + type_name(type));
                     }
                     check_as(node->range_start, scope, Type{Kind::Int});
                     check_as(node->range_end, scope, Type{Kind::Int});
@@ -1971,7 +2059,7 @@ namespace templide::middleend {
             void check_branch(const T* node, const Scope& scope) {
                 const Type condition = check(node->condition, scope, Type{});
                 if (condition.kind != Kind::Bool && condition.kind != Kind::Error) {
-                    error(location(node->condition), "Condition must be a bool such as 'a == b', but got " + type_name(condition));
+                    error("E2024", location(node->condition), "Condition must be a bool such as 'a == b', but got " + type_name(condition));
                 }
                 check_statements(node->body, scope, false);
                 if (node->branch == nullptr) {
@@ -1993,12 +2081,12 @@ namespace templide::middleend {
             void check_inner_animations(const std::vector<ast::ASTAnimate*>& animations, const Scope& scope, const std::string& object) {
                 for (const auto* animation : animations) {
                     if (!scope.in_slide) {
-                        error(animation->token, "'animate' can only be used in a put or group written in a slide");
+                        error("E2025", animation->token, "'animate' can only be used in a put or group written in a slide");
                         continue;
                     }
                     check_animate(animation, scope);
                     if (animation->category->name == "media" && object != "video" && object != "audio") {
-                        error(animation->category->token, "Media animations can only be used on a video or an audio");
+                        error("E2026", animation->category->token, "Media animations can only be used on a video or an audio");
                     }
                 }
             }
@@ -2007,7 +2095,7 @@ namespace templide::middleend {
                 check_inner_animations(put->animations, scope, put->name);
                 const std::vector<VarInfo>* vars = put_signature(put->name);
                 if (vars == nullptr) {
-                    error(put->token, "Unknown template or object: " + put->name);
+                    error("E2027", put->token, "Unknown template or object: " + put->name, did_you_mean(put->name, join_names(names_of(templates_), names_of(objects_))));
                     for (const auto* statement : put->body) {
                         check(static_cast<const ast::ASTAssign*>(statement)->expression, scope, Type{});
                     }
@@ -2019,24 +2107,24 @@ namespace templide::middleend {
                     const std::string& name = assign->name->name;
                     const VarInfo* var = find_var(*vars, name);
                     if (var == nullptr && name == "path" && objects_.contains(put->name) && find_var(*vars, "data") != nullptr) {
-                        error(assign->name->token, "'" + put->name + "' has no property 'path'; give the file with data, such as data = file(\"picture.png\")");
+                        error("E2028", assign->name->token, "'" + put->name + "' has no property 'path'; give the file with data, such as data = file(\"picture.png\")");
                         check(assign->expression, scope, Type{});
                         assigned.insert("data"); // data가 없다는 에러를 또 내지 않는다
                         continue;
                     }
                     if (var == nullptr) {
-                        error(assign->name->token, "'" + put->name + "' has no property '" + name + "'");
+                        error("E2029", assign->name->token, "'" + put->name + "' has no property '" + name + "'", did_you_mean(name, names_of(*vars)));
                         check(assign->expression, scope, Type{});
                         continue;
                     }
                     if (!assigned.insert(name).second) {
-                        error(assign->name->token, "Duplicate property: " + name);
+                        error("E2030", assign->name->token, "Duplicate property: " + name);
                     }
                     check_as(assign->expression, scope, var->type);
                 }
                 for (const auto& var : *vars) {
                     if (var.default_value == nullptr && !var.optional && !assigned.contains(var.name)) {
-                        error(put->token, "Missing property '" + var.name + "' for '" + put->name + "'");
+                        error("E2031", put->token, "Missing property '" + var.name + "' for '" + put->name + "'");
                     }
                 }
                 if (objects_.contains(put->name)) {
@@ -2055,7 +2143,7 @@ namespace templide::middleend {
                 const auto needs = [&](const std::vector<std::string>& details, const std::string& base) {
                     for (const auto& detail : details) {
                         if (assigned.contains(detail) && !assigned.contains(base)) {
-                            error(assigned.at(detail)->name->token, "'" + detail + "' needs '" + base + "'");
+                            error("E2032", assigned.at(detail)->name->token, "'" + detail + "' needs '" + base + "'");
                         }
                     }
                 };
@@ -2065,29 +2153,29 @@ namespace templide::middleend {
                 needs({"reflection_size", "reflection_distance", "reflection_blur"}, "reflection");
                 needs({"bevel_width", "bevel_height"}, "bevel");
                 needs({"depth_color"}, "depth");
-                const auto forbid = [&](const std::string& property, const std::string& message) {
+                const auto forbid = [&](const char* code, const std::string& property, const std::string& message) {
                     if (assigned.contains(property)) {
-                        error(assigned.at(property)->name->token, message);
+                        error(code, assigned.at(property)->name->token, message);
                     }
                 };
                 // PowerPoint은 누를 때 하는 일을 하나만 가진다
                 if (assigned.contains("action")) {
-                    forbid("link", "Use either 'link' or 'action'; an object has one click action (write the link as action = ...)");
+                    forbid("E2033", "link", "Use either 'link' or 'action'; an object has one click action (write the link as action = ...)");
                 }
                 if (put->name == "line" || put->name == "connector") {
-                    forbid("fill", "A line has no fill");
-                    forbid("flip", "A line cannot be flipped; swap its end points instead");
+                    forbid("E2157", "fill", "A line has no fill");
+                    forbid("E2158", "flip", "A line cannot be flipped; swap its end points instead");
                 }
                 if (put->name == "connector") {
-                    forbid("rotation", "A connector cannot be rotated; it follows the objects it connects");
+                    forbid("E2159", "rotation", "A connector cannot be rotated; it follows the objects it connects");
                 }
                 if (put->name == "backdrop") {
-                    forbid("fill", "A backdrop has no fill; it is filled with the blurred background");
+                    forbid("E2160", "fill", "A backdrop has no fill; it is filled with the blurred background");
                 }
                 if (put->name == "table") {
                     for (const char* property : {"rotation", "flip", "radius", "opacity", "shadow", "inner_shadow", "glow", "soft_edge", "reflection", "bevel", "depth",
                                                  "rotation_x", "rotation_y", "perspective", "line_cap", "line_join", "line_compound"}) {
-                        forbid(property, std::string("A table has no '") + property + "'");
+                        forbid("E2161", property, std::string("A table has no '") + property + "'");
                     }
                 }
             }
@@ -2112,7 +2200,7 @@ namespace templide::middleend {
             void check_cells(const ast::ASTPut* put, const Scope& scope) {
                 for (const auto* cell : put->cells) {
                     if (put->name != "table") {
-                        error(cell->token, "'cell' can only be used in a put table");
+                        error("E2034", cell->token, "'cell' can only be used in a put table");
                     }
                     check_as(cell->row, scope, Type{Kind::Int});
                     check_as(cell->column, scope, Type{Kind::Int});
@@ -2130,21 +2218,21 @@ namespace templide::middleend {
                 for (const auto* statement : master->properties) {
                     const auto* assign = static_cast<const ast::ASTAssign*>(statement);
                     if (assign->name->name != "theme") {
-                        error(assign->name->token, "Unknown master property: " + assign->name->name);
+                        error("E2035", assign->name->token, "Unknown master property: " + assign->name->name, did_you_mean(assign->name->name, {"theme"}));
                         continue;
                     }
                     if (!properties.insert("theme").second) {
-                        error(assign->name->token, "Duplicate property: theme");
+                        error("E2036", assign->name->token, "Duplicate property: theme");
                     }
                     if (assign->expression->type != ast::NAME || !themes_.contains(static_cast<const ast::ASTName*>(assign->expression)->name)) {
-                        error(location(assign->expression), "Expected the name of a theme");
+                        error("E2037", location(assign->expression), "Expected the name of a theme");
                     }
                 }
                 std::set<std::string> names;
                 for (const auto* statement : master->body) {
                     const auto* layout = static_cast<const ast::ASTMasterCase*>(statement);
                     if (!names.insert(layout->name).second) {
-                        error(layout->token, "Duplicate layout '" + layout->name + "' in master '" + master->name + "'");
+                        error("E2038", layout->token, "Duplicate layout '" + layout->name + "' in master '" + master->name + "'");
                     }
                     // case 바로 안의 대입은 layout의 속성이다
                     std::vector<ast::ASTNode*> statements;
@@ -2167,12 +2255,18 @@ namespace templide::middleend {
                 const std::string& name = assign->name->name;
                 const auto it = std::find_if(properties.begin(), properties.end(), [&](const auto& property) { return property.first == name; });
                 if (it == properties.end()) {
-                    error(assign->name->token, "Unknown " + owner + " property: " + name);
+                    {
+                        std::vector<std::string> candidates;
+                        for (const auto& known : properties) {
+                            candidates.push_back(known.first);
+                        }
+                        error("E2039", assign->name->token, "Unknown " + owner + " property: " + name, did_you_mean(name, candidates));
+                    }
                     check(assign->expression, scope, Type{});
                     return;
                 }
                 if (!assigned.insert(name).second) {
-                    error(assign->name->token, "Duplicate property: " + name);
+                    error("E2030", assign->name->token, "Duplicate property: " + name);
                 }
                 check_as(assign->expression, scope, it->second);
             }
@@ -2237,7 +2331,7 @@ namespace templide::middleend {
                     }
                     if (statement->type == ast::TRANSITION) {
                         if (has_transition) {
-                            error(statement->token, "Duplicate transition");
+                            error("E2040", statement->token, "Duplicate transition");
                         }
                         has_transition = true;
                         check_transition(static_cast<const ast::ASTTransition*>(statement));
@@ -2249,7 +2343,7 @@ namespace templide::middleend {
                         continue;
                     }
                     if (has_layout) {
-                        error(assign->name->token, "Duplicate property: layout");
+                        error("E2041", assign->name->token, "Duplicate property: layout");
                         continue;
                     }
                     has_layout = true;
@@ -2264,32 +2358,40 @@ namespace templide::middleend {
                 const std::string& category = node->category->name;
                 const std::string& effect = node->effect->name;
                 if (category != "enter" && category != "emphasis" && category != "exit" && category != "move" && category != "media") {
-                    error(node->category->token, "An animation must be enter, emphasis, exit, move or media, but got '" + category + "'");
+                    error("E2042", node->category->token, "An animation must be enter, emphasis, exit, move or media, but got '" + category + "'");
                 } else if (category == "media") {
                     if (effect != "play" && effect != "pause" && effect != "stop") {
-                        error(node->effect->token, "A media animation must be play, pause or stop, but got '" + effect + "'");
+                        error("E2043", node->effect->token, "A media animation must be play, pause or stop, but got '" + effect + "'");
                     } else if (node->option != nullptr) {
-                        error(node->option->token, "Media animations have no options");
+                        error("E2044", node->option->token, "Media animations have no options");
                     }
                     if (node->duration != nullptr) {
-                        error(location(node->duration), "Media animations cannot have a duration");
+                        error("E2045", location(node->duration), "Media animations cannot have a duration");
                     }
                 } else if (node->path != nullptr) {
                     if (category != "move") {
-                        error(node->effect->token, "'path' can only be used with move");
+                        error("E2046", node->effect->token, "'path' can only be used with move");
                     }
                     check_as(node->path, scope, Type{Kind::String});
                 } else if (const auto it = animation_options().find(category + "." + effect); it == animation_options().end()) {
-                    error(node->effect->token, "Unknown " + category + " animation: " + effect);
+                    {
+                    std::vector<std::string> candidates;
+                    for (const auto& [key, info] : animation_options()) {
+                        if (key.starts_with(category + ".")) {
+                            candidates.push_back(key.substr(category.size() + 1));
+                        }
+                    }
+                    error("E2047", node->effect->token, "Unknown " + category + " animation: " + effect, did_you_mean(effect, candidates));
+                }
                 } else {
                     const auto& options = it->second.options;
                     if (node->option != nullptr && options.front().empty()) {
-                        error(node->option->token, "Animation '" + effect + "' has no options");
+                        error("E2048", node->option->token, "Animation '" + effect + "' has no options");
                     } else if (node->option != nullptr && std::find(options.begin(), options.end(), node->option->name) == options.end()) {
-                        error(node->option->token, "Animation '" + effect + "' has no option '" + node->option->name + "' (" + join(options) + ")");
+                        error("E2049", node->option->token, "Animation '" + effect + "' has no option '" + node->option->name + "' (" + join(options) + ")", did_you_mean(node->option->name, options));
                     }
                     if (it->second.fixed && node->duration != nullptr) {
-                        error(location(node->duration), "Animation '" + effect + "' lasts until the slide ends, so it cannot have a duration");
+                        error("E2050", location(node->duration), "Animation '" + effect + "' lasts until the slide ends, so it cannot have a duration");
                     }
                 }
                 if (node->duration != nullptr) {
@@ -2310,7 +2412,7 @@ namespace templide::middleend {
                     check_assignment(static_cast<const ast::ASTAssign*>(statement), Scope{}, assigned, properties, "review");
                 }
                 if (!assigned.contains("text")) {
-                    error(node->token, "Missing property 'text' for review");
+                    error("E2051", node->token, "Missing property 'text' for review");
                 }
             }
 
@@ -2318,13 +2420,13 @@ namespace templide::middleend {
                 const std::string& kind = node->kind->name;
                 const auto it = transition_options().find(kind);
                 if (it == transition_options().end()) {
-                    error(node->kind->token, "Unknown transition: " + kind);
+                    error("E2052", node->kind->token, "Unknown transition: " + kind, did_you_mean(kind, names_of(transition_options())));
                 } else if (node->option != nullptr) {
                     const auto& options = it->second;
                     if (options.front().empty()) {
-                        error(node->option->token, "Transition '" + kind + "' has no options");
+                        error("E2053", node->option->token, "Transition '" + kind + "' has no options");
                     } else if (std::find(options.begin(), options.end(), node->option->name) == options.end()) {
-                        error(node->option->token, "Transition '" + kind + "' has no option '" + node->option->name + "' (" + join(options) + ")");
+                        error("E2054", node->option->token, "Transition '" + kind + "' has no option '" + node->option->name + "' (" + join(options) + ")", did_you_mean(node->option->name, options));
                     }
                 }
                 if (node->duration != nullptr) {
@@ -2332,12 +2434,35 @@ namespace templide::middleend {
                 }
             }
 
-            // <master>.<layout> 또는 매개변수가 있는 master면 <master>(<값>, ...).<layout>
+            // 이름으로 넘기는 인자(이름 = 값)는 layout의 master 호출에서만 쓴다
+            void reject_named(const ast::ASTCall* call) {
+                if (!call->named.empty()) {
+                    error("E2055", call->named.front().first->token, "Named arguments can only be used when choosing a layout, such as layout = brand(ink = hex(F00)).title");
+                }
+            }
+
+            // master의 매개변수 값. given이 nullptr인 매개변수(넘기지 않은 것)는 기본값을 쓴다
+            std::vector<ir::Value> master_arguments(const ast::ASTMaster* master, const std::vector<ast::ASTNode*>& given, const Env& env) {
+                const auto& parameters = signatures_.at(master);
+                std::vector<ir::Value> values;
+                for (std::size_t i = 0; i < parameters.size(); ++i) {
+                    if (i < given.size() && given[i] != nullptr) {
+                        values.push_back(evaluate(given[i], env, parameters[i].type));
+                    } else {
+                        Env defaults;
+                        defaults.page = env.page;
+                        values.push_back(evaluate(parameters[i].default_value, defaults, parameters[i].type));
+                    }
+                }
+                return values;
+            }
+
+            // <master>.<layout>, 또는 <master>(<값>, 이름 = <값>, ...).<layout>. 기본값이 있는 매개변수는 생략할 수 있다
             std::optional<LayoutInfo> resolve_layout(const ast::ASTNode* expr) {
                 const auto* member = expr->type == ast::MEMBER ? static_cast<const ast::ASTMember*>(expr) : nullptr;
                 const ast::ASTNode* object = member != nullptr ? member->object : nullptr;
                 if (object == nullptr || (object->type != ast::NAME && object->type != ast::CALL)) {
-                    error(location(expr), "Layout must be written as <master>.<layout> or <master>(<arguments>).<layout>");
+                    error("E2056", location(expr), "Layout must be written as <master>.<layout> or <master>(<arguments>).<layout>");
                     return std::nullopt;
                 }
                 const bool called = object->type == ast::CALL;
@@ -2345,24 +2470,61 @@ namespace templide::middleend {
                 const std::vector<ast::ASTNode*> arguments = called ? static_cast<const ast::ASTCall*>(object)->arguments : std::vector<ast::ASTNode*>{};
                 const auto master = masters_.find(master_name);
                 if (master == masters_.end()) {
-                    error(object->token, "Unknown master: " + master_name);
+                    error("E2057", object->token, "Unknown master: " + master_name, did_you_mean(master_name, names_of(masters_)));
                     return std::nullopt;
                 }
                 const auto& parameters = signatures_.at(master->second);
-                if (arguments.size() != parameters.size() || (!called && !parameters.empty())) {
-                    error(object->token, "Master '" + master_name + "' needs " + std::to_string(parameters.size()) + " argument(s), but got " + std::to_string(arguments.size()));
+                // 위치로 넘긴 인자를 앞에서부터, 이름으로 넘긴 인자를 그 이름의 매개변수에 맞추고, 남은 매개변수는 기본값을 쓴다
+                std::vector<ast::ASTNode*> bound(parameters.size(), nullptr);
+                bool valid = true;
+                if (arguments.size() > parameters.size()) {
+                    error("E2058", object->token, "Master '" + master_name + "' takes at most " + std::to_string(parameters.size()) + " argument(s), but got " + std::to_string(arguments.size()));
+                    valid = false;
+                }
+                for (std::size_t i = 0; i < arguments.size() && i < parameters.size(); ++i) {
+                    bound[i] = arguments[i];
+                }
+                if (called) {
+                    for (const auto& [name, value] : static_cast<const ast::ASTCall*>(object)->named) {
+                        const auto found = std::find_if(parameters.begin(), parameters.end(), [&](const VarInfo& var) { return var.name == name->name; });
+                        if (found == parameters.end()) {
+                            error("E2059", name->token, "Master '" + master_name + "' has no parameter '" + name->name + "'", did_you_mean(name->name, names_of(parameters)));
+                            valid = false;
+                        } else if (bound[static_cast<std::size_t>(found - parameters.begin())] != nullptr) {
+                            error("E2060", name->token, "Argument '" + name->name + "' is given more than once");
+                            valid = false;
+                        } else {
+                            bound[static_cast<std::size_t>(found - parameters.begin())] = value;
+                        }
+                    }
+                }
+                for (std::size_t i = 0; i < parameters.size(); ++i) {
+                    if (bound[i] == nullptr && parameters[i].default_value == nullptr) {
+                        error("E2061", object->token, "Missing argument '" + parameters[i].name + "' for master '" + master_name + "'");
+                        valid = false;
+                    }
+                }
+                if (!valid) {
                     return std::nullopt;
                 }
-                for (std::size_t i = 0; i < arguments.size(); ++i) {
-                    check_as(arguments[i], Scope{}, parameters[i].type);
+                for (std::size_t i = 0; i < parameters.size(); ++i) {
+                    if (bound[i] != nullptr) {
+                        check_as(bound[i], Scope{}, parameters[i].type);
+                    }
                 }
                 for (const auto* statement : master->second->body) {
                     const auto* layout = static_cast<const ast::ASTMasterCase*>(statement);
                     if (layout->name == member->member->name) {
-                        return LayoutInfo{master->second, layout, arguments};
+                        return LayoutInfo{master->second, layout, bound};
                     }
                 }
-                error(member->member->token, "Master '" + master_name + "' has no layout '" + member->member->name + "'");
+                {
+                    std::vector<std::string> layouts;
+                    for (const auto* statement : master->second->body) {
+                        layouts.push_back(static_cast<const ast::ASTMasterCase*>(statement)->name);
+                    }
+                    error("E2062", member->member->token, "Master '" + master_name + "' has no layout '" + member->member->name + "'", did_you_mean(member->member->name, layouts));
+                }
                 return std::nullopt;
             }
 
@@ -2372,16 +2534,17 @@ namespace templide::middleend {
                     const auto* assign = static_cast<const ast::ASTAssign*>(statement);
                     const std::string& name = assign->name->name;
                     if (name == "master") {
-                        error(assign->name->token, "A target has no master; the master comes from each slide's layout");
+                        error("E2063", assign->name->token, "A target has no master; the master comes from each slide's layout");
                         continue;
                     }
                     if (name != "path" && name != "type" && name != "width" && name != "height" && name != "title" && name != "author" && name != "loop" && name != "angles" && name != "script"
                         && name != "scale" && name != "transparent") {
-                        error(assign->name->token, "Unknown target property: " + name);
+                        error("E2064", assign->name->token, "Unknown target property: " + name,
+                              did_you_mean(name, {"path", "type", "width", "height", "title", "author", "loop", "angles", "script", "scale", "transparent"}));
                         continue;
                     }
                     if (!assigned.insert(name).second) {
-                        error(assign->name->token, "Duplicate property: " + name);
+                        error("E2030", assign->name->token, "Duplicate property: " + name);
                         continue;
                     }
                     if (name == "path" || name == "title" || name == "author" || name == "script") {
@@ -2398,20 +2561,20 @@ namespace templide::middleend {
                 }
                 for (const std::string required : {"path", "type"}) {
                     if (!assigned.contains(required)) {
-                        error(target->token, "Missing property '" + required + "' for target '" + target->name + "'");
+                        error("E2065", target->token, "Missing property '" + required + "' for target '" + target->name + "'");
                     }
                 }
                 if (assigned.contains("width") != assigned.contains("height")) {
-                    error(target->token, "Target '" + target->name + "' must set both width and height");
+                    error("E2066", target->token, "Target '" + target->name + "' must set both width and height");
                 }
             }
 
             void check_as(const ast::ASTNode* expr, const Scope& scope, const Type& expected) {
                 const Type actual = check(expr, scope, expected);
                 if (expected.kind == Kind::Font && actual.kind == Kind::String) {
-                    error(location(expr), "Write a font as font(\"...\"), such as font(\"Arial\")");
+                    error("E2067", location(expr), "Write a font as font(\"...\"), such as font(\"Arial\")");
                 } else if (!assignable(actual, expected)) {
-                    error(location(expr), "Expected " + type_name(expected) + ", but got " + type_name(actual));
+                    error("E2068", location(expr), "Expected " + type_name(expected) + ", but got " + type_name(actual));
                 }
             }
 
@@ -2434,7 +2597,7 @@ namespace templide::middleend {
                     case ast::DIMENSION: {
                         const auto* dimension = static_cast<const ast::ASTDimension*>(expr);
                         if (!px_per_unit(dimension->unit)) {
-                            error(expr->token, "Unknown unit '" + dimension->unit + "' (px, pt, in, cm, mm, %, deg, s, ms)");
+                            error("E2069", expr->token, "Unknown unit '" + dimension->unit + "' (px, pt, in, cm, mm, %, deg, s, ms)", did_you_mean(dimension->unit, {"px", "pt", "in", "cm", "mm", "deg", "ms"}));
                         }
                         // %는 소수여도 int 자리에 쓸 수 있다. backend가 슬라이드 크기로 풀 때 int 값은 px 정수로 자른다
                         return Type{dimension->value->type == ast::FLOAT && dimension->unit != "%" ? Kind::Float : Kind::Int};
@@ -2444,7 +2607,7 @@ namespace templide::middleend {
                     case ast::FSTRING:
                         for (const auto* part : static_cast<const ast::ASTFString*>(expr)->parts) {
                             if (!field_of(part).empty()) {
-                                error(location(part), "This value is updated by PowerPoint, so it cannot be used in an f-string; put it directly in text");
+                                error("E2070", location(part), "This value is updated by PowerPoint, so it cannot be used in an f-string; put it directly in text");
                             }
                             check(part, scope, Type{});
                         }
@@ -2457,7 +2620,7 @@ namespace templide::middleend {
                         if (static_cast<const ast::ASTContext*>(expr)->name->name == "date") {
                             return Type{Kind::Text};
                         }
-                        error(expr->token, "'@" + static_cast<const ast::ASTContext*>(expr)->name->name + "' must be followed by a member such as '@slide.page'");
+                        error("E2071", expr->token, "'@" + static_cast<const ast::ASTContext*>(expr)->name->name + "' must be followed by a member such as '@slide.page'");
                         return Type{Kind::Error};
                     case ast::MULTIPLY: {
                         const auto* node = static_cast<const ast::ASTMultiply*>(expr);
@@ -2491,7 +2654,7 @@ namespace templide::middleend {
                     case ast::COLOR_SPACE: {
                         const auto* color = static_cast<const ast::ASTColorSpace*>(expr);
                         if (color->arguments.size() != 3 && color->arguments.size() != 4) {
-                            error(expr->token, color->space + " needs three values and an optional alpha, such as " + color::example(color->space));
+                            error("E2072", expr->token, color->space + " needs three values and an optional alpha, such as " + color::example(color->space));
                         }
                         for (const auto* component : color->arguments) {
                             check_as(component, scope, Type{Kind::Float});
@@ -2501,12 +2664,13 @@ namespace templide::middleend {
                     case ast::COLOR_HEX: {
                         const auto& digits = static_cast<const ast::ASTString*>(static_cast<const ast::ASTColorHex*>(expr)->hex)->value;
                         if (digits.size() != 3 && digits.size() != 4 && digits.size() != 6 && digits.size() != 8) {
-                            error(expr->token, "Hex color must have 3, 4, 6 or 8 digits");
+                            error("E2073", expr->token, "Hex color must have 3, 4, 6 or 8 digits");
                         }
                         return Type{Kind::Color};
                     }
                     case ast::CALL: {
                         const auto* call = static_cast<const ast::ASTCall*>(expr);
+                        reject_named(call);
                         if (call->name->name == "linear") {
                             return check_gradient(call, scope, 1);
                         }
@@ -2518,7 +2682,7 @@ namespace templide::middleend {
                         }
                         if (call->name->name == "font") {
                             if (call->arguments.size() != 1) {
-                                error(call->token, "font needs one font name, such as font(\"Arial\")");
+                                error("E2074", call->token, "font needs one font name, such as font(\"Arial\")");
                                 for (const auto* argument : call->arguments) {
                                     check(argument, scope, Type{});
                                 }
@@ -2538,7 +2702,7 @@ namespace templide::middleend {
                         }
                         if (call->name->name == "slide") {
                             if (call->arguments.size() != 1) {
-                                error(call->token, "slide needs one slide number, such as slide(3)");
+                                error("E2075", call->token, "slide needs one slide number, such as slide(3)");
                             }
                             for (const auto* argument : call->arguments) {
                                 check_as(argument, scope, Type{Kind::Int});
@@ -2546,9 +2710,10 @@ namespace templide::middleend {
                             return Type{call->arguments.size() != 1 ? Kind::Error : Kind::SlideRef};
                         }
                         if (styles_.contains(call->name->name)) {
-                            error(expr->token, "Style '" + call->name->name + "' can only be used inside text");
+                            error("E2076", expr->token, "Style '" + call->name->name + "' can only be used inside text");
                         } else {
-                            error(expr->token, "Unknown function: " + call->name->name);
+                            error("E2077", expr->token, "Unknown function: " + call->name->name,
+                                  did_you_mean(call->name->name, join_names({"linear", "radial", "pattern", "image", "file", "asset", "font", "slide", "run", "program", "macro", "action_file"}, names_of(styles_))));
                         }
                         for (const auto* argument : call->arguments) {
                             check(argument, scope, Type{});
@@ -2559,10 +2724,10 @@ namespace templide::middleend {
                     case ast::LIST:
                         return check_text(expr, scope, false);
                     case ast::INLINE_STYLE:
-                        error(expr->token, "An inline style can only be used inside text");
+                        error("E2078", expr->token, "An inline style can only be used inside text");
                         return Type{Kind::Error};
                     default:
-                        error(expr->token, "Unexpected expression");
+                        error("E2079", expr->token, "Unexpected expression");
                         return Type{Kind::Error};
                 }
             }
@@ -2573,7 +2738,7 @@ namespace templide::middleend {
                 const auto& arguments = call->arguments;
                 const std::string& name = call->name->name;
                 if (arguments.size() < leading + 2) {
-                    error(call->token, name + " needs " + (leading > 0 ? "an angle and " : "") + "at least 2 colors, such as " +
+                    error("E2080", call->token, name + " needs " + (leading > 0 ? "an angle and " : "") + "at least 2 colors, such as " +
                                        (leading > 0 ? "linear(90, hex(FFF), hex(000))" : "radial(hex(FFF), hex(000))"));
                 }
                 for (std::size_t i = 0; i < arguments.size(); ++i) {
@@ -2602,7 +2767,7 @@ namespace templide::middleend {
             Type check_pattern(const ast::ASTCall* call, const Scope& scope) {
                 const auto& arguments = call->arguments;
                 if (arguments.size() != 3) {
-                    error(call->token, "pattern needs a kind and 2 colors, such as pattern(diagonal_cross, hex(000), hex(FFF))");
+                    error("E2081", call->token, "pattern needs a kind and 2 colors, such as pattern(diagonal_cross, hex(000), hex(FFF))");
                 }
                 for (std::size_t i = 0; i < arguments.size(); ++i) {
                     check_as(arguments[i], scope, i == 0 ? enum_type("pattern_kind") : Type{Kind::Color});
@@ -2613,7 +2778,7 @@ namespace templide::middleend {
             // image("경로")
             Type check_image(const ast::ASTCall* call, const Scope& scope) {
                 if (call->arguments.size() != 1) {
-                    error(call->token, "image needs one path, such as image(\"bg.png\")");
+                    error("E2082", call->token, "image needs one path, such as image(\"bg.png\")");
                 }
                 for (const auto* argument : call->arguments) {
                     check_as(argument, scope, Type{Kind::String});
@@ -2625,12 +2790,15 @@ namespace templide::middleend {
             Type check_source(const ast::ASTCall* call, const Scope& scope, const Type& expected) {
                 const std::string& name = call->name->name;
                 if (name == "file" && (expected.kind == Kind::Action || expected.kind == Kind::Link)) {
-                    error(call->token, "To open a file when clicked, write action_file(\"...\"); file(...) gives a picture, video or audio file");
+                    error("E2083", call->token, "To open a file when clicked, write action_file(\"...\"); file(...) gives a picture, video or audio file");
                     return Type{Kind::Error};
                 }
                 if (call->arguments.size() != 1) {
-                    error(call->token, name == "file" ? "file needs one path, such as file(\"logo.png\") or file(\"slides.tasset/logo.png\")"
-                                                      : "asset needs one file name, such as asset(\"logo\")");
+                    if (name == "file") {
+                        error("E2084", call->token, "file needs one path, such as file(\"logo.png\") or file(\"slides.tasset/logo.png\")");
+                    } else {
+                        error("E2155", call->token, "asset needs one file name, such as asset(\"logo\")");
+                    }
                     for (const auto* argument : call->arguments) {
                         check(argument, scope, Type{});
                     }
@@ -2661,17 +2829,18 @@ namespace templide::middleend {
                     if (expected.enumeration->has(node->name)) {
                         return expected;
                     }
-                    error(node->token, "'" + node->name + "' is not a value of '" + expected.enumeration->name + "'");
+                    error("E2085", node->token, "'" + node->name + "' is not a value of '" + expected.enumeration->name + "'", did_you_mean(node->name, expected.enumeration->members));
                     return Type{Kind::Error};
                 }
                 if (const auto constant = constants_.find(node->name); constant != constants_.end()) {
                     return constant_type(constant->second);
                 }
                 if (styles_.contains(node->name)) {
-                    error(node->token, "Style '" + node->name + "' can only be used inside text");
+                    error("E2076", node->token, "Style '" + node->name + "' can only be used inside text");
                     return Type{Kind::Error};
                 }
-                error(node->token, "Unknown name: " + node->name);
+                error("E2086", node->token, "Unknown name: " + node->name,
+                      did_you_mean(node->name, join_names(scope.vars != nullptr ? names_of(*scope.vars) : std::vector<std::string>{}, names_of(constants_))));
                 return Type{Kind::Error};
             }
 
@@ -2684,7 +2853,7 @@ namespace templide::middleend {
                 const std::string& name = call->name->name;
                 bool valid = true;
                 if (expected.kind != Kind::Action) {
-                    error(call->token, "'" + name + "(...)' can only be used as an action, such as action = " + name + "(...)");
+                    error("E2087", call->token, "'" + name + "(...)' can only be used as an action, such as action = " + name + "(...)");
                     valid = false;
                 }
                 if (call->arguments.empty() || (name != "run" && call->arguments.size() != 1)) {
@@ -2692,7 +2861,7 @@ namespace templide::middleend {
                         {"run", "run(\"onClick\", @slide.number)"}, {"program", "program(\"tools/app.exe\")"},
                         {"macro", "macro(\"Module1.Hello\")"}, {"action_file", "action_file(\"docs/report.pdf\")"},
                     };
-                    error(call->token, name + " needs " + (name == "run" ? "a function name and optional arguments" : "one string") + ", such as " + examples.at(name));
+                    error("E2088", call->token, name + " needs " + (name == "run" ? "a function name and optional arguments" : "one string") + ", such as " + examples.at(name));
                     valid = false;
                 }
                 for (std::size_t i = 0; i < call->arguments.size(); ++i) {
@@ -2702,7 +2871,7 @@ namespace templide::middleend {
                     }
                     const Type type = check(call->arguments[i], scope, Type{});
                     if (type.kind != Kind::Error && type.kind != Kind::Bool && !is_numeric(type) && type.kind != Kind::String && type.kind != Kind::Text) {
-                        error(location(call->arguments[i]), "An argument of run must be a number, string, text or bool, but got " + type_name(type));
+                        error("E2089", location(call->arguments[i]), "An argument of run must be a number, string, text or bool, but got " + type_name(type));
                     }
                 }
                 return Type{valid ? Kind::Action : Kind::Error};
@@ -2719,11 +2888,17 @@ namespace templide::middleend {
                     if (member == "heading_font" || member == "body_font") {
                         return Type{Kind::Font};
                     }
-                    error(location(node), "Unknown theme value: theme." + member);
+                    {
+                        std::vector<std::string> candidates = {"heading_font", "body_font"};
+                        for (const auto& [name, scheme] : theme_colors()) {
+                            candidates.push_back(name);
+                        }
+                        error("E2090", location(node), "Unknown theme value: theme." + member, did_you_mean(member, candidates));
+                    }
                     return Type{Kind::Error};
                 }
                 if (node->object->type != ast::CONTEXT) {
-                    error(location(node), "Member access is only supported for '@slide.page', '@slide.number', '@slide.count', '@self.name' and 'theme.<name>'");
+                    error("E2091", location(node), "Member access is only supported for '@slide.page', '@slide.number', '@slide.count', '@self.name' and 'theme.<name>'");
                     return Type{Kind::Error};
                 }
                 const std::string& context = static_cast<const ast::ASTContext*>(node->object)->name->name;
@@ -2736,7 +2911,7 @@ namespace templide::middleend {
                     return Type{Kind::Int};
                 }
                 if (context != "slide" || (member != "page" && member != "number")) {
-                    error(location(node), "Unknown value: @" + context + "." + member);
+                    error("E2092", location(node), "Unknown value: @" + context + "." + member);
                     return Type{Kind::Error};
                 }
                 // 슬라이드 번호 필드는 PowerPoint이 채우므로 master에서도 쓸 수 있다
@@ -2744,7 +2919,7 @@ namespace templide::middleend {
                     return Type{Kind::Text};
                 }
                 if (scope.in_master) {
-                    error(location(node), "'@slide' cannot be used in a master");
+                    error("E2093", location(node), "'@slide' cannot be used in a master");
                     return Type{Kind::Error};
                 }
                 return Type{Kind::Int};
@@ -2758,7 +2933,7 @@ namespace templide::middleend {
                     if (type.kind == Kind::Error) {
                         valid = false;
                     } else if (!is_numeric(type)) {
-                        error(location(node), "Expected a number, but got " + type_name(type));
+                        error("E2094", location(node), "Expected a number, but got " + type_name(type));
                         valid = false;
                     }
                 }
@@ -2780,7 +2955,7 @@ namespace templide::middleend {
                     right = check(node->right, scope, left);
                 }
                 if (!comparable(left, right)) {
-                    error(location(node), "Cannot compare " + type_name(left) + " with " + type_name(right));
+                    error("E2095", location(node), "Cannot compare " + type_name(left) + " with " + type_name(right));
                 }
                 return Type{Kind::Bool};
             }
@@ -2798,30 +2973,32 @@ namespace templide::middleend {
                             const std::string& name = static_cast<const ast::ASTName*>(part)->name;
                             if (const VarInfo* var = scope.find(name)) {
                                 if (!assignable(var->type, Type{Kind::Text})) {
-                                    error(part->token, "'" + name + "' is " + type_name(var->type) + " and cannot be used in text");
+                                    error("E2096", part->token, "'" + name + "' is " + type_name(var->type) + " and cannot be used in text");
                                 }
                             } else if (const auto style = styles_.find(name); style != styles_.end()) {
                                 const auto& parameters = signatures_.at(style->second);
                                 if (!parameters.empty()) {
-                                    error(part->token, "Style '" + name + "' needs " + std::to_string(parameters.size()) + " argument(s)");
+                                    error("E2097", part->token, "Style '" + name + "' needs " + std::to_string(parameters.size()) + " argument(s)");
                                 }
                             } else {
-                                error(part->token, "Unknown style or variable: " + name);
+                                error("E2098", part->token, "Unknown style or variable: " + name,
+                                      did_you_mean(name, join_names(scope.vars != nullptr ? names_of(*scope.vars) : std::vector<std::string>{}, names_of(styles_))));
                             }
                             break;
                         }
                         case ast::CALL: {
                             const auto* call = static_cast<const ast::ASTCall*>(part);
+                            reject_named(call);
                             if (call->name->name == "link" && !styles_.contains("link")) {
                                 if (call->arguments.size() != 1) {
-                                    error(call->token, "link needs one target, such as link(\"https://example.com\") or link(slide(3))");
+                                    error("E2099", call->token, "link needs one target, such as link(\"https://example.com\") or link(slide(3))");
                                 }
                                 for (const auto* argument : call->arguments) {
                                     check_as(argument, scope, Type{Kind::Link});
                                 }
                             } else if (is_text_action(call->name->name)) {
                                 if (call->arguments.size() != 1) {
-                                    error(call->token, call->name->name + " needs one action, such as " + call->name->name + "(run(\"onClick\")) or " + call->name->name + "(slide(3))");
+                                    error("E2100", call->token, call->name->name + " needs one action, such as " + call->name->name + "(run(\"onClick\")) or " + call->name->name + "(slide(3))");
                                 }
                                 for (const auto* argument : call->arguments) {
                                     check_as(argument, scope, Type{Kind::Action});
@@ -2844,18 +3021,18 @@ namespace templide::middleend {
                             break;
                         case ast::LIST:
                             if (static_cast<const ast::ASTList*>(part)->kind == ast::ListKind::PLAIN) {
-                                error(part->token, "A list must follow 'bullets', 'numbers' or 'dashes'");
+                                error("E2101", part->token, "A list must follow 'bullets', 'numbers' or 'dashes'");
                                 break;
                             }
                             if (in_item) {
-                                error(part->token, "A nested list must be a separate item of the outer list");
+                                error("E2102", part->token, "A nested list must be a separate item of the outer list");
                             }
                             check_list(static_cast<const ast::ASTList*>(part), scope);
                             break;
                         default: {
                             const Type type = check(part, scope, Type{});
                             if (!assignable(type, Type{Kind::Text})) {
-                                error(location(part), type_name(type) + " cannot be used in text");
+                                error("E2103", location(part), type_name(type) + " cannot be used in text");
                             }
                             break;
                         }
@@ -2867,7 +3044,7 @@ namespace templide::middleend {
             void check_list(const ast::ASTList* list, const Scope& scope) {
                 for (const auto* item : list->items) {
                     if (item->type == ast::LIST && static_cast<const ast::ASTList*>(item)->kind == ast::ListKind::PLAIN) {
-                        error(item->token, "A list must follow 'bullets', 'numbers' or 'dashes'");
+                        error("E2101", item->token, "A list must follow 'bullets', 'numbers' or 'dashes'");
                     } else if (item->type == ast::LIST) {
                         check_list(static_cast<const ast::ASTList*>(item), scope);
                     } else {
@@ -2879,7 +3056,7 @@ namespace templide::middleend {
             void check_style_call(const ast::ASTCall* call, const Scope& scope) {
                 const auto style = styles_.find(call->name->name);
                 if (style == styles_.end()) {
-                    error(call->token, "Unknown style: " + call->name->name);
+                    error("E2104", call->token, "Unknown style: " + call->name->name, did_you_mean(call->name->name, names_of(styles_)));
                     for (const auto* argument : call->arguments) {
                         check(argument, scope, Type{});
                     }
@@ -2887,7 +3064,7 @@ namespace templide::middleend {
                 }
                 const auto& parameters = signatures_.at(style->second);
                 if (call->arguments.size() != parameters.size()) {
-                    error(call->token, "Style '" + call->name->name + "' needs " + std::to_string(parameters.size()) + " argument(s), but got " + std::to_string(call->arguments.size()));
+                    error("E2105", call->token, "Style '" + call->name->name + "' needs " + std::to_string(parameters.size()) + " argument(s), but got " + std::to_string(call->arguments.size()));
                 }
                 for (std::size_t i = 0; i < call->arguments.size(); ++i) {
                     if (i < parameters.size()) {
@@ -2905,10 +3082,12 @@ namespace templide::middleend {
                 for (const auto& [name, constant] : constants_) {
                     evaluate_constant(constant);
                 }
-                // 매개변수가 없는 master는 미리 만들고, 있는 master는 slide가 넘긴 값마다 만든다
+                // 매개변수가 없거나 모두 기본값이 있는 master는 미리 만들고, 그 밖의 master는 slide가 넘긴 값마다 만든다
                 for (const auto* master : master_order_) {
-                    if (signatures_.at(master).empty()) {
-                        master_instance(document, master, {});
+                    const auto& parameters = signatures_.at(master);
+                    if (std::all_of(parameters.begin(), parameters.end(), [](const VarInfo& var) { return var.default_value != nullptr; })) {
+                        Env defaults;
+                        master_instance(document, master, master_arguments(master, {}, defaults));
                     }
                 }
 
@@ -2922,11 +3101,7 @@ namespace templide::middleend {
                     result.source = block_of(slide, env);
                     if (const auto it = slide_layouts_.find(slide); it != slide_layouts_.end()) {
                         const LayoutInfo& info = it->second;
-                        const auto& parameters = signatures_.at(info.master);
-                        std::vector<ir::Value> arguments;
-                        for (std::size_t j = 0; j < parameters.size(); ++j) {
-                            arguments.push_back(evaluate(info.arguments[j], env, parameters[j].type));
-                        }
+                        const std::vector<ir::Value> arguments = master_arguments(info.master, info.arguments, env);
                         const auto& cases = info.master->body;
                         const auto layout = static_cast<std::size_t>(std::find(cases.begin(), cases.end(), info.layout) - cases.begin());
                         result.layout = ir::LayoutRef{master_instance(document, info.master, arguments), layout};
@@ -2977,6 +3152,187 @@ namespace templide::middleend {
                     document.targets.push_back(build_target(document, target));
                 }
                 return document;
+            }
+
+            // 값이 없는 var를 미리 볼 때 쓰는 타입의 기본값. int는 0, 목록은 빈 목록, 글은 빈 글 ...
+            ir::Value default_value_of(const Type& type) const {
+                switch (type.kind) {
+                    case Kind::Int:
+                        return ir::Number{{{"", 0}}, false};
+                    case Kind::Float:
+                        return ir::Number{{{"", 0}}, true};
+                    case Kind::String:
+                    case Kind::Font:
+                    case Kind::Ref:
+                    case Kind::File:
+                    case Kind::Video:
+                    case Kind::Audio:
+                        return std::string();
+                    case Kind::Text:
+                        return ir::Text{};
+                    case Kind::Color:
+                    case Kind::Fill:
+                    case Kind::Background:
+                    case Kind::Gradient:
+                    case Kind::Pattern:
+                        return ir::Color{0, 0, 0, 1, ""};
+                    case Kind::Enum:
+                        return ir::EnumValue{type.enumeration->name, type.enumeration->members.empty() ? std::string() : type.enumeration->members.front()};
+                    case Kind::Image:
+                        return ir::Image{};
+                    case Kind::Link:
+                    case Kind::SlideRef:
+                        return ir::Link{};
+                    case Kind::Action:
+                        return ir::Action{"link", {}, "", {}, ""};
+                    case Kind::List:
+                        return ir::List{};
+                    default:
+                        return false;
+                }
+            }
+
+            // template이나 master case 하나를 slide 한 장으로 펼친다. 편집기는 이 slide를 보통 slide처럼 보여 주고 고친다.
+            // 안의 요소는 잠기지 않아 slide에 직접 적은 것처럼 끌고 바꿀 수 있고, 매개변수에서 온 값만 잠긴다
+            void build_definition(Result& result) {
+                const DefinitionRequest& request = *definition_request_;
+                DefinitionInfo& info = result.definition;
+                info.kind = request.kind;
+                info.name = request.name;
+                const std::size_t errors_before = diagnostics_.size();
+                ir::Document document = *result.document;
+                document.slides.clear();
+                ir::Slide slide;
+                slide.page = 1;
+                Env env;
+                env.page = 1;
+                env.id = "1";
+                expansion_failed_ = false;
+                scope_ = ElementScope{};
+                slide_animations_.clear();
+                media_positions_.clear();
+
+                // 편집기가 보여 줄 var 목록 (선언 위치, 기본값, 미리 보는 값)
+                const auto collect_vars = [&](const std::vector<ast::ASTNode*>& body) {
+                    for (const auto* statement : body) {
+                        if (statement->type != ast::VAR) {
+                            continue;
+                        }
+                        const auto* declared = static_cast<const ast::ASTVar*>(statement);
+                        const auto found = env.values.find(declared->name->name);
+                        if (found == env.values.end()) {
+                            continue;
+                        }
+                        DefinitionVar entry;
+                        entry.name = declared->name->name;
+                        entry.type = type_name(resolve_type(declared->type_name));
+                        entry.has_default = declared->default_value != nullptr;
+                        entry.value = found->second;
+                        entry.declaration = range_of(declared);
+                        if (entry.has_default) {
+                            entry.default_text = std::string(declared->default_value->span);
+                            entry.default_range = range_of(declared->default_value);
+                            entry.default_origin = origin_of(declared->default_value, Env{}, resolve_type(declared->type_name));
+                        }
+                        info.vars.push_back(std::move(entry));
+                    }
+                };
+
+                const auto bind = [&](const std::vector<VarInfo>& vars, bool use_defaults) {
+                    for (const auto& var : vars) {
+                        ir::Value value = default_value_of(var.type);
+                        if (use_defaults && var.default_value != nullptr) {
+                            Env defaults;
+                            defaults.page = 1;
+                            value = evaluate(var.default_value, defaults, var.type);
+                        }
+                        env.values[var.name] = std::move(value);
+                        env.origins[var.name] = locked("parameter");
+                    }
+                };
+
+                if (request.kind == "template") {
+                    const auto it = templates_.find(request.name);
+                    if (it == templates_.end()) {
+                        info.error = "No template named '" + request.name + "'";
+                        return;
+                    }
+                    const ast::ASTTemplate* node = it->second;
+                    info.package = in_package(node);
+                    info.statement = range_of(node);
+                    bind(signatures_.at(node), true);
+                    collect_vars(node->body);
+                    slide.source = block_of(node, env);
+                    execute(node->body, env, slide.elements, 0);
+                    check_connectors();
+                } else if (request.kind == "master") {
+                    const auto it = masters_.find(request.name);
+                    if (it == masters_.end()) {
+                        info.error = "No master named '" + request.name + "'";
+                        return;
+                    }
+                    const ast::ASTMaster* master = it->second;
+                    info.package = in_package(master);
+                    info.statement = range_of(master);
+                    const auto& parameters = signatures_.at(master);
+                    const ast::ASTMasterCase* layout = nullptr;
+                    std::size_t layout_index = 0;
+                    for (std::size_t i = 0; i < master->body.size(); ++i) {
+                        const auto* each = static_cast<const ast::ASTMasterCase*>(master->body[i]);
+                        info.cases.push_back(each->name);
+                        if (layout == nullptr && (request.layout.empty() || each->name == request.layout)) {
+                            layout = each;
+                            layout_index = i;
+                        }
+                    }
+                    if (layout == nullptr) {
+                        info.error = master->body.empty() ? "Master '" + request.name + "' has no layout" : "Master '" + request.name + "' has no layout '" + request.layout + "'";
+                        return;
+                    }
+                    info.layout = layout->name;
+                    bind(parameters, true);
+                    collect_vars(master->vars);
+                    std::vector<ir::Value> arguments;
+                    for (const auto& parameter : parameters) {
+                        arguments.push_back(env.values.at(parameter.name));
+                    }
+                    // theme 색은 master의 것을 쓰고, 편집하는 case는 비워 두어 슬라이드의 요소와 겹쳐 그려지지 않게 한다
+                    const std::size_t index = master_instance(document, master, arguments);
+                    document.masters[index].layouts[layout_index].elements.clear();
+                    document.masters[index].layouts[layout_index].background.reset();
+                    slide.layout = ir::LayoutRef{index, layout_index};
+                    for (auto& target : document.targets) {
+                        target.masters = {index};
+                    }
+                    env.page.reset();
+                    slide.source = block_of(layout, env);
+                    scope_ = ElementScope{true, {}, {}};
+                    execute(layout->body, env, slide.elements, 0);
+                    check_connectors();
+                    for (const auto* inner : layout->body) {
+                        if (inner->type != ast::ASSIGN) {
+                            continue;
+                        }
+                        const auto* assign = static_cast<const ast::ASTAssign*>(inner);
+                        if (assign->name->name == "background") {
+                            ir::Value value = evaluate(assign->expression, env, Type{Kind::Background});
+                            check_paint(value, "background", location(assign->expression));
+                            slide.origins["background"] = assigned_origin(assign, env, Type{Kind::Background});
+                            slide.background = std::move(value);
+                        }
+                    }
+                } else {
+                    info.error = "Unknown definition kind: " + request.kind;
+                    return;
+                }
+                add_media_animations(slide.elements);
+                slide.animations = ordered_animations();
+                document.slides.push_back(std::move(slide));
+                result.definition_document = std::move(document);
+                // 펼치다 난 오류는 정의를 보는 데 방해가 되지 않게 따로 둔다
+                info.diagnostics.assign(diagnostics_.begin() + static_cast<std::ptrdiff_t>(errors_before), diagnostics_.end());
+                diagnostics_.resize(errors_before);
+                expansion_failed_ = false;
             }
 
             // master를 매개변수 값으로 펼친다. 같은 master와 값이면 이미 만든 것을 쓴다
@@ -3054,9 +3410,9 @@ namespace templide::middleend {
                     slide.background = std::move(value);
                 } else if (name == "title" || name == "subtitle" || name == "body") {
                     if (!slide.layout) {
-                        error(assign->name->token, "'" + name + "' needs a layout with a " + name + " placeholder");
+                        error("E2106", assign->name->token, "'" + name + "' needs a layout with a " + name + " placeholder");
                     } else if (!has_placeholder(document.masters.at(slide.layout->master).layouts.at(slide.layout->layout).elements, name)) {
-                        error(assign->name->token, "Layout '" + document.masters.at(slide.layout->master).layouts.at(slide.layout->layout).name + "' has no " + name + " placeholder");
+                        error("E2107", assign->name->token, "Layout '" + document.masters.at(slide.layout->master).layouts.at(slide.layout->layout).name + "' has no " + name + " placeholder");
                     }
                     slide.placeholders[name] = std::get<ir::Text>(value);
                 } else if (name == "hidden") {
@@ -3114,7 +3470,7 @@ namespace templide::middleend {
                     animation.path = std::get<std::string>(evaluate(node->path, env, Type{Kind::String}));
                     std::string message;
                     if (!geometry::parse_svg_path(animation.path, message)) {
-                        error(location(node->path), "Invalid path: " + message);
+                        error("E2108", location(node->path), "Invalid path: " + message);
                     }
                 } else if (node->option != nullptr) {
                     animation.option = node->option->name;
@@ -3135,7 +3491,7 @@ namespace templide::middleend {
                 if (node->order != nullptr) {
                     const auto order = scalar(as_number(evaluate(node->order, env, Type{Kind::Int})));
                     if (!order || *order < 1) {
-                        error(location(node->order), "'order' must be a number of 1 or more without a unit");
+                        error("E2109", location(node->order), "'order' must be a number of 1 or more without a unit");
                     } else {
                         animation.order = static_cast<int>(*order);
                     }
@@ -3145,11 +3501,11 @@ namespace templide::middleend {
                 }
                 const auto named = scope_.names.find(animation.target);
                 if (named == scope_.names.end()) {
-                    error(node->target->token, "No object named '" + animation.target + "' on this slide; give one a name with 'put ... as " + animation.target + "'");
+                    error("E2110", node->target->token, "No object named '" + animation.target + "' on this slide; give one a name with 'put ... as " + animation.target + "'");
                 } else {
                     animation.element_id = named->second.id;
                     if (animation.category == "media" && named->second.object != "video" && named->second.object != "audio") {
-                        error(node->target->token, "Media animations can only be used on a video or an audio, but '" + animation.target + "' is a " + named->second.object);
+                        error("E2111", node->target->token, "Media animations can only be used on a video or an audio, but '" + animation.target + "' is a " + named->second.object);
                     }
                 }
                 return animation;
@@ -3357,7 +3713,7 @@ namespace templide::middleend {
             // put ... as NAME, group as NAME의 이름. slide나 layout 하나 안에서 겹치면 안 된다
             std::string register_name(const ast::ASTName* alias, const std::string& object, const std::string& kind, const std::string& id) {
                 if (!scope_.names.emplace(alias->name, NamedElement{object, kind, id}).second) {
-                    error(alias->token, "Duplicate object name '" + alias->name + "' on this " + (scope_.layout ? "layout" : "slide"));
+                    error("E2112", alias->token, "Duplicate object name '" + alias->name + "' on this " + (scope_.layout ? "layout" : "slide"));
                 }
                 return alias->name;
             }
@@ -3366,7 +3722,7 @@ namespace templide::middleend {
             bool check_number(const ir::Number& number, const Rule& rule, const std::string& subject, const Token& at) {
                 for (const auto& [unit, value] : number.terms) {
                     if (!unit_allowed(rule.measure, unit)) {
-                        error(at, subject + " must be " + measure_name(rule.measure));
+                        error("E2113", at, subject + " must be " + measure_name(rule.measure));
                         return false;
                     }
                 }
@@ -3387,7 +3743,7 @@ namespace templide::middleend {
                         range = format_bound(rule.min) + unit + " and " + format_bound(rule.max) + unit;
                     }
                     const bool open = std::isinf(rule.max) && rule.range.empty();
-                    error(at, subject + " must be " + (rule.integer ? "a whole number " : "") + (open ? range : "between " + range));
+                    error("E2114", at, subject + " must be " + (rule.integer ? "a whole number " : "") + (open ? range : "between " + range));
                     return false;
                 }
                 return true;
@@ -3439,7 +3795,7 @@ namespace templide::middleend {
                     }
                 }
                 if (crop_width >= 100 || crop_height >= 100) {
-                    error(at(crop_width >= 100 ? "crop_right" : "crop_bottom"), "Crop must leave part of the image");
+                    error("E2115", at(crop_width >= 100 ? "crop_right" : "crop_bottom"), "Crop must leave part of the image");
                 }
                 const std::string& object = element.object;
                 const auto* kind_value = std::get_if<ir::EnumValue>(value_of("kind"));
@@ -3447,26 +3803,26 @@ namespace templide::middleend {
                 const bool has_kind = object == "shape" || object == "backdrop" || object == "image";
                 static const std::set<std::string> rounded = {"roundRect", "round1Rect", "round2SameRect", "round2DiagRect", "snipRoundRect"};
                 if (value_of("radius") != nullptr && (!has_kind || !rounded.contains(kind))) {
-                    error(at("radius"), "'radius' only applies to shapes, backdrops and images of kind roundRect, round1Rect, round2SameRect, round2DiagRect or snipRoundRect");
+                    error("E2116", at("radius"), "'radius' only applies to shapes, backdrops and images of kind roundRect, round1Rect, round2SameRect, round2DiagRect or snipRoundRect");
                 }
                 const auto adjustments = geometry::shape_adjustments().find(has_kind ? kind : "");
                 const std::size_t count = adjustments == geometry::shape_adjustments().end() ? 0 : adjustments->second.size();
                 for (std::size_t i = count; i < 8; ++i) {
                     const std::string name = "adj" + std::to_string(i + 1);
                     if (value_of(name) != nullptr) {
-                        error(at(name), (has_kind ? "Kind '" + kind + "'" : "'" + object + "'") + " has no " + name + (count > 0 ? " (it has adj1 ~ adj" + std::to_string(count) + ")" : ""));
+                        error("E2117", at(name), (has_kind ? "Kind '" + kind + "'" : "'" + object + "'") + " has no " + name + (count > 0 ? " (it has adj1 ~ adj" + std::to_string(count) + ")" : ""));
                     }
                 }
                 if (object == "freeform") {
                     if (const auto* path = std::get_if<std::string>(value_of("path"))) {
                         std::string message;
                         if (!geometry::parse_svg_path(*path, message)) {
-                            error(at("path"), "Invalid path: " + message);
+                            error("E2108", at("path"), "Invalid path: " + message);
                         }
                     }
                 }
                 if (object == "placeholder" && !scope_.layout) {
-                    error(fallback, "A placeholder can only be put in a master case; a slide fills it with title, subtitle or body");
+                    error("E2118", fallback, "A placeholder can only be put in a master case; a slide fills it with title, subtitle or body");
                 }
             }
 
@@ -3476,11 +3832,11 @@ namespace templide::middleend {
                     for (const auto& [name, token] : {std::pair{connector.from, connector.from_token}, std::pair{connector.to, connector.to_token}}) {
                         const auto it = scope_.names.find(name);
                         if (it == scope_.names.end()) {
-                            error(token, "No object named '" + name + "' on this " + (scope_.layout ? "layout" : "slide"));
+                            error("E2119", token, "No object named '" + name + "' on this " + (scope_.layout ? "layout" : "slide"));
                         } else if (it->second.object == "group" || it->second.object == "line" || it->second.object == "connector") {
-                            error(token, "Cannot connect to the " + it->second.object + " '" + name + "'");
+                            error("E2120", token, "Cannot connect to the " + it->second.object + " '" + name + "'");
                         } else if (!geometry::connection_sites().contains(it->second.kind)) {
-                            error(token, "Shapes of kind '" + it->second.kind + "' have no connection points");
+                            error("E2121", token, "Shapes of kind '" + it->second.kind + "' have no connection points");
                         }
                     }
                 }
@@ -3493,11 +3849,11 @@ namespace templide::middleend {
                     const auto start = scalar(as_number(evaluate(node->range_start, env, Type{Kind::Int})));
                     const auto end = scalar(as_number(evaluate(node->range_end, env, Type{Kind::Int})));
                     if (!start || !end) {
-                        error(location(start ? node->range_end : node->range_start), "A range must be made of numbers without units");
+                        error("E2122", location(start ? node->range_end : node->range_start), "A range must be made of numbers without units");
                         return;
                     }
                     if (*end - *start + 1 > max_loop_iterations) {
-                        error(node->token, "Loop runs more than " + std::to_string(max_loop_iterations) + " times");
+                        error("E2123", node->token, "Loop runs more than " + std::to_string(max_loop_iterations) + " times");
                         expansion_failed_ = true;
                         return;
                     }
@@ -3559,6 +3915,173 @@ namespace templide::middleend {
 
             // put table. cells, col_widths, row_heights가 서로 맞는지 보고, cell(행, 열) 문장을 계산해 element.cell_styles에 넣는다.
             // 병합한 칸은 겹치거나 표 밖으로 나가면 안 되고, 병합에 가려지는 칸의 글은 비어 있어야 한다
+            // 문서의 target 가운데 pptx가 있는가. type = pptx로 쓴 것만 센다
+            bool pptx_targeted() const {
+                for (const auto* target : targets_) {
+                    for (const auto* statement : target->body) {
+                        const auto* assign = static_cast<const ast::ASTAssign*>(statement);
+                        if (assign->name->name == "type" && assign->expression->type == ast::NAME && static_cast<const ast::ASTName*>(assign->expression)->name == "pptx") {
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }
+
+            // 수식(math)의 LaTeX가 맞는지. 문법 오류는 늘 오류이고, PowerPoint 수식으로 바꿀 수 없는 명령은 pptx를 만드는 문서에서만 오류다
+            void check_math(const ast::ASTPut* put, const ir::Element& element, const std::map<std::string, const ast::ASTNode*>& sources) {
+                const auto* value = [&]() -> const std::string* {
+                    for (const auto& each : element.properties) {
+                        if (each.name == "latex") {
+                            return std::get_if<std::string>(&each.value);
+                        }
+                    }
+                    return nullptr;
+                }();
+                if (value == nullptr) {
+                    return;
+                }
+                const Token* at = &put->token;
+                for (const auto* statement : put->body) {
+                    if (static_cast<const ast::ASTAssign*>(statement)->name->name == "latex") {
+                        at = &location(sources.at("latex"));
+                    }
+                }
+                if (value->find_first_not_of(" \t\r\n") == std::string::npos) {
+                    error("E2174", *at, "The LaTeX is empty");
+                    return;
+                }
+                const latex::Result parsed = latex::parse(*value);
+                if (!parsed.error.empty()) {
+                    error("E2172", *at, "The LaTeX has a syntax error: " + parsed.error);
+                } else if (!parsed.unsupported.empty() && pptx_targeted()) {
+                    error("E2173", *at, "The LaTeX '" + parsed.unsupported + "' cannot be written as a PowerPoint equation; remove it, or remove pptx from the targets");
+                }
+            }
+
+            // 차트의 데이터가 맞는지. values는 계열마다 한 줄이고 categories(산점도는 xs)와 수가 맞아야 한다
+            void check_chart(const ast::ASTPut* put, const ir::Element& element, const std::map<std::string, const ast::ASTNode*>& sources) {
+                // 오류는 put 블록에 적은 값을 가리킨다. 적지 않은(기본값을 쓴) 속성이면 put 자리를 가리킨다
+                const auto at = [&](const std::string& name) -> const Token& {
+                    for (const auto* statement : put->body) {
+                        if (static_cast<const ast::ASTAssign*>(statement)->name->name == name) {
+                            return location(sources.at(name));
+                        }
+                    }
+                    return put->token;
+                };
+                const auto property = [&](const std::string& name) -> const ir::Value* {
+                    for (const auto& each : element.properties) {
+                        if (each.name == name) {
+                            return &each.value;
+                        }
+                    }
+                    return nullptr;
+                };
+                const auto lists = [&](const std::string& name) -> std::vector<const ir::List*> {
+                    std::vector<const ir::List*> result;
+                    if (const auto* outer = std::get_if<ir::List>(property(name))) {
+                        for (const auto& item : outer->items) {
+                            if (const auto* row = std::get_if<ir::List>(&item)) {
+                                result.push_back(row);
+                            }
+                        }
+                    }
+                    return result;
+                };
+                const auto count_of = [&](const std::string& name) -> std::size_t {
+                    const auto* list = std::get_if<ir::List>(property(name));
+                    return list == nullptr ? 0 : list->items.size();
+                };
+                const auto* kind = std::get_if<ir::EnumValue>(property("kind"));
+                const bool scatter = kind != nullptr && kind->member == "scatter";
+                const bool pie = kind != nullptr && kind->member == "pie";
+                const auto values = lists("values");
+                if (values.empty()) {
+                    error("E2163", at("values"), "A chart needs at least one series in 'values'");
+                    return;
+                }
+                bool unitless = true;
+                bool negative = false;
+                for (const auto* name : {"values", "xs"}) {
+                    for (const auto* row : lists(name)) {
+                        for (const auto& item : row->items) {
+                            const auto* number = std::get_if<ir::Number>(&item);
+                            const auto value = number == nullptr ? std::nullopt : scalar(*number);
+                            if (!value) {
+                                unitless = false;
+                            } else if (*value < 0 && std::string(name) == "values") {
+                                negative = true;
+                            }
+                        }
+                    }
+                }
+                if (!unitless) {
+                    error("E2170", at("values"), "Chart values must be numbers without a unit");
+                    return;
+                }
+                const std::size_t categories = count_of("categories");
+                if (!scatter && categories > 0) {
+                    for (std::size_t i = 0; i < values.size(); ++i) {
+                        if (values[i]->items.size() != categories) {
+                            error("E2164", at("values"), "Series " + std::to_string(i + 1) + " of 'values' has " + std::to_string(values[i]->items.size()) + " values, but 'categories' has "
+                                                             + std::to_string(categories));
+                        }
+                    }
+                } else if (!scatter) {
+                    for (std::size_t i = 1; i < values.size(); ++i) {
+                        if (values[i]->items.size() != values[0]->items.size()) {
+                            error("E2164", at("values"), "Series " + std::to_string(i + 1) + " of 'values' has " + std::to_string(values[i]->items.size()) + " values, but 'categories' has "
+                                                             + std::to_string(values[0]->items.size()));
+                        }
+                    }
+                }
+                if (scatter) {
+                    const auto xs = lists("xs");
+                    if (xs.empty()) {
+                        error("E2171", at("xs"), "A scatter chart needs 'xs' with one list of x values per series");
+                    } else if (xs.size() != values.size()) {
+                        error("E2165", at("xs"), "'xs' has " + std::to_string(xs.size()) + " series, but 'values' has " + std::to_string(values.size()));
+                    } else {
+                        for (std::size_t i = 0; i < xs.size(); ++i) {
+                            if (xs[i]->items.size() != values[i]->items.size()) {
+                                error("E2166", at("xs"), "Series " + std::to_string(i + 1) + " of 'xs' has " + std::to_string(xs[i]->items.size())
+                                                             + " values, but the same series of 'values' has " + std::to_string(values[i]->items.size()));
+                            }
+                        }
+                    }
+                } else if (count_of("xs") > 0) {
+                    warning("W2006", at("xs"), "'xs' is only used by scatter charts");
+                }
+                if (const std::size_t names = count_of("names"); names > 0 && names != values.size()) {
+                    error("E2167", at("names"), "'names' has " + std::to_string(names) + " names, but 'values' has " + std::to_string(values.size()) + " series");
+                }
+                if (const auto* range = std::get_if<ir::List>(property("range")); range != nullptr && !range->items.empty()) {
+                    bool valid = range->items.size() == 2;
+                    std::vector<double> bounds;
+                    for (const auto& item : range->items) {
+                        const auto* number = std::get_if<ir::Number>(&item);
+                        const auto value = number == nullptr ? std::nullopt : scalar(*number);
+                        if (!value) {
+                            valid = false;
+                        } else {
+                            bounds.push_back(*value);
+                        }
+                    }
+                    if (!valid || bounds[0] >= bounds[1]) {
+                        error("E2168", at("range"), "'range' must be empty or two numbers, [minimum, maximum], with the minimum below the maximum");
+                    }
+                }
+                if (pie) {
+                    if (negative) {
+                        error("E2169", at("values"), "A pie chart cannot show negative values");
+                    }
+                    if (values.size() > 1) {
+                        warning("W2005", at("values"), "A pie chart shows only the first of " + std::to_string(values.size()) + " series");
+                    }
+                }
+            }
+
             void build_table(const ast::ASTPut* put, const Env& env, const Env& self, ir::Element& element, const std::map<std::string, const ast::ASTNode*>& sources) {
                 const auto at = [&](const std::string& name) -> const Token& {
                     const auto it = sources.find(name);
@@ -3586,12 +4109,12 @@ namespace templide::middleend {
                     } else if (r == 0) {
                         columns = row->items.size();
                     } else if (row->items.size() != columns) {
-                        error(at("cells"), "Row " + std::to_string(r + 1) + " of 'cells' has " + std::to_string(row->items.size()) + " cells, but row 1 has " + std::to_string(columns));
+                        error("E2124", at("cells"), "Row " + std::to_string(r + 1) + " of 'cells' has " + std::to_string(row->items.size()) + " cells, but row 1 has " + std::to_string(columns));
                         ragged = true;
                     }
                 }
                 if (rows == 0 || columns == 0) {
-                    error(at("cells"), "A table needs at least one row and one column");
+                    error("E2125", at("cells"), "A table needs at least one row and one column");
                     return;
                 }
                 if (ragged) {
@@ -3603,7 +4126,7 @@ namespace templide::middleend {
                         return;
                     }
                     if (list->items.size() != count) {
-                        error(at(name), "'" + name + "' has " + std::to_string(list->items.size()) + " values, but the table has " + std::to_string(count) + " " + what);
+                        error("E2126", at(name), "'" + name + "' has " + std::to_string(list->items.size()) + " values, but the table has " + std::to_string(count) + " " + what);
                     }
                     for (const auto& item : list->items) {
                         const auto* number = std::get_if<ir::Number>(&item);
@@ -3613,7 +4136,7 @@ namespace templide::middleend {
                                 total += term.second;
                             }
                             if (total <= 0) {
-                                error(at(name), "A value of '" + name + "' must be more than 0");
+                                error("E2127", at(name), "A value of '" + name + "' must be more than 0");
                             }
                         }
                     }
@@ -3623,7 +4146,7 @@ namespace templide::middleend {
                 const auto check_header = [&](const std::string& name, std::size_t limit, const std::string& what) {
                     if (const auto* number = std::get_if<ir::Number>(property(name)); number != nullptr) {
                         if (const auto value = scalar(*number); value && *value > static_cast<double>(limit)) {
-                            error(at(name), "'" + name + "' is " + ir::format_scalar(*value) + ", but the table has only " + std::to_string(limit) + " " + what);
+                            error("E2128", at(name), "'" + name + "' is " + ir::format_scalar(*value) + ", but the table has only " + std::to_string(limit) + " " + what);
                         }
                     }
                 };
@@ -3650,12 +4173,12 @@ namespace templide::middleend {
                     bool valid = true;
                     for (const auto& [number, expression, what] : {std::tuple{row, node->row, "row"}, std::tuple{column, node->column, "column"}}) {
                         if (!number || *number != std::floor(*number)) {
-                            error(location(expression), std::string("A cell ") + what + " must be a whole number without a unit");
+                            error("E2129", location(expression), std::string("A cell ") + what + " must be a whole number without a unit");
                             valid = false;
                         }
                     }
                     if (valid && (*row < 1 || *row > static_cast<double>(rows) || *column < 1 || *column > static_cast<double>(columns))) {
-                        error(node->token, "cell(" + ir::format_scalar(*row) + ", " + ir::format_scalar(*column) + ") is outside the table, which has "
+                        error("E2130", node->token, "cell(" + ir::format_scalar(*row) + ", " + ir::format_scalar(*column) + ") is outside the table, which has "
                                                + std::to_string(rows) + " rows and " + std::to_string(columns) + " columns");
                         valid = false;
                     }
@@ -3686,9 +4209,9 @@ namespace templide::middleend {
                         const auto r = static_cast<std::size_t>(*row);
                         const auto c = static_cast<std::size_t>(*column);
                         if (!seen.insert({r, c}).second) {
-                            error(node->token, "Duplicate cell(" + std::to_string(r) + ", " + std::to_string(c) + ")");
+                            error("E2131", node->token, "Duplicate cell(" + std::to_string(r) + ", " + std::to_string(c) + ")");
                         } else if (r + row_span - 1 > rows || c + column_span - 1 > columns) {
-                            error(node->token, "The merged cell at cell(" + std::to_string(r) + ", " + std::to_string(c) + ") reaches outside the table, which has "
+                            error("E2132", node->token, "The merged cell at cell(" + std::to_string(r) + ", " + std::to_string(c) + ") reaches outside the table, which has "
                                                    + std::to_string(rows) + " rows and " + std::to_string(columns) + " columns");
                         } else {
                             regions.push_back({r, c, row_span, column_span, node});
@@ -3709,7 +4232,7 @@ namespace templide::middleend {
                         for (std::size_t c = region.column; c < region.column + region.column_span; ++c) {
                             int& slot = owner[(r - 1) * columns + (c - 1)];
                             if (slot != -1) {
-                                error(region.node->token, "The merged cell at " + name_of(region) + " overlaps the merged cell at " + name_of(regions[static_cast<std::size_t>(slot)]));
+                                error("E2133", region.node->token, "The merged cell at " + name_of(region) + " overlaps the merged cell at " + name_of(regions[static_cast<std::size_t>(slot)]));
                             } else {
                                 slot = static_cast<int>(i);
                             }
@@ -3721,7 +4244,7 @@ namespace templide::middleend {
                     const int slot = owner[(region.row - 1) * columns + (region.column - 1)];
                     // 병합한 칸이 다른 병합과 겹치는 것은 위에서 알렸으므로, 병합하지 않은 칸의 cell 블록만 본다
                     if (slot != -1 && static_cast<std::size_t>(slot) != i && region.row_span * region.column_span == 1) {
-                        error(region.node->token, name_of(region) + " is covered by the merged cell at " + name_of(regions[static_cast<std::size_t>(slot)]) + ", so it cannot have its own cell block");
+                        error("E2134", region.node->token, name_of(region) + " is covered by the merged cell at " + name_of(regions[static_cast<std::size_t>(slot)]) + ", so it cannot have its own cell block");
                     }
                     if (region.row_span * region.column_span == 1) {
                         continue;
@@ -3734,7 +4257,7 @@ namespace templide::middleend {
                             const auto* row = std::get_if<ir::List>(&grid->items[r - 1]);
                             const auto* text = std::get_if<ir::Text>(&row->items[c - 1]);
                             if (text != nullptr && !is_empty_text(*text)) {
-                                error(at("cells"), "The cell in row " + std::to_string(r) + ", column " + std::to_string(c) + " is covered by the merged cell at " + name_of(region)
+                                error("E2135", at("cells"), "The cell in row " + std::to_string(r) + ", column " + std::to_string(c) + " is covered by the merged cell at " + name_of(region)
                                                        + ", so its text must be empty (\"\")");
                             }
                         }
@@ -3745,7 +4268,7 @@ namespace templide::middleend {
             // template은 펼치고, object는 element로 만든다
             void instantiate(const ast::ASTPut* put, const Env& env, std::vector<ir::Element>& out, int depth) {
                 if (depth >= max_expansion_depth) {
-                    error(put->token, "Template expansion is too deep; check for a template that puts itself");
+                    error("E2136", put->token, "Template expansion is too deep; check for a template that puts itself");
                     expansion_failed_ = true;
                     return;
                 }
@@ -3813,6 +4336,12 @@ namespace templide::middleend {
                     check_element(element, sources, put->token);
                     if (put->name == "table") {
                         build_table(put, env, self, element, sources);
+                    }
+                    if (put->name == "chart") {
+                        check_chart(put, element, sources);
+                    }
+                    if (put->name == "math") {
+                        check_math(put, element, sources);
                     }
                     // 연결점 표의 도형 종류. shape, backdrop, image가 아닌 개체는 사각형처럼 연결한다
                     std::string kind = "rect";
@@ -3898,7 +4427,7 @@ namespace templide::middleend {
             // image NAME = 값;의 값. 그림은 ir::Image, 비디오와 오디오는 경로 문자열이다
             ir::Value evaluate_constant(const ast::ASTConstant* node) {
                 if (!evaluating_.insert(node).second) {
-                    error(node->name->token, "'" + node->name->name + "' refers to itself");
+                    error("E2137", node->name->token, "'" + node->name->name + "' refers to itself");
                     return ir::Image{};
                 }
                 ir::Value value = evaluate(node->expression, Env{}, constant_type(node));
@@ -4013,11 +4542,11 @@ namespace templide::middleend {
                 const std::string& member = node->member->name;
                 if (node->object->type == ast::CONTEXT && static_cast<const ast::ASTContext*>(node->object)->name->name == "self") {
                     if (!env.self) {
-                        error(location(node), "'@self' can only be used in the properties of a put");
+                        error("E2138", location(node), "'@self' can only be used in the properties of a put");
                         return std::string();
                     }
                     if (env.self->empty()) {
-                        error(location(node), "'@self.name' needs a named object; write 'put ... as NAME'");
+                        error("E2139", location(node), "'@self.name' needs a named object; write 'put ... as NAME'");
                     }
                     return *env.self;
                 }
@@ -4040,7 +4569,7 @@ namespace templide::middleend {
                     return field_text("slidenum", env.page ? std::to_string(*env.page) : "\xE2\x80\xB9#\xE2\x80\xBA");
                 }
                 if (!env.page) {
-                    error(location(node), "'@slide' cannot be used while expanding a master");
+                    error("E2140", location(node), "'@slide' cannot be used while expanding a master");
                     return make_number("", 0, false);
                 }
                 return make_number("", *env.page, false);
@@ -4068,7 +4597,11 @@ namespace templide::middleend {
                     const ir::Value argument = evaluate(arguments[0], env, Type{Kind::String});
                     const auto* string = std::get_if<std::string>(&argument);
                     if (string == nullptr || string->empty()) {
-                        error(location(arguments[0]), name == "asset" ? "The file name must not be empty" : "The path must not be empty");
+                        if (name == "asset") {
+                            error("E2141", location(arguments[0]), "The file name must not be empty");
+                        } else {
+                            error("E2156", location(arguments[0]), "The path must not be empty");
+                        }
                         return ir::Image{};
                     }
                     if (name == "asset") {
@@ -4080,7 +4613,7 @@ namespace templide::middleend {
                     const ir::Value argument = evaluate(arguments[0], env, Type{Kind::String});
                     const auto* family = std::get_if<std::string>(&argument);
                     if (family == nullptr || family->empty()) {
-                        error(location(arguments[0]), "The font name must not be empty");
+                        error("E2142", location(arguments[0]), "The font name must not be empty");
                         return std::string();
                     }
                     return *family;
@@ -4091,11 +4624,11 @@ namespace templide::middleend {
                 if (name == "slide") {
                     const auto page = scalar(as_number(evaluate(arguments[0], env, Type{Kind::Int})));
                     if (!page || *page < 1 || *page != std::floor(*page)) {
-                        error(location(arguments[0]), "A slide number must be a whole number from 1 without a unit");
+                        error("E2143", location(arguments[0]), "A slide number must be a whole number from 1 without a unit");
                         return ir::Link{};
                     }
                     if (*page > static_cast<double>(slides_.size())) {
-                        error(location(arguments[0]), "There is no slide " + format_bound(*page) + " to link to");
+                        error("E2144", location(arguments[0]), "There is no slide " + format_bound(*page) + " to link to");
                     }
                     return ir::Link{"", static_cast<int>(*page), ""};
                 }
@@ -4133,7 +4666,7 @@ namespace templide::middleend {
                     action.target = *string;
                 }
                 if (action.target.empty()) {
-                    error(location(arguments[0]), "The " + std::string(action.kind == "run" ? "function name" : action.kind == "macro" ? "macro name" : "path") + " must not be empty");
+                    error("E2145", location(arguments[0]), "The " + std::string(action.kind == "run" ? "function name" : action.kind == "macro" ? "macro name" : "path") + " must not be empty");
                 }
                 // 단위가 없는 수는 수로, 단위가 있는 수는 "10px" 같은 문자열로 넘긴다. @slide.number는 그 슬라이드의 번호다
                 for (std::size_t i = 1; i < arguments.size(); ++i) {
@@ -4148,7 +4681,7 @@ namespace templide::middleend {
                     } else if (const auto* text = std::get_if<ir::Text>(&value)) {
                         const bool slide_number = text->paragraphs.size() == 1 && text->paragraphs[0].runs.size() == 1 && text->paragraphs[0].runs[0].field == "slidenum";
                         if (slide_number && !env.page) {
-                            error(location(arguments[i]), "'@slide.number' cannot be passed to run in a master; there is no slide yet");
+                            error("E2146", location(arguments[i]), "'@slide.number' cannot be passed to run in a master; there is no slide yet");
                         }
                         action.arguments.push_back(slide_number && env.page ? Argument(static_cast<double>(*env.page)) : Argument(plain_text(*text)));
                     }
@@ -4174,7 +4707,7 @@ namespace templide::middleend {
                 const auto a_scalar = scalar(a);
                 const auto b_scalar = scalar(b);
                 if (!a_scalar && !b_scalar) {
-                    error(location(left), "Cannot multiply two numbers that both have units");
+                    error("E2147", location(left), "Cannot multiply two numbers that both have units");
                     return ir::Number{};
                 }
                 ir::Number result = a_scalar ? b : a;
@@ -4210,7 +4743,7 @@ namespace templide::middleend {
             int color_component(const ast::ASTNode* expr, const Env& env) {
                 const auto value = scalar(as_number(evaluate(expr, env, Type{Kind::Int})));
                 if (!value || *value < 0 || *value > 255) {
-                    error(location(expr), "Color component must be a number from 0 to 255 without a unit");
+                    error("E2148", location(expr), "Color component must be a number from 0 to 255 without a unit");
                     return 0;
                 }
                 return static_cast<int>(*value);
@@ -4234,7 +4767,7 @@ namespace templide::middleend {
                 std::string message;
                 const auto parsed = color::parse(node->space, components, index, message);
                 if (!parsed) {
-                    error(index < node->arguments.size() ? location(node->arguments[index]) : node->token, message);
+                    error("E2149", index < node->arguments.size() ? location(node->arguments[index]) : node->token, message);
                     return ir::Color{};
                 }
                 color::Rgb rgb = color::to_srgb(node->space, parsed->values);
@@ -4243,7 +4776,7 @@ namespace templide::middleend {
                 const auto byte = [](double c) { return static_cast<int>(std::lround(std::clamp(c, 0.0, 1.0) * 255)); };
                 ir::Color result{byte(rgb.r), byte(rgb.g), byte(rgb.b), parsed->alpha, ""};
                 if (outside) {
-                    warning(node->token, "This " + node->space + " color is outside the sRGB range that pptx and html can show; using the nearest color "
+                    warning("W2001", node->token, "This " + node->space + " color is outside the sRGB range that pptx and html can show; using the nearest color "
                         + color::format("hex", result.r, result.g, result.b, 1));
                 }
                 return result;
@@ -4252,7 +4785,7 @@ namespace templide::middleend {
             double color_alpha(const ast::ASTNode* expr, const Env& env) {
                 const auto value = scalar(as_number(evaluate(expr, env, Type{Kind::Float})));
                 if (!value || *value < 0 || *value > 1) {
-                    error(location(expr), "Alpha must be a number from 0 to 1 without a unit");
+                    error("E2150", location(expr), "Alpha must be a number from 0 to 1 without a unit");
                     return 1;
                 }
                 return *value;
@@ -4284,13 +4817,13 @@ namespace templide::middleend {
                             if (call->name->name == "link" && !styles_.contains("link")) {
                                 style.link = to_link(evaluate(call->arguments[0], env, Type{Kind::Link}));
                                 if (style.action) {
-                                    error(call->token, "This text already has an action; use either link(...) or action(...)");
+                                    error("E2151", call->token, "This text already has an action; use either link(...) or action(...)");
                                 }
                             } else if (is_text_action(call->name->name)) {
                                 const ir::Value value = evaluate(call->arguments[0], env, Type{Kind::Action});
                                 (call->name->name == "action" ? style.action : style.hover_action) = std::get<ir::Action>(value);
                                 if (call->name->name == "action" && style.link) {
-                                    error(call->token, "This text already has a link; use either link(...) or action(...)");
+                                    error("E2152", call->token, "This text already has a link; use either link(...) or action(...)");
                                 }
                             } else {
                                 apply_style(style, styles_.at(call->name->name), call->arguments, env);
@@ -4421,7 +4954,11 @@ namespace templide::middleend {
         };
     }
 
-    Result analyze(const std::filesystem::path& path, const std::filesystem::path& packages_dir, const Overlays& overlays) {
-        return Analyzer(packages_dir, overlays).run(path);
+    Result analyze(const std::filesystem::path& path, const std::filesystem::path& packages_dir, const Overlays& overlays, const std::optional<DefinitionRequest>& definition) {
+        Analyzer analyzer(packages_dir, overlays);
+        if (definition) {
+            analyzer.request_definition(*definition);
+        }
+        return analyzer.run(path);
     }
 }

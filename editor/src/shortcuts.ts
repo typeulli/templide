@@ -7,7 +7,7 @@ import { getSettings } from './settings';
 
 export type CommandId =
     | 'newFile' | 'openFile' | 'save' | 'closeTab' | 'nextTab' | 'previousTab' | 'export' | 'settings'
-    | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'delete'
+    | 'undo' | 'redo' | 'format' | 'copy' | 'cut' | 'paste' | 'duplicate' | 'delete'
     | 'bold' | 'italic' | 'underline'
     | 'newSlide' | 'zoomIn' | 'zoomOut' | 'zoomFit'
     | 'showFromStart' | 'showFromCurrent';
@@ -29,6 +29,7 @@ export const commands: Record<CommandId, CommandInfo> = {
     settings: { group: '파일', label: '설정', defaults: ['Mod+,'], scope: 'window' },
     undo: { group: '편집', label: '실행 취소', defaults: ['Mod+Z'], scope: 'canvas' },
     redo: { group: '편집', label: '다시 실행', defaults: ['Mod+Y', 'Mod+Shift+Z'], scope: 'canvas' },
+    format: { group: '편집', label: '포맷', defaults: ['Alt+Shift+F'], scope: 'window' },
     copy: { group: '편집', label: '복사', defaults: ['Mod+C'], scope: 'canvas' },
     cut: { group: '편집', label: '잘라내기', defaults: ['Mod+X'], scope: 'canvas' },
     paste: { group: '편집', label: '붙여넣기', defaults: ['Mod+V'], scope: 'canvas' },

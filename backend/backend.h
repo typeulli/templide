@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../middleend/diagnostic.h"
 #include "../middleend/ir.h"
 
 #include <filesystem>
@@ -8,15 +9,19 @@
 #include <vector>
 
 namespace templide::backend {
-    /** target 하나를 출력한다. 실패한 작업은 반환값에, 지원되지 않아 생략한 작업은 warnings에 기록한다. */
-    std::vector<std::string> write_target(const ir::Document& document, const ir::Target& target, const std::filesystem::path& base_dir,
-                                          const std::filesystem::path& libs_dir, std::vector<std::string>& warnings, bool dry_run = false);
-
     /** target이 지원하지 않아 생략하는 기능에 대한 경고. */
     struct Warning {
-        std::string where;
+        std::string where; // 파일:줄:칸
         std::string message;
+        std::string code;  // 진단 코드 (middleend/diagnostic_catalog.cpp)
     };
+
+    /** 경고를 진단으로. where가 "파일:줄:칸" 모양이 아니면 위치가 없는 진단이다. */
+    middleend::Diagnostic to_diagnostic(const Warning& warning);
+
+    /** target 하나를 출력한다. 실패한 작업은 반환값에, 지원되지 않아 생략한 작업은 warnings에 기록한다. */
+    std::vector<std::string> write_target(const ir::Document& document, const ir::Target& target, const std::filesystem::path& base_dir,
+                                          const std::filesystem::path& libs_dir, std::vector<Warning>& warnings, bool dry_run = false);
 
     /** target에서 지원되지 않는 기능의 경고를 원문 순서로 반환한다. */
     std::vector<Warning> target_warnings(const ir::Document& document, const ir::Target& target);

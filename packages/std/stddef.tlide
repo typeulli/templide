@@ -204,3 +204,61 @@ object table {
     var text_anchor anchor = middle;
     var text_align align = left;
 }
+
+/*
+수식. latex는 LaTeX 수식이다 (\는 \\로 적는다. 예: "\\frac{a}{b}"). html, pdf, png는 KaTeX로 그리고, pptx는 PowerPoint의 수식으로 바꿔 넣는다.
+pptx에서 쓸 수 없는 명령은 pptx를 만드는 문서에서 오류다. 지원하는 것: 분수(\\frac, \\binom), 제곱근(\\sqrt), 첨자(^, _), \\left \\right 괄호,
+\\sum \\prod \\int 같은 큰 연산자, \\lim, 함수 이름(\\sin 등), 그리스 문자와 기호(\\alpha \\times \\leq \\infty 등), 글자 모양(\\mathbf \\mathrm \\mathbb \\mathcal \\text),
+위 부호(\\hat \\vec \\bar \\overline), 행렬(matrix, pmatrix, bmatrix, vmatrix, cases).
+font_size는 수식의 글자 크기이고 align은 상자 안의 가로, anchor는 세로 위치다.
+*/
+object math {
+    var string latex;
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var float font_size = 32px;
+    var color text_color = hex(000000);
+    var text_align align = center;
+    var text_anchor anchor = middle;
+}
+
+/* 차트 종류. column은 세로 막대, bar는 가로 막대, area는 영역, scatter는 산점도다 */
+enum chart_kind { column, bar, line, area, pie, scatter }
+
+/* 범례의 자리. none이면 그리지 않는다 */
+enum chart_legend { none, top, bottom, left, right }
+
+/*
+차트. 데이터는 이 안에 적고, 같은 차트를 html, pdf, png에서는 직접 그리고 pptx에서는 PowerPoint의 차트(데이터 편집 가능)로 만든다.
+values는 계열(series)마다 한 줄이고, 줄마다 categories와 같은 수의 값을 적는다. categories를 비우면 1, 2, 3, ...이다. names는 계열의 이름이다(비우면 Series 1, ...).
+원(pie)은 첫 계열만 그리고 categories가 조각의 이름이다. 산점도(scatter)는 categories 대신 xs에 계열마다 점의 x 값을, values에 y 값을 같은 수로 적는다.
+stacked는 막대, 영역의 계열을 쌓는다. smooth와 markers는 선과 산점도에, data_labels는 값을 그림 위에 적는다.
+colors는 계열(원은 조각)의 색이고 모자라면 처음부터 되풀이하며, 비우면 테마의 강조색 accent1 ~ accent6을 차례로 쓴다.
+range는 값 축의 [최소, 최대]이고 비우면 자동이다. font_size와 text_color는 제목, 축, 범례의 글이다.
+*/
+object chart {
+    var chart_kind kind;
+    var list<list<float>> values;
+    var list<string> categories = [];
+    var list<string> names = [];
+    var list<list<float>> xs = [];
+    var int x;
+    var int y;
+    var int width;
+    var int height;
+    var string title = "";
+    var string x_title = "";
+    var string y_title = "";
+    var chart_legend legend = bottom;
+    var bool stacked = false;
+    var bool data_labels = false;
+    var bool smooth = false;
+    var bool markers = true;
+    var bool gridlines = true;
+    var list<color> colors = [];
+    var list<float> range = [];
+    var float font_size = 14px;
+    var color text_color = hex(404040);
+}

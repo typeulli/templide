@@ -13,10 +13,27 @@
 #include <iterator>
 
 namespace templide::backend {
+    middleend::Diagnostic to_diagnostic(const Warning& warning) {
+        middleend::Diagnostic diagnostic{warning.where, 0, 0, warning.message, 0, middleend::Level::Warning, warning.code};
+        const std::size_t column = warning.where.rfind(':');
+        const std::size_t line = column == std::string::npos || column == 0 ? std::string::npos : warning.where.rfind(':', column - 1);
+        if (line != std::string::npos) {
+            try {
+                diagnostic.line = std::stoul(warning.where.substr(line + 1, column - line - 1));
+                diagnostic.column = std::stoul(warning.where.substr(column + 1));
+                diagnostic.path = warning.where.substr(0, line);
+            } catch (const std::exception&) {
+                diagnostic.line = 0;
+                diagnostic.column = 0;
+            }
+        }
+        return diagnostic;
+    }
+
     std::vector<std::string> write_target(const ir::Document& document, const ir::Target& target, const std::filesystem::path& base_dir,
-                                          const std::filesystem::path& libs_dir, std::vector<std::string>& warnings, bool dry_run) {
-        for (const auto& warning : target_warnings(document, target)) {
-            warnings.push_back(warning.where + ": warning: " + warning.message);
+                                          const std::filesystem::path& libs_dir, std::vector<Warning>& warnings, bool dry_run) {
+        for (auto& warning : target_warnings(document, target)) {
+            warnings.push_back(std::move(warning));
         }
         if (target.type == "pptx") {
             return pptx::write(document, target, base_dir, dry_run);
@@ -38,16 +55,16 @@ namespace templide::backend {
         const bool pptx = target.type == "pptx";
         // pdf와 png는 JS 함수를 부르는 곳이 없는 정적 출력이라 pptx처럼 run(...)과 script를 쓰지 못한다
         const bool no_script = pptx || target.type == "pdf" || target.type == "png";
-        const auto add = [&](const std::string& where, const std::string& message) {
+        const auto add = [&](const char* code, const std::string& where, const std::string& message) {
             if (std::none_of(result.begin(), result.end(), [&](const Warning& each) { return each.where == where && each.message == message; })) {
-                result.push_back({where, message});
+                result.push_back({where, message, code});
             }
         };
         const auto check = [&](const ir::Action& action) {
             if (no_script && action.kind == "run") {
-                add(action.where, "run(\"" + action.target + "\") calls a JS function, which only works in html and web; the " + target.type + " target '" + target.name + "' ignores it");
+                add("W3001", action.where, "run(\"" + action.target + "\") calls a JS function, which only works in html and web; the " + target.type + " target '" + target.name + "' ignores it");
             } else if (!pptx && (action.kind == "program" || action.kind == "macro")) {
-                add(action.where, action.kind + "(\"" + action.target + "\") only works in PowerPoint; the " + target.type + " target '" + target.name + "' ignores it");
+                add("W3002", action.where, action.kind + "(\"" + action.target + "\") only works in PowerPoint; the " + target.type + " target '" + target.name + "' ignores it");
             }
         };
         const auto check_text = [&](const ir::Text& text) {
@@ -74,13 +91,13 @@ namespace templide::backend {
             }
         };
         if (no_script && !target.script.empty()) {
-            add(target.script_where, "script is only loaded by html and web targets; the " + target.type + " target '" + target.name + "' ignores it");
+            add("W3003", target.script_where, "script is only loaded by html and web targets; the " + target.type + " target '" + target.name + "' ignores it");
         }
         if (target.type != "png" && !target.scale_where.empty()) {
-            add(target.scale_where, "scale only applies to png targets; the " + target.type + " target '" + target.name + "' ignores it");
+            add("W3004", target.scale_where, "scale only applies to png targets; the " + target.type + " target '" + target.name + "' ignores it");
         }
         if (target.type != "png" && !target.transparent_where.empty()) {
-            add(target.transparent_where, "transparent only applies to png targets; the " + target.type + " target '" + target.name + "' ignores it");
+            add("W3005", target.transparent_where, "transparent only applies to png targets; the " + target.type + " target '" + target.name + "' ignores it");
         }
         for (const std::size_t index : target.masters) {
             for (const auto& layout : document.masters.at(index).layouts) {

@@ -5,12 +5,12 @@ sl‸
 slide { }
 -- include_after_one.expected --
 [diagnostics]
-include_after_one.tlide 3:1-3:3 error: Unexpected identifier: sl
+include_after_one.tlide 3:1-3:3 error[E1003]: Unexpected identifier: sl
 
 [completion 3:3]
 replace 3:1-3:3
-14 items: #include asset audio enum image master object section slide style target template theme video
-insert "#include <${1:std/stddef}>" | "asset \"${1:slides.tasset}\";" | "audio ${1:name} = ${2:asset(\"${3}\")};"
+15 items: #fmt #include asset audio enum image master object section slide style target template theme ...
+insert "#fmt ${1:indent_size} ${2:4}" | "#include <${1:std/stddef}>" | "asset \"${1:slides.tasset}\";"
 -- include_completion.tlide --
 /* #include 줄이 여러 개일 때의 자동 완성. 둘째 줄부터도 패키지 목록이 나오고, include 뒤의 최상위와 첫 slide 안에서도 목록이 나와야 한다 */
 #include <std/stddef>
@@ -37,8 +37,8 @@ insert "std/stddef>" | "std/styles>" | "std/widget/claymorphism>"
 
 [completion 6:1]
 replace 6:1-6:1
-14 items: #include asset audio enum image master object section slide style target template theme video
-insert "#include <${1:std/stddef}>" | "asset \"${1:slides.tasset}\";" | "audio ${1:name} = ${2:asset(\"${3}\")};"
+15 items: #fmt #include asset audio enum image master object section slide style target template theme ...
+insert "#fmt ${1:indent_size} ${2:4}" | "#include <${1:std/stddef}>" | "asset \"${1:slides.tasset}\";"
 
 [completion 8:5]
 replace 8:5-8:5
@@ -54,9 +54,9 @@ insert "put ${1:text_box} {\n\t$0\n}" | "animate ${1:name} ${2|enter,emphasis,ex
 slide { }
 -- include_errors/main.expected --
 [diagnostics]
-_broken.tlide 1:25-1:26 error: Expected expression, but got ';'
-_nested.tlide 1:10-1:20 error: Cannot find package: $EXE_DIR/packages/std/none.tlide
-main.tlide 4:10-4:20 error: Cannot find package: $EXE_DIR/packages/std/nope.tlide
+_broken.tlide 1:25-1:26 error[E1007]: Expected expression, but got ';'
+_nested.tlide 1:10-1:20 error[E2153]: Cannot find package: $EXE_DIR/packages/std/none.tlide
+main.tlide 4:10-4:20 error[E2153]: Cannot find package: $EXE_DIR/packages/std/nope.tlide
 main.tlide 5:10-5:19 error: Error in included file _broken.tlide:1:25: Expected expression, but got ';'
 main.tlide 6:10-6:19 error: Error in included file _nested.tlide:1:10: Cannot find package: $EXE_DIR/packages/std/none.tlide
 -- include_errors/_broken.tlide --
@@ -92,8 +92,8 @@ color part_color hex(123456);
 slide { }
 -- include_relative/main.expected --
 [diagnostics]
-main.tlide 4:10-4:16 error: Cannot find file: $DIR/sub/.tlide
-main.tlide 5:10-5:12 error: Cannot find file: $DIR/.tlide
+main.tlide 4:10-4:16 error[E2001]: Cannot find file: $DIR/sub/.tlide
+main.tlide 5:10-5:12 error[E2001]: Cannot find file: $DIR/.tlide
 
 [completion 3:11]
 replace 3:11-3:16
@@ -117,3 +117,435 @@ color inner_color hex(654321);
 color leaf_color hex(abcdef);
 -- include_relative/sub/notes.txt --
 .tlide가 아닌 파일은 목록에 나오지 않는다
+-- diagnostics_codes.tlide --
+/* 진단에 코드가 붙고, 고치는 방법이 다음 줄에 붙는다 */
+#include <std/stddef>
+
+slide {
+    put text_box { txt = "x"; x = 10px; y = 10px; width = 100px; height = 30px; }
+    put text_bx { text = "y"; }
+}
+-- diagnostics_codes.expected --
+[diagnostics]
+diagnostics_codes.tlide 5:5-5:8 error[E2031]: Missing property 'text' for 'text_box'
+diagnostics_codes.tlide 5:20-5:23 error[E2029]: 'text_box' has no property 'txt'
+    did you mean 'text'?
+diagnostics_codes.tlide 6:5-6:8 error[E2027]: Unknown template or object: text_bx
+    did you mean 'text_box'?
+-- fmt_completion.tlide --
+/* #fmt의 옵션 이름과 값을 완성한다 */
+#fmt ‸
+#fmt brace_style ‸
+#fmt max_blank_lines ‸
+#fmt blank_lines_before_slide ‸
+slide { }
+-- fmt_completion.expected --
+[diagnostics]
+fmt_completion.tlide 3:1-3:2 error[E1001]: Expected option name after '#fmt', but got '#'
+
+[completion 2:6]
+replace 2:6-2:6
+21 items: blank_lines_after_includes blank_lines_before_slide brace_style comment_gap empty_blocks final_newline hex_case indent_size indent_style inline_brace_space inline_max_statements line_ending max_blank_lines max_line_length ...
+insert "blank_lines_after_includes " | "blank_lines_before_slide " | "brace_style "
+
+[completion 3:18]
+replace 3:18-3:18
+2 items: next_line same_line
+insert "next_line" | "same_line"
+
+[completion 4:22]
+replace 4:22-4:22
+1 items: 1
+insert "1"
+
+[completion 5:31]
+replace 5:31-5:31
+4 items: 0 1 2 keep
+insert "0" | "1" | "2"
+-- fmt_diagnostics.tlide --
+/* #fmt의 틀린 옵션과 값은 경고다 */
+#fmt indent_siz 4
+#fmt indent_size 99
+#fmt indent_size 2
+#fmt indent_size 3
+slide { }
+-- fmt_diagnostics.expected --
+[diagnostics]
+fmt_diagnostics.tlide 2:6-2:16 warning[W2002]: Unknown #fmt option: indent_siz
+    did you mean 'indent_size'?
+fmt_diagnostics.tlide 3:18-3:20 warning[W2003]: Invalid value '99' for #fmt option 'indent_size'; expected an integer from 1 to 16
+fmt_diagnostics.tlide 5:6-5:17 warning[W2004]: Duplicate #fmt option: indent_size; the last one is used
+-- request_format_none.tlide --
+/* #fmt가 없으면 포맷하지 않는다. 넣을 기본 설정 줄들을 알려 준다 */
+slide{}
+-- request_format_none.expected --
+[diagnostics]
+(없음)
+
+[request templide/format]
+{
+  "defaults": "#fmt indent_style space\n#fmt indent_size 4\n#fmt brace_style same_line\n#fmt short_blocks keep\n#fmt inline_max_statements 0\n#fmt empty_blocks space\n#fmt inline_brace_space true\n#fmt max_line_length 120\n#fmt space_around_assign true\n#fmt space_around_operators true\n#fmt space_after_comma true\n#fmt space_inside_parens false\n#fmt max_blank_lines 1\n#fmt blank_lines_before_slide keep\n#fmt blank_lines_after_includes keep\n#fmt sort_properties keep\n#fmt sort_includes keep\n#fmt hex_case keep\n#fmt final_newline true\n#fmt line_ending keep\n#fmt comment_gap 1\n",
+  "diagnostics": [],
+  "status": "noSettings"
+}
+-- request_format_none.requests --
+{"method": "templide/format", "params": {"uri": "$URI"}}
+-- request_format.tlide --
+#fmt indent_size 2
+object label { var text text; }
+slide{put label{text="a";}
+}
+-- request_format.expected --
+[diagnostics]
+(없음)
+
+[request templide/format]
+{
+  "diagnostics": [],
+  "status": "formatted",
+  "text": "#fmt indent_size 2\nobject label { var text text; }\nslide {\n  put label { text = \"a\"; }\n}\n"
+}
+-- request_format.requests --
+{"method": "templide/format", "params": {"uri": "$URI"}}
+-- request_format_unchanged.tlide --
+#fmt indent_size 2
+slide { }
+-- request_format_unchanged.expected --
+[diagnostics]
+(없음)
+
+[request templide/format]
+{"diagnostics": [], "status": "unchanged"}
+-- request_format_unchanged.requests --
+{"method": "templide/format", "params": {"uri": "$URI"}}
+-- request_format_error.tlide --
+#fmt indent_size 2
+slide { put = ; }
+-- request_format_error.expected --
+[diagnostics]
+request_format_error.tlide 2:13-2:14 error[E1001]: Expected name after 'put', but got '='
+
+[request templide/format]
+{
+  "diagnostics": [{"code": "E1001", "level": "error", "message": "Expected name after 'put', but got '='"}],
+  "status": "error"
+}
+-- request_format_error.requests --
+{"method": "templide/format", "params": {"uri": "$URI"}}
+-- request_fmt_options.tlide --
+/* 설정 창의 포맷 페이지가 쓴다: 모든 옵션과 이 문서에 적힌 #fmt 줄의 자리 (줄과 열은 1부터) */
+#fmt indent_size 2
+#fmt hex_case upper
+#include <std/stddef>
+slide { }
+-- request_fmt_options.expected --
+[diagnostics]
+(없음)
+
+[request templide/fmtOptions]
+{
+  "defaults": "#fmt indent_style space\n#fmt indent_size 4\n#fmt brace_style same_line\n#fmt short_blocks keep\n#fmt inline_max_statements 0\n#fmt empty_blocks space\n#fmt inline_brace_space true\n#fmt max_line_length 120\n#fmt space_around_assign true\n#fmt space_around_operators true\n#fmt space_after_comma true\n#fmt space_inside_parens false\n#fmt max_blank_lines 1\n#fmt blank_lines_before_slide keep\n#fmt blank_lines_after_includes keep\n#fmt sort_properties keep\n#fmt sort_includes keep\n#fmt hex_case keep\n#fmt final_newline true\n#fmt line_ending keep\n#fmt comment_gap 1\n",
+  "directives": [
+    {
+      "column": 6,
+      "line": 2,
+      "name": "indent_size",
+      "value": "2",
+      "valueColumn": 18,
+      "valueLength": 1,
+      "valueLine": 2
+    },
+    {
+      "column": 6,
+      "line": 3,
+      "name": "hex_case",
+      "value": "upper",
+      "valueColumn": 15,
+      "valueLength": 5,
+      "valueLine": 3
+    }
+  ],
+  "options": [
+    {
+      "choices": ["space", "tab"],
+      "default": "space",
+      "description": "Indent with spaces or tabs",
+      "kind": "choice",
+      "max": 0,
+      "min": 0,
+      "name": "indent_style"
+    },
+    {
+      "choices": [],
+      "default": "4",
+      "description": "Columns per indent level (also the tab width when measuring line length)",
+      "kind": "integer",
+      "max": 16,
+      "min": 1,
+      "name": "indent_size"
+    },
+    {
+      "choices": ["same_line", "next_line"],
+      "default": "same_line",
+      "description": "Put the opening brace of a multi-line block on the same line or on its own line",
+      "kind": "choice",
+      "max": 0,
+      "min": 0,
+      "name": "brace_style"
+    },
+    {
+      "choices": ["keep", "expand"],
+      "default": "keep",
+      "description": "keep leaves a block written on one line as it is; expand always breaks blocks into lines",
+      "kind": "choice",
+      "max": 0,
+      "min": 0,
+      "name": "short_blocks"
+    },
+    {
+      "choices": [],
+      "default": "0",
+      "description": "Most statements a one-line block may have (0 = no limit)",
+      "kind": "integer",
+      "max": 100,
+      "min": 0,
+      "name": "inline_max_statements"
+    },
+    {
+      "choices": ["space", "tight"],
+      "default": "space",
+      "description": "Write an empty block as { } or {}",
+      "kind": "choice",
+      "max": 0,
+      "min": 0,
+      "name": "empty_blocks"
+    },
+    {
+      "choices": ["true", "false"],
+      "default": "true",
+      "description": "Write one-line blocks as { a; } instead of {a;}",
+      "kind": "boolean",
+      "max": 0,
+      "min": 0,
+      "name": "inline_brace_space"
+    },
+    {
+      "choices": [],
+      "default": "120",
+      "description": "A one-line block longer than this is broken into lines (0 = no limit)",
+      "kind": "integer",
+      "max": 500,
+      "min": 0,
+      "name": "max_line_length"
+    },
+    {
+      "choices": ["true", "false"],
+      "default": "true",
+      "description": "Put spaces around =",
+      "kind": "boolean",
+      "max": 0,
+      "min": 0,
+      "name": "space_around_assign"
+    },
+    {
+      "choices": ["true", "false"],
+      "default": "true",
+      "description": "Put spaces around + - * / == < >",
+      "kind": "boolean",
+      "max": 0,
+      "min": 0,
+      "name": "space_around_operators"
+    },
+    {
+      "choices": ["true", "false"],
+      "default": "true",
+      "description": "Put a space after a comma",
+      "kind": "boolean",
+      "max": 0,
+      "min": 0,
+      "name": "space_after_comma"
+    },
+    {
+      "choices": ["true", "false"],
+      "default": "false",
+      "description": "Put spaces inside ( )",
+      "kind": "boolean",
+      "max": 0,
+      "min": 0,
+      "name": "space_inside_parens"
+    },
+    {
+      "choices": [],
+      "default": "1",
+      "description": "Most blank lines in a row to keep",
+      "kind": "integer",
+      "max": 10,
+      "min": 0,
+      "name": "max_blank_lines"
+    },
+    {
+      "choices": ["keep"],
+      "default": "keep",
+      "description": "Blank lines before each top-level slide (keep = as written)",
+      "kind": "keepOrInteger",
+      "max": 10,
+      "min": 0,
+      "name": "blank_lines_before_slide"
+    },
+    {
+      "choices": ["keep"],
+      "default": "keep",
+      "description": "Blank lines after the last #include of a group (keep = as written)",
+      "kind": "keepOrInteger",
+      "max": 10,
+      "min": 0,
+      "name": "blank_lines_after_includes"
+    },
+    {
+      "choices": ["keep", "alphabetical"],
+      "default": "keep",
+      "description": "Order of NAME = VALUE; lines in a block that has nothing else",
+      "kind": "choice",
+      "max": 0,
+      "min": 0,
+      "name": "sort_properties"
+    },
+    {
+      "choices": ["keep", "alphabetical"],
+      "default": "keep",
+      "description": "Order of consecutive #include lines (packages first)",
+      "kind": "choice",
+      "max": 0,
+      "min": 0,
+      "name": "sort_includes"
+    },
+    {
+      "choices": ["keep", "upper", "lower"],
+      "default": "keep",
+      "description": "Letter case of the digits in hex(...)",
+      "kind": "choice",
+      "max": 0,
+      "min": 0,
+      "name": "hex_case"
+    },
+    {
+      "choices": ["true", "false"],
+      "default": "true",
+      "description": "End the file with a line break",
+      "kind": "boolean",
+      "max": 0,
+      "min": 0,
+      "name": "final_newline"
+    },
+    {
+      "choices": ["keep", "lf", "crlf"],
+      "default": "keep",
+      "description": "Line break of the file (keep = the one most lines use)",
+      "kind": "choice",
+      "max": 0,
+      "min": 0,
+      "name": "line_ending"
+    },
+    {
+      "choices": [],
+      "default": "1",
+      "description": "Spaces before a comment that follows code on the same line",
+      "kind": "integer",
+      "max": 8,
+      "min": 1,
+      "name": "comment_gap"
+    }
+  ]
+}
+-- request_fmt_options.requests --
+{"method": "templide/fmtOptions", "params": {"uri": "$URI"}}
+-- request_fmt_options_none.tlide --
+slide { }
+-- request_fmt_options_none.expected --
+[diagnostics]
+(없음)
+
+[request templide/fmtOptions]
+{"error": "The document is not open"}
+-- request_fmt_options_none.requests --
+{"method": "templide/fmtOptions", "params": {"uri": "file:///not/open.tlide"}}
+-- request_access.tlide --
+#include <std/stddef>
+slide {
+    put image { data = file("x.png"); x = 0; y = 0; width = 10; height = 10; }
+}
+-- request_access.expected --
+[diagnostics]
+(없음)
+
+[request templide/accessibility]
+{
+  "findings": [
+    {
+      "code": "A0004",
+      "level": "warning",
+      "message": "Slide 1 has no title; screen readers use it to name the slide\nno layout has a title placeholder; add 'put placeholder { role = title; ... }' to a master case, then set layout and title on the slide",
+      "name": "slide-title",
+      "range": {"end": {"character": 5, "line": 1}, "start": {"character": 0, "line": 1}},
+      "severity": 2,
+      "uri": "file:///$DIR/request_access.tlide"
+    },
+    {
+      "code": "A0001",
+      "level": "error",
+      "message": "The image has no alt text; add alt = \"...\", or alt = \"\" if it is only decoration",
+      "name": "alt-missing",
+      "range": {"end": {"character": 7, "line": 2}, "start": {"character": 4, "line": 2}},
+      "severity": 1,
+      "uri": "file:///$DIR/request_access.tlide"
+    }
+  ]
+}
+-- request_access.requests --
+{"method": "templide/accessibility", "params": {"uri": "$URI"}}
+-- request_assets/main.tlide --
+/* 에셋 패널: 문서 폴더의 그림, 비디오, 오디오와 .tasset 안의 파일. 문서가 쓰는 것은 used가 true다 */
+#include <std/stddef>
+slide {
+    put image { data = file("img/photo.png"); alt = "사진"; x = 0; y = 0; width = 10; height = 10; }
+    put image { data = file("bundle.tasset/logo.png"); alt = "로고"; x = 20; y = 0; width = 10; height = 10; }
+}
+-- request_assets/main.expected --
+[diagnostics]
+(없음)
+
+[request templide/assets]
+{
+  "bundles": [
+    {
+      "entries": [
+        {"kind": "image", "name": "logo.png", "size": 70, "used": true},
+        {"kind": "audio", "name": "clip.wav", "size": 4, "used": false}
+      ],
+      "error": "",
+      "path": "bundle.tasset"
+    }
+  ],
+  "files": [
+    {"kind": "image", "path": "img/photo.png", "size": 70, "used": true},
+    {"kind": "image", "path": "img/unused.png", "size": 70, "used": false}
+  ],
+  "folder": "$DIR",
+  "truncated": false
+}
+-- request_assets/main.requests --
+{"method": "templide/assets", "params": {"uri": "$URI"}}
+-- request_assets/img/photo.png (base64) --
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6
+kgAAAABJRU5ErkJggg==
+-- request_assets/img/unused.png (base64) --
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6
+kgAAAABJRU5ErkJggg==
+-- request_assets/bundle.tasset (base64) --
+UEsDBBQAAAAAALpbUV2kG/+fRgAAAEYAAAAIAAAAbG9nby5wbmeJUE5HDQoaCgAAAA1JSERSAAAA
+AQAAAAEIBgAAAB8VxIkAAAANSURBVHjaY2Rg+F8PAAKHAYDrR7qSAAAAAElFTkSuQmCCUEsDBBQA
+AAAAALpbUV1copcGBAAAAAQAAAAIAAAAY2xpcC53YXZSSUZGUEsBAhQAFAAAAAAAultRXaQb/59G
+AAAARgAAAAgAAAAAAAAAAAAAAIABAAAAAGxvZ28ucG5nUEsBAhQAFAAAAAAAultRXVyilwYEAAAA
+BAAAAAgAAAAAAAAAAAAAAIABbAAAAGNsaXAud2F2UEsFBgAAAAACAAIAbAAAAJYAAAAAAA==
+-- request_assets/notes.txt --
+무시되는 파일

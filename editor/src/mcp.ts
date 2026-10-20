@@ -3,7 +3,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { toPng } from 'html-to-image';
-import type { DeckResult, Diagnostic, ElementInfo, Schema } from './lsp';
+import type { BuildResult } from './ExportDialog';
+import { lsp, type AccessFinding, type DeckResult, type Diagnostic, type ElementInfo, type FormatReply, type Schema } from './lsp';
 import { guide } from './mcpGuide';
 import { findElement } from './SlideView';
 import type { Rect } from './Table';
@@ -30,7 +31,25 @@ export type EditorAccess = {
     select(id: string): void;
     // 코드를 고쳐 바뀐 요소 id를 지금 id로. 없어진 요소면 null
     resolve(id: string): string | null;
-    build(): Promise<{ path?: string; errors?: string[]; error?: string; warnings?: string[] } | undefined>;
+    // targets를 주면 그 target들을, 아니면 고른 target을 만든다. target마다 결과가 하나씩이다
+    build(targets?: string[]): Promise<(BuildResult & { target: string | null })[] | undefined>;
+    save(): Promise<boolean>;                      // 파일이 없는 새 탭이면 false
+    format(): Promise<FormatReply | null>;         // #fmt 설정대로 정리한다. 설정이 없으면 고치지 않고 status가 noSettings다
+    selectTarget(name: string): Promise<boolean>;  // 편집기가 미리 보는 target을 바꾼다. 없는 이름이면 false
+    // 슬라이드를 넣고(page 뒤), 복제하고, 지우고, 옮긴다(page를 to 자리로). 쪽 번호는 1부터. 다시 컴파일될 때까지 기다린다
+    slides(action: 'add' | 'duplicate' | 'delete' | 'move', page: number, to?: number): Promise<{ error?: string }>;
+    history(): { id: number; time: number; label: string; origin: string }[]; // 변경 기록 (오래된 것부터)
+    undo(redo: boolean, steps: number): Promise<number>; // 실제로 되돌린(다시 한) 횟수
+    restore(id: number): Promise<boolean>;               // 기록의 한 시점으로 되돌린다
+    // 접근성 검사 결과 (영어 메시지). uri는 이 문서의 uri여서, 다른 파일의 결과와 가를 수 있다. 문서가 없으면 null
+    accessibility(): Promise<{ uri: string; findings?: AccessFinding[]; error?: string } | null>;
+};
+
+// 편집기 창(Shell)이 하는 일. 문서를 열거나 새로 만들면 그 문서가 이 세션의 에이전트가 다룰 문서가 된다
+export type ShellAccess = {
+    open(session: string, file: string): Promise<string | null>;                      // 실패하면 이유
+    create(session: string, file: string, content?: string): Promise<string | null>;  // 없는 .tlide를 만들고 연다. 실패하면 이유
+    bundleChanged(): void;                                                            // .tasset 묶음이 바뀌었다: 컴파일러와 열린 문서를 다시 읽게 한다
 };
 
 // 편집기에 열린 문서 하나. current는 에이전트를 실행한 탭이고, 문서가 없는 탭(.tasset 등)은 목록에 없다
@@ -62,6 +81,11 @@ const tools = [
         inputSchema: { type: 'object', properties: { topic: { type: 'string', description: 'Topic or name, e.g. "table", "objects", "text_box"' } } },
     },
     {
+        name: 'get_accessibility',
+        description: 'Accessibility problems of this document (missing alt text, slides without a title, low contrast, small text, reading order, table headers). Each item has its line, the code on that line and how to fix it, so you do not need read_document or get_editor_state first. Fix them with edit_document (no render_slide needed), then call again to confirm. Info-level items are left out unless info is true.',
+        inputSchema: { type: 'object', properties: { info: { type: 'boolean', description: 'Also list info-level items (shapes without alt, many animations)' } } },
+    },
+    {
         name: 'get_resources',
         description: 'Files this document reads: #included files (package files are under the compiler\'s packages folder; read them to see widget templates), the .tasset bundles with their file names and which is the default, and the names given to images, videos and audios.',
         inputSchema: { type: 'object', properties: { entries: { type: 'integer', minimum: 1, description: 'Most file names to list per bundle (default 40)' } } },
@@ -79,7 +103,7 @@ const tools = [
     },
     {
         name: 'edit_document',
-        description: 'Replace old_string with new_string in the source open in the editor. old_string must occur exactly once unless replace_all is set. The user can undo with Ctrl+Z. Returns compile errors after recompiling, and element ids that changed because their source moved (renamedIds: old id -> new id).',
+        description: 'Replace old_string with new_string in the source open in the editor. old_string must occur exactly once unless replace_all is set. The user can undo with Ctrl+Z. Returns the compile errors and warnings after recompiling (left out when there are none). Element ids from before an edit still work with select_element.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -92,7 +116,7 @@ const tools = [
     },
     {
         name: 'render_slide',
-        description: 'Render one slide to PNG, the same as the editor preview. Videos may not be drawn. Without page, the current slide.',
+        description: 'Render one slide to PNG, the same as the editor preview (an image costs about 1.2k tokens). Use it to check visual changes (layout, size, color), not after alt text, notes or other edits that look the same. Videos may not be drawn. Without page, the current slide.',
         inputSchema: { type: 'object', properties: { page: { type: 'integer', minimum: 1, description: 'Slide number (1-based)' } } },
     },
     {
@@ -107,8 +131,80 @@ const tools = [
     },
     {
         name: 'build',
-        description: 'Build the output file (pptx etc.) of the selected target from the current, possibly unsaved, source.',
+        description: 'Build the output file (pptx etc.) of the selected target from the current, possibly unsaved, source. targets builds those targets instead (["*"] builds every target); the selected target does not change.',
+        inputSchema: { type: 'object', properties: { targets: { type: 'array', items: { type: 'string' }, description: 'Target names (get_editor_state targets), or ["*"] for all' } } },
+    },
+    {
+        name: 'set_target',
+        description: 'Choose the target the editor previews and build uses by default (names in get_editor_state targets). The slide size shown follows the target.',
+        inputSchema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+    },
+    {
+        name: 'save_document',
+        description: 'Save the open document to its file. A new tab without a file cannot be saved here. If the file changed on disk in the meantime, the user is asked what to do.',
         inputSchema: { type: 'object', properties: {} },
+    },
+    {
+        name: 'format_document',
+        description: 'Format the document by its #fmt lines (see get_language_guide format). Without any #fmt line nothing is changed; the reply then has the default #fmt lines, which you can add with edit_document if the user wants formatting.',
+        inputSchema: { type: 'object', properties: {} },
+    },
+    {
+        name: 'open_document',
+        description: 'Open a .tlide file in the editor (or show it if already open). From then on the other tools work on that document; call it again with the earlier path to go back. create makes the file first (content, or a starter slide) and never overwrites an existing file.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                path: { type: 'string', description: 'Absolute path, or relative to the current document\'s folder' },
+                create: { type: 'boolean', description: 'Create the file (it must not exist yet)' },
+                content: { type: 'string', description: 'With create: the whole source of the new file' },
+            },
+            required: ['path'],
+        },
+    },
+    {
+        name: 'add_asset',
+        description: 'Copy image, video or audio files from disk into a .tasset bundle (created if missing; the originals stay). Returns the name each file got and the expression to write in code, e.g. file("slides.tasset/logo.png"). A file whose content is already in the bundle is not added twice (its existing name is returned); a different file with a taken name gets a numbered name. Without bundle the document\'s default bundle is used (get_resources).',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                sources: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 50, description: 'Absolute paths of the files to add' },
+                bundle: { type: 'string', description: '.tasset path, absolute or relative to the document folder' },
+            },
+            required: ['sources'],
+        },
+    },
+    {
+        name: 'edit_slides',
+        description: 'Add a slide after page, duplicate or delete a slide, or move it, like the thumbnail list. Slide numbers are 1-based; move needs to (the slide\'s number after the move). The editor then shows the affected slide. Returns the slide count and compile errors.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                action: { type: 'string', enum: ['add', 'duplicate', 'delete', 'move'] },
+                page: { type: 'integer', minimum: 1 },
+                to: { type: 'integer', minimum: 1, description: 'For move' },
+            },
+            required: ['action', 'page'],
+        },
+    },
+    {
+        name: 'document_history',
+        description: 'Undo or redo (steps, default 1) and the change history of this document. list shows the newest first (id, time, label, origin ai/restore for those not made by the user). restore returns the whole source to the state of a listed id. Every change here can be undone again.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                action: { type: 'string', enum: ['list', 'undo', 'redo', 'restore'] },
+                steps: { type: 'integer', minimum: 1, maximum: 50, description: 'For undo and redo' },
+                id: { type: 'integer', description: 'For restore: an id from list' },
+                limit: { type: 'integer', minimum: 1, maximum: 100, description: 'For list: most entries (default 20)' },
+            },
+            required: ['action'],
+        },
+    },
+    {
+        name: 'get_definition',
+        description: 'A template or master by name: parameters, cases, where it is defined, its source (when it is in the open document) and the slides and lines that use it. Cheaper than reading the document; get_language_guide gives only the signature.',
+        inputSchema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
     },
 ];
 
@@ -218,7 +314,56 @@ async function render(deck: DeckResult, index: number): Promise<string> {
     }
 }
 
-async function run(access: () => EditorAccess, documents: () => OpenDocument[], name: string, args: any): Promise<Result> {
+const isAbsolute = (path: string) => /^([a-zA-Z]:[\\/]|[\\/])/.test(path);
+const folderOf = (path: string) => path.replace(/[\\/][^\\/]*$/, '');
+const slashed = (path: string) => path.replace(/\\/g, '/');
+const mediaFile = /\.(png|jpe?g|gif|bmp|webp|svg|mp4|webm|mp3|wav|m4a)$/i; // 편집기의 에셋 묶음 화면이 고르게 하는 것과 같다
+
+// bundle을 문서 폴더 기준의 경로로 (폴더 안에 있으면). file("...")에 적는 모양이다
+function relativeBundle(folder: string, bundle: string): string {
+    const base = slashed(folder).replace(/\/+$/, '') + '/';
+    const full = slashed(bundle);
+    return full.toLowerCase().startsWith(base.toLowerCase()) ? full.slice(base.length) : full;
+}
+
+// 컴파일러가 돌려준 문서의 uri(file:///C:/...)가 이 파일인가
+const sameFile = (uri: string, path: string) => {
+    const normal = (value: string) => slashed(value).replace(/^\/+/, '').toLowerCase();
+    return normal(decodeURIComponent(uri.replace(/^file:\/\//, ''))) === normal(path);
+};
+
+// template, master 하나의 설명: 매개변수, 정의된 곳, 소스(이 문서 안이면), 쓰는 곳
+function definitionInfo(state: EditorAccess, schema: Schema, name: string) {
+    const entry = schema.definitions.find((each) => each.name === name);
+    if (!entry) {
+        return undefined;
+    }
+    const parameters = entry.kind === 'template' ? schema.templates[name] : schema.masters[name]?.parameters;
+    const lines = state.text?.split(/\r?\n/) ?? [];
+    const own = !!state.path && sameFile(entry.uri, state.path);
+    const first = entry.range.start.line;
+    const last = entry.range.end.line;
+    // 쓰는 곳: template은 put 이름, master는 layout = 이름 (주석은 가리지 않는다). 줄 번호로 어느 슬라이드인지 찾는다
+    const use = new RegExp(entry.kind === 'template' ? `\\bput\\s+${name}\\b` : `\\blayout\\s*=\\s*${name}\\b`);
+    const starts = (state.deck?.slides ?? []).map((slide) => slide.source.range ? slide.source.range.start.line : Infinity);
+    const uses = lines.flatMap((line, i) => use.test(line) && !(own && i >= first && i <= last)
+        ? [{ line: i + 1, page: starts.reduce((page, start, index) => start <= i ? index + 1 : page, 0) || undefined }] : []);
+    const width = String(last + 1).length;
+    return {
+        kind: entry.kind,
+        name,
+        package: entry.package || undefined,
+        parameters: parameters?.map((each) => `${each.type} ${each.name}${each.default ? ' = ' + each.default : ''}`),
+        cases: entry.kind === 'master' ? entry.cases : undefined,
+        file: own ? undefined : decodeURIComponent(entry.uri.replace(/^file:\/\/\/?/, '')),
+        lines: [first + 1, last + 1],
+        source: own ? lines.slice(first, Math.min(last + 1, first + 60)).map((line, i) => `${String(first + 1 + i).padStart(width)}\t${line}`).join('\n') + (last - first >= 60 ? '\n…' : '') : undefined,
+        usedCount: uses.length,
+        uses: uses.slice(0, 30),
+    };
+}
+
+async function run(access: () => EditorAccess, documents: () => OpenDocument[], shell: ShellAccess, session: string, name: string, args: any): Promise<Result> {
     const state = access();
     const deck = state.deck;
     const count = deck?.deck.slides.length ?? 0;
@@ -281,6 +426,31 @@ async function run(access: () => EditorAccess, documents: () => OpenDocument[], 
         }
         case 'get_language_guide':
             return text(guide(typeof args.topic === 'string' ? args.topic : undefined, state.schema));
+        case 'get_accessibility': {
+            const result = await state.accessibility();
+            if (!result) {
+                return fail('No document is open in the editor');
+            }
+            if (!result.findings) {
+                return fail(result.error ?? 'Cannot check the document; fix its compile errors first (get_editor_state)');
+            }
+            // 줄마다 코드를 붙여 주면 에이전트가 문서를 따로 읽지 않고 바로 고칠 수 있다. 정보 수준은 요청할 때만
+            const lines = state.text?.split(/\r?\n/) ?? [];
+            const shown = result.findings.filter((each) => args.info || each.level !== 'info');
+            const hidden = result.findings.length - shown.length;
+            const more = hidden ? ` (${hidden} info items left out; pass info=true)` : '';
+            if (shown.length === 0) {
+                return text(`No accessibility problems${more}`);
+            }
+            const items = shown.map((finding) => {
+                const [message, ...help] = finding.message.split('\n');
+                const source = finding.uri === result.uri ? lines[finding.range.start.line]?.trim() : undefined;
+                return `L${finding.range.start.line + 1} ${finding.code} ${finding.level}: ${message}`
+                    + (help.length ? `\n  fix: ${help.join(' ')}` : '')
+                    + (source ? `\n  | ${clip(source, 140)}` : '');
+            });
+            return text(`${shown.length} problems${more}\n${items.join('\n')}`);
+        }
         case 'get_resources': {
             if (!state.schema) {
                 return fail('The document has not been analyzed yet; fix the compile errors first');
@@ -309,7 +479,8 @@ async function run(access: () => EditorAccess, documents: () => OpenDocument[], 
             // 다시 컴파일한 뒤의 상태
             const after = access();
             const errors = problems(after.diagnostics);
-            return json({ replaced: result.count, renamedIds: result.renamed, errors, warnings: problems(after.warnings) });
+            const warnings = problems(after.warnings);
+            return json({ replaced: result.count, errors: errors.length ? errors : undefined, warnings: warnings.length ? warnings : undefined });
         }
         case 'render_slide': {
             if (!deck || count === 0) {
@@ -340,14 +511,192 @@ async function run(access: () => EditorAccess, documents: () => OpenDocument[], 
             return text(id === args.id ? `Selected ${id}` : `Selected ${id} (was ${args.id})`);
         }
         case 'build': {
-            const result = await state.build();
-            if (!result) {
+            let names: string[] | undefined;
+            if (Array.isArray(args.targets) && args.targets.length > 0) {
+                const known = deck?.targets.map((each) => each.name) ?? [];
+                const wanted: string[] = args.targets.includes('*') ? known : args.targets.filter((each: unknown): each is string => typeof each === 'string');
+                const unknown = wanted.filter((each) => !known.includes(each));
+                if (unknown.length > 0 || wanted.length === 0) {
+                    return fail(`Unknown target ${unknown.join(', ')}. Targets: ${known.join(', ') || '(none)'}`);
+                }
+                names = wanted;
+            }
+            const results = await state.build(names);
+            if (!results) {
                 return fail('No document is open in the editor');
             }
-            if (result.error || result.errors?.length) {
-                return fail([result.error, ...(result.errors ?? []), ...(result.warnings ?? [])].filter(Boolean).join('\n'));
+            const failed = results.filter((each) => each.error || each.errors?.length);
+            const message = (each: BuildResult) => [each.error, ...(each.errors ?? []), ...(each.warnings ?? [])].filter(Boolean).join('\n');
+            if (results.length === 1) {
+                return failed.length ? fail(message(results[0])) : json({ path: results[0].path, warnings: results[0].warnings });
             }
-            return json({ path: result.path, warnings: result.warnings });
+            const report = {
+                built: results.filter((each) => !failed.includes(each)).map((each) => ({ target: each.target, path: each.path, warnings: each.warnings?.length ? each.warnings : undefined })),
+                failed: failed.map((each) => ({ target: each.target, errors: message(each) })),
+            };
+            return failed.length ? { content: [{ type: 'text', text: JSON.stringify(report) }], isError: true } : json(report);
+        }
+        case 'set_target': {
+            if (!deck) {
+                return fail('No document is open in the editor');
+            }
+            if (typeof args.name !== 'string' || !await state.selectTarget(args.name)) {
+                return fail(`Unknown target ${args.name}. Targets: ${deck.targets.map((each) => `${each.name}:${each.type}`).join(', ') || '(none)'}`);
+            }
+            const after = access().deck;
+            return json({ target: after?.target ?? args.name, size: after ? [after.width, after.height] : undefined });
+        }
+        case 'save_document': {
+            if (!state.path) {
+                return fail('This document has no file yet; the user has to save it once (Ctrl+S)');
+            }
+            return await state.save() ? text(`Saved ${state.path}`) : fail('Not saved (the user cancelled, or the file cannot be written)');
+        }
+        case 'format_document': {
+            const reply = await state.format();
+            if (!reply) {
+                return fail('No document is open in the editor');
+            }
+            if (reply.status === 'noSettings') {
+                return json({ status: 'noSettings', note: 'The file has no #fmt line, so it was not formatted. Add these lines (usually at the top) to turn formatting on, then call again', defaults: reply.defaults });
+            }
+            if (reply.status === 'error') {
+                return fail(reply.diagnostics?.[0]?.message ?? reply.message ?? 'The source has syntax errors; fix them first (get_editor_state)');
+            }
+            const after = access();
+            const warning = reply.diagnostics?.filter((each) => each.level === 'warning').map((each) => each.message);
+            return json({ status: reply.status, warnings: warning?.length ? warning : undefined, errors: after.diagnostics.length ? problems(after.diagnostics) : undefined });
+        }
+        case 'open_document': {
+            if (typeof args.path !== 'string' || !args.path) {
+                return fail('path is required');
+            }
+            if (!/\.tlide$/i.test(args.path)) {
+                return fail('Only .tlide files can be opened here');
+            }
+            if (!isAbsolute(args.path) && !state.path) {
+                return fail('Give an absolute path (the open document has no folder to resolve it against)');
+            }
+            const file = isAbsolute(args.path) ? args.path : `${folderOf(state.path!)}/${args.path}`;
+            const error = args.create ? await shell.create(session, file, typeof args.content === 'string' ? args.content : undefined) : await shell.open(session, file);
+            if (error) {
+                return fail(error);
+            }
+            const now = access(); // 이제 이 세션의 문서는 연 문서다
+            return json({ path: now.path ?? file, slideCount: now.deck?.deck.slides.length ?? 0, errors: now.diagnostics.length ? problems(now.diagnostics) : undefined });
+        }
+        case 'add_asset': {
+            const sources: unknown = args.sources;
+            if (!Array.isArray(sources) || sources.length === 0 || sources.some((each) => typeof each !== 'string' || !each)) {
+                return fail('sources must be a list of file paths');
+            }
+            if (!state.path) {
+                return fail('The document has no file yet, so there is no folder for the bundle; the user has to save it once (Ctrl+S)');
+            }
+            const folder = folderOf(state.path);
+            let bundle: string | undefined = typeof args.bundle === 'string' && args.bundle ? args.bundle : undefined;
+            if (!bundle) {
+                const bundles = state.schema?.assets ?? [];
+                const chosen = bundles.find((each) => each.default) ?? (bundles.length === 1 ? bundles[0] : undefined);
+                if (!chosen) {
+                    return fail(bundles.length ? `The document has several bundles and no default; pass bundle: ${bundles.map((each) => each.written).join(', ')}` : 'The document has no asset bundle yet; pass bundle, e.g. "assets.tasset"');
+                }
+                bundle = chosen.bundle;
+            }
+            if (!/\.tasset$/i.test(bundle)) {
+                return fail('bundle must be a .tasset file');
+            }
+            const written = relativeBundle(folder, isAbsolute(bundle) ? bundle : `${folder}/${bundle}`);
+            const added: { name: string; use: string }[] = [];
+            const errors: { source: string; error: string }[] = [];
+            for (const source of sources as string[]) {
+                if (!isAbsolute(source)) {
+                    errors.push({ source, error: 'Give an absolute path' });
+                } else if (!mediaFile.test(source)) {
+                    errors.push({ source, error: 'Only images (png jpg gif bmp webp svg), videos (mp4 webm) and audio (mp3 wav m4a) can be added' });
+                } else {
+                    const result = await lsp.request<{ name?: string; error?: string }>('templide/asset_add', { bundle: isAbsolute(bundle) ? bundle : `${folder}/${bundle}`, source });
+                    if (result.name) {
+                        added.push({ name: result.name, use: `file("${written}/${result.name}")` });
+                    } else {
+                        errors.push({ source, error: result.error ?? 'Cannot add the file' });
+                    }
+                }
+            }
+            if (added.length > 0) {
+                shell.bundleChanged(); // 컴파일러가 묶음을 다시 읽고, 열린 문서가 다시 컴파일된다
+            }
+            const reply = { bundle: written, added, errors: errors.length ? errors : undefined };
+            return added.length > 0 ? json(reply) : { content: [{ type: 'text', text: JSON.stringify(reply) }], isError: true };
+        }
+        case 'edit_slides': {
+            if (!deck) {
+                return fail('No document is open in the editor');
+            }
+            const integer = (value: unknown) => typeof value === 'number' && Number.isInteger(value) ? value : NaN;
+            const page = integer(args.page);
+            const to = integer(args.to);
+            if (!['add', 'duplicate', 'delete', 'move'].includes(args.action)) {
+                return fail('action is add, duplicate, delete or move');
+            }
+            if (!(page >= 1 && page <= count)) {
+                return fail(`Slides are numbered 1 to ${count}`);
+            }
+            if (args.action === 'move' && !(to >= 1 && to <= count)) {
+                return fail(`move needs to, a number from 1 to ${count}`);
+            }
+            const result = await state.slides(args.action, page, args.action === 'move' ? to : undefined);
+            if (result.error) {
+                return fail(result.error);
+            }
+            const after = access();
+            const errors = problems(after.diagnostics);
+            return json({ slideCount: after.deck?.deck.slides.length, currentPage: after.page + 1, errors: errors.length ? errors : undefined });
+        }
+        case 'document_history': {
+            const report = (extra: object) => {
+                const after = access();
+                const errors = problems(after.diagnostics);
+                return json({ ...extra, errors: errors.length ? errors : undefined });
+            };
+            const steps = typeof args.steps === 'number' ? Math.min(50, Math.max(1, Math.floor(args.steps))) : 1;
+            switch (args.action) {
+                case 'list': {
+                    const entries = state.history();
+                    const limit = typeof args.limit === 'number' ? Math.min(100, Math.max(1, Math.floor(args.limit))) : 20;
+                    return json({
+                        count: entries.length,
+                        entries: entries.slice(-limit).reverse().map((entry, i) => ({
+                            id: entry.id, time: new Date(entry.time).toLocaleTimeString([], { hour12: false }), label: entry.label,
+                            origin: entry.origin === 'user' ? undefined : entry.origin, current: i === 0 || undefined,
+                        })),
+                    });
+                }
+                case 'undo':
+                case 'redo': {
+                    const applied = await state.undo(args.action === 'redo', steps);
+                    return report({ done: applied, note: applied < steps ? `Nothing more to ${args.action}` : undefined });
+                }
+                case 'restore': {
+                    if (typeof args.id !== 'number' || !await state.restore(args.id)) {
+                        return fail(`No history entry ${args.id}. List them with action=list`);
+                    }
+                    return report({ restored: args.id });
+                }
+                default:
+                    return fail('action is list, undo, redo or restore');
+            }
+        }
+        case 'get_definition': {
+            if (!state.schema) {
+                return fail('The document has not been analyzed yet; fix the compile errors first');
+            }
+            const info = typeof args.name === 'string' ? definitionInfo(state, state.schema, args.name) : undefined;
+            if (!info) {
+                const own = state.schema.definitions.filter((each) => !each.package).map((each) => each.name);
+                return fail(`No template or master named ${args.name}. In the document: ${own.slice(0, 30).join(', ') || '(none)'}${own.length > 30 ? ', …' : ''}; packages: get_language_guide`);
+            }
+            return json(info);
         }
         default:
             return fail(`Unknown tool ${name}`);
@@ -355,12 +704,12 @@ async function run(access: () => EditorAccess, documents: () => OpenDocument[], 
 }
 
 // 도구 목록을 서버에 알리고 호출을 받는다. session은 에이전트를 실행한 탭이다 (비었으면 보이는 탭)
-export async function serveMcp(access: (session: string) => EditorAccess, documents: (session: string) => OpenDocument[]) {
+export async function serveMcp(access: (session: string) => EditorAccess, documents: (session: string) => OpenDocument[], shell: ShellAccess) {
     await invoke('mcp_set_tools', { tools });
     await listen<{ call: number; session?: string; name: string; arguments: any }>('mcp-call', async ({ payload }) => {
         let result: Result;
         try {
-            result = await run(() => access(payload.session ?? ''), () => documents(payload.session ?? ''), payload.name, payload.arguments ?? {});
+            result = await run(() => access(payload.session ?? ''), () => documents(payload.session ?? ''), shell, payload.session ?? '', payload.name, payload.arguments ?? {});
         } catch (error) {
             result = fail(String(error));
         }

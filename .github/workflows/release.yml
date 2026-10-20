@@ -1,5 +1,7 @@
 # Pushing a tag that starts with v builds the five installers and attaches them to a GitHub release for that tag.
-# GitHub writes the release notes from the commits and PRs since the previous tag. A tag with '-' (v1.2.0-beta.1) is published as a prerelease.
+# The release notes are the matching section of CHANGELOG.md (tag v1.4.0 -> the section "## [1.4.0]"). When the changelog has no such section
+# (a beta tag, or a forgotten entry), GitHub writes the notes from the commits and PRs since the previous tag instead.
+# A tag with '-' (v1.2.0-beta.1) is published as a prerelease.
 # Running it by hand from the Actions tab only builds, and keeps the installers as run artifacts
 name: release
 
@@ -118,13 +120,38 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
+      # Only CHANGELOG.md is needed. This comes first because checkout cleans the workspace, which would delete the downloaded dist/
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: CHANGELOG.md
+          sparse-checkout-cone-mode: false
+
       - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
 
+      # Everything between the "## [<version>]" heading of this tag and the next "## [" heading, without the heading itself.
+      # The output "file" is set only when that section exists and is not empty
+      - name: Release notes from CHANGELOG.md
+        id: notes
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v version="$version" '
+            { sub(/\r$/, "") }
+            /^## \[/ { if (found) exit; found = (index($0, "## [" version "]") == 1); next }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+          if grep -q '[^[:space:]]' release-notes.md; then
+            echo "file=release-notes.md" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::CHANGELOG.md has no '## [$version]' section, so the release notes are generated from the commits"
+          fi
+
       - uses: softprops/action-gh-release@v3
         with:
           files: dist/*
-          generate_release_notes: true
+          body_path: ${{ steps.notes.outputs.file }}
+          generate_release_notes: ${{ steps.notes.outputs.file == '' }}
           prerelease: ${{ contains(github.ref_name, '-') }}

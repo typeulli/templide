@@ -2,6 +2,9 @@
 #include "backend.h"
 #include "pptx_animations.h"
 #include "raster.h"
+#include "chart.h"
+#include "../middleend/latex.h"
+#include "pptx_chart.h"
 #include "table.h"
 #include "../middleend/geometry.h"
 
@@ -421,6 +424,7 @@ namespace templide::backend::pptx {
             std::vector<std::pair<std::string, std::string>> overrides_; // (이름, content type)
             std::map<std::string, std::string> defaults_;                // 확장자 -> content type
             std::map<std::filesystem::path, std::string> media_;         // 이미지와 소리 파일 -> ppt/media 안의 이름
+            std::size_t chart_count_ = 0;                                // ppt/charts에 넣은 차트 수
             std::size_t media_count_ = 0;                                // ppt/media에 넣은 파일 수. 만든 그림도 센다
             // 슬라이드의 video, audio. timing_xml이 재생 명령과 cMediaNode를 만드는 데 쓴다
             struct Media {
@@ -969,6 +973,10 @@ namespace templide::backend::pptx {
                     xml = media_xml(id, element, common, element_where);
                 } else if (element.object == "table") {
                     xml = table_xml(id, element, common, element_where);
+                } else if (element.object == "chart") {
+                    xml = chart_xml(id, element, common, element_where);
+                } else if (element.object == "math") {
+                    xml = math_xml(id, element, common, element_where);
                 } else {
                     error(element_where + ": the pptx backend does not support this object");
                 }
@@ -1150,6 +1158,82 @@ namespace templide::backend::pptx {
                     "<p:xfrm><a:off" + attribute("x", rect->x) + attribute("y", rect->y) + "/><a:ext" + attribute("cx", rect->cx) + attribute("cy", rect->cy) + "/></p:xfrm>"
                     "<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/table\"><a:tbl><a:tblPr" + flags
                     + "><a:tableStyleId>{2D5ABB26-0587-4C30-8999-92F81FD0307C}</a:tableStyleId></a:tblPr>" + grid + rows + "</a:tbl></a:graphicData></a:graphic></p:graphicFrame>";
+            }
+
+            // 수식(math). LaTeX를 PowerPoint 수식(OMML)으로 바꿔 글상자 하나에 넣는다. PowerPoint 2010 이전이나 수식을 모르는 프로그램에는 LaTeX 원문을 글로 보여 준다
+            std::string math_xml(int id, const ir::Element& element, const Common& common, const std::string& where) {
+                const auto rect = element_rect(element, where);
+                const auto* source = std::get_if<std::string>(find_property(element, "latex"));
+                if (!rect || source == nullptr) {
+                    return "";
+                }
+                const latex::Result parsed = latex::parse(*source);
+                if (!parsed.error.empty()) {
+                    error(where + ": the LaTeX has a syntax error: " + parsed.error);
+                    return "";
+                }
+                if (!parsed.unsupported.empty()) {
+                    error(where + ": the LaTeX '" + parsed.unsupported + "' cannot be written as a PowerPoint equation");
+                    return "";
+                }
+                double size_px = 32;
+                if (const auto* number = std::get_if<ir::Number>(find_property(element, "font_size"))) {
+                    size_px = 0;
+                    for (const auto& term : number->terms) {
+                        size_px += term.second;
+                    }
+                }
+                const long size = std::max(100L, std::lround(size_px * 0.75 * 100));
+                const ir::Color* color = std::get_if<ir::Color>(find_property(element, "text_color"));
+                const std::string align = enum_member(element, "align");
+                const std::string anchor = enum_member(element, "anchor");
+                const std::string paragraph_align = align == "left" ? "l" : align == "right" ? "r" : "ctr";
+                const std::string math_align = align == "left" ? "left" : align == "right" ? "right" : "centerGroup";
+                const std::string vertical = anchor == "top" ? "t" : anchor == "bottom" ? "b" : "ctr";
+                const std::string omml = latex::to_omml(parsed.nodes, {static_cast<int>(size), color_xml(color != nullptr ? *color : ir::Color{0, 0, 0, 1, ""})});
+                const std::string head = "<p:nvSpPr>" + cnvpr_xml(id, element, "Math", common) + "<p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr><p:spPr>" + xfrm_xml(*rect, common)
+                    + "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom><a:noFill/></p:spPr>";
+                const std::string body = "<p:txBody><a:bodyPr wrap=\"square\" lIns=\"0\" tIns=\"0\" rIns=\"0\" bIns=\"0\" rtlCol=\"0\" anchor=\"" + vertical + "\"><a:noAutofit/></a:bodyPr><a:lstStyle/>"
+                    "<a:p><a:pPr" + attribute("algn", paragraph_align) + "/>";
+                const std::string size_attribute = attribute("sz", static_cast<Emu>(size));
+                const std::string equation = "<p:sp>" + head + body + "<a14:m><m:oMathPara xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\"><m:oMathParaPr><m:jc m:val=\"" + math_align
+                    + "\"/></m:oMathParaPr><m:oMath>" + omml + "</m:oMath></m:oMathPara></a14:m><a:endParaRPr lang=\"en-US\"" + size_attribute + "/></a:p></p:txBody></p:sp>";
+                const std::string fallback = "<p:sp>" + head + body + "<a:r><a:rPr lang=\"en-US\"" + size_attribute + ">" + solid_fill_xml(color != nullptr ? *color : ir::Color{0, 0, 0, 1, ""})
+                    + "</a:rPr><a:t>" + escape(*source) + "</a:t></a:r></a:p></p:txBody></p:sp>";
+                return "<mc:AlternateContent xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\"><mc:Choice xmlns:a14=\"http://schemas.microsoft.com/office/drawing/2010/main\" Requires=\"a14\">"
+                    + equation + "</mc:Choice><mc:Fallback>" + fallback + "</mc:Fallback></mc:AlternateContent>";
+            }
+
+            // 차트(chart). 차트 파트와 데이터를 편집할 때 여는 통합 문서를 넣고, 슬라이드에는 그 차트를 가리키는 graphicFrame을 둔다
+            std::string chart_xml(int id, const ir::Element& element, const Common& common, const std::string& where) {
+                const auto rect = element_rect(element, where);
+                const auto resolved = chart::resolve(element);
+                if (!resolved) {
+                    error(where + ": 'values' must be a list of series, each a list of numbers");
+                    return "";
+                }
+                if (!rect) {
+                    return "";
+                }
+                const auto parts = pptx_chart::build(*resolved, [this](const ir::Color& color) { return color_xml(color); });
+                const std::string number = std::to_string(++chart_count_);
+                std::vector<Relationship> chart_relationships;
+                if (parts.workbook) {
+                    const std::string workbook = "Microsoft_Excel_Sheet" + number + ".xlsx";
+                    add_part("ppt/embeddings/" + workbook, *parts.workbook);
+                    defaults_["xlsx"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+                    chart_relationships.push_back({relationship_type + "package", "../embeddings/" + workbook});
+                }
+                add_part("ppt/charts/chart" + number + ".xml", parts.chart, "application/vnd.openxmlformats-officedocument.drawingml.chart+xml");
+                if (!chart_relationships.empty()) {
+                    add_part("ppt/charts/_rels/chart" + number + ".xml.rels", relationships_xml(chart_relationships));
+                }
+                const std::string relationship = relate(relationship_type + "chart", "../charts/chart" + number + ".xml");
+                return "<p:graphicFrame><p:nvGraphicFramePr>" + cnvpr_xml(id, element, "Chart", common)
+                    + "<p:cNvGraphicFramePr><a:graphicFrameLocks noGrp=\"1\"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr>"
+                    "<p:xfrm><a:off" + attribute("x", rect->x) + attribute("y", rect->y) + "/><a:ext" + attribute("cx", rect->cx) + attribute("cy", rect->cy) + "/></p:xfrm>"
+                    "<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/chart\"><c:chart xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\""
+                    " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"" + attribute("r:id", relationship) + "/></a:graphicData></a:graphic></p:graphicFrame>";
             }
 
             // title, subtitle, body 개체 틀. idx는 slide의 개체 틀과 짝을 맞추는 번호다

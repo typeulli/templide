@@ -33,6 +33,19 @@ add_executable(templide main.cpp
         middleend/ir.h
         middleend/analyzer.h
         middleend/analyzer.cpp
+        middleend/diagnostic.h
+        middleend/diagnostic.cpp
+        middleend/diagnostic_catalog.cpp
+        middleend/report.h
+        middleend/report.cpp
+        middleend/accessibility.h
+        middleend/accessibility.cpp
+        middleend/latex.h
+        middleend/latex.cpp
+        format/options.h
+        format/options.cpp
+        format/formatter.h
+        format/formatter.cpp
         middleend/library.h
         middleend/library.cpp
         middleend/source_text.h
@@ -57,6 +70,12 @@ add_executable(templide main.cpp
         backend/browser.cpp
         backend/table.h
         backend/table.cpp
+        backend/chart.h
+        backend/chart.cpp
+        backend/xlsx.h
+        backend/xlsx.cpp
+        backend/pptx_chart.h
+        backend/pptx_chart.cpp
         backend/pptx_animations.h
         backend/pptx_animations.cpp
         backend/raster.h
@@ -99,9 +118,14 @@ elseif (MINGW)
     endif ()
 endif ()
 
+# libs/katex(수식을 그리는 KaTeX)는 저장소에 없다. 없거나 버전이 다르면 빌드할 때 받아 온다
+add_custom_target(templide_katex
+        COMMAND ${CMAKE_COMMAND} -DKATEX_DIR=${CMAKE_CURRENT_SOURCE_DIR}/libs/katex -P ${CMAKE_CURRENT_SOURCE_DIR}/tools/fetch_katex.cmake)
+
 # installer가 생기기 전까지는 빌드할 때마다 packages(#include <...>로 쓰는 .tlide)와
 # libs(html 출력에 넣는 JS)를 exe 옆으로 복사한다
 add_custom_target(templide_libs ALL
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/packages $<TARGET_FILE_DIR:templide>/packages
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/libs $<TARGET_FILE_DIR:templide>/libs)
+add_dependencies(templide_libs templide_katex)
 add_dependencies(templide templide_libs)

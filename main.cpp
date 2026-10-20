@@ -1,9 +1,11 @@
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <optional>
 #include <set>
 #include <sstream>
 #include <string>
@@ -13,10 +15,13 @@
 #include <vector>
 
 #include "backend/backend.h"
+#include "format/formatter.h"
 #include "frontend/lexor.h"
 #include "frontend/parser.h"
+#include "middleend/accessibility.h"
 #include "middleend/analyzer.h"
 #include "middleend/library.h"
+#include "middleend/report.h"
 #include "middleend/source_text.h"
 #include "middleend/tasset.h"
 #include "server/server.h"
@@ -142,15 +147,8 @@ namespace {
                 break;
             case ast::MASTER: {
                 const auto* master = static_cast<const ast::ASTMaster*>(node);
-                std::string text = "Master " + master->name;
-                if (!master->parameters.empty()) {
-                    text += "(";
-                    for (std::size_t i = 0; i < master->parameters.size(); ++i) {
-                        text += (i > 0 ? ", " : "") + master->parameters[i]->type_name->name + " " + master->parameters[i]->name->name;
-                    }
-                    text += ")";
-                }
-                print_line(depth, text);
+                print_line(depth, "Master " + master->name);
+                print_all(master->vars, depth + 1);
                 print_all(master->properties, depth + 1);
                 print_all(master->body, depth + 1);
                 break;
@@ -376,19 +374,88 @@ namespace {
         }
     }
 
-    int dump_ast(const std::string& path) {
+    // 명령줄 옵션 중 진단을 보여 주는 방식
+    struct Options {
+        templide::middleend::ReportFormat format = templide::middleend::ReportFormat::Text;
+        bool strict = false;       // 경고도 실패로 센다
+        bool check_format = false; // --check에서 #fmt가 있는 파일이 포맷되어 있는지도 본다
+        bool check_access = false; // --check에서 접근성도 본다
+    };
+
+    // 진단을 형식에 맞게 보여 주고 세어 둔다. text는 stderr에 바로, github는 stdout에 바로 적고, json은 finish()에서 한 번에 적는다
+    class Reporter {
+    public:
+        explicit Reporter(const Options& options) : options_(options) {}
+
+        void add(templide::middleend::Diagnostic diagnostic) {
+            using templide::middleend::Level;
+            using templide::middleend::ReportFormat;
+            switch (diagnostic.level) {
+                case Level::Error: ++errors_; break;
+                case Level::Warning: ++warnings_; break;
+                case Level::Info: ++infos_; break;
+            }
+            switch (options_.format) {
+                case ReportFormat::Text:
+                    std::cerr << templide::middleend::format_text(diagnostic) << '\n';
+                    break;
+                case ReportFormat::Github:
+                    std::cout << templide::middleend::format_github(diagnostic) << '\n';
+                    break;
+                case ReportFormat::Json:
+                    collected_.push_back(std::move(diagnostic));
+                    break;
+            }
+        }
+
+        // 위치가 없는 오류. 메시지의 코드는 카탈로그에 있다
+        void add_error(const char* code, const std::string& message) {
+            add(templide::middleend::Diagnostic{"", 0, 0, message, 0, templide::middleend::Level::Error, code});
+        }
+
+        void finish() {
+            if (options_.format == templide::middleend::ReportFormat::Json) {
+                std::cout << templide::middleend::format_json(collected_) << '\n';
+                collected_.clear();
+            }
+        }
+
+        // 결과를 알리는 한 줄(성공 기록 등). json은 JSON만 stdout에 두려고 뺀다
+        void note(const std::string& line) const {
+            if (options_.format != templide::middleend::ReportFormat::Json) {
+                std::cout << line << '\n';
+            }
+        }
+
+        std::size_t errors() const { return errors_; }
+        std::size_t warnings() const { return warnings_; }
+
+        // 종료 코드: 0 성공, 1 검사 실패(오류, --strict면 경고도)
+        int exit_code() const {
+            return errors_ > 0 || (options_.strict && warnings_ > 0) ? 1 : 0;
+        }
+
+    private:
+        Options options_;
+        std::vector<templide::middleend::Diagnostic> collected_;
+        std::size_t errors_ = 0;
+        std::size_t warnings_ = 0;
+        std::size_t infos_ = 0;
+    };
+
+    int dump_ast(const std::string& path, const Options& options) {
         std::ifstream file(templide::backend::utf8_path(path), std::ios::binary);
         if (!file) {
-            std::cerr << "Cannot open file: " << path << std::endl;
-            return 1;
+            Reporter(options).add_error("E2162", "Cannot open file");
+            return 2;
         }
         std::stringstream buffer;
         buffer << file.rdbuf();
         std::string decode_error;
         const auto decoded = templide::middleend::decode_source(buffer.str(), decode_error);
         if (!decoded) {
-            std::cerr << path << ": error: file " << decode_error << std::endl;
-            return 1;
+            Reporter(options).add(templide::middleend::Diagnostic{path, 0, 0, path + " " + decode_error, 0, templide::middleend::Level::Error, "E2002"});
+            return 2;
         }
         const std::string& source = *decoded;
 
@@ -397,7 +464,7 @@ namespace {
         const auto* file_node = parser.parse();
         if (file_node == nullptr) {
             const auto& error = parser.error;
-            std::cerr << path << ':' << error.line << ':' << error.column << ": error: " << error.message << std::endl;
+            Reporter(options).add(templide::middleend::Diagnostic{path, error.line, error.column, error.message, 0, templide::middleend::Level::Error, error.code, error.help});
             return 1;
         }
         print(file_node, 0);
@@ -690,38 +757,114 @@ namespace {
         }
     }
 
+    // 파일의 바이트
+    std::optional<std::string> read_bytes(const std::string& path) {
+        std::ifstream file(templide::backend::utf8_path(path), std::ios::binary);
+        if (!file) {
+            return std::nullopt;
+        }
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+        return buffer.str();
+    }
+
+    // templide fmt [--check | --stdout] <file>...  종료 코드: 0 성공, 1 문법 오류가 있거나 --check에서 포맷이 필요하다, 2 파일을 읽거나 쓸 수 없음
+    int fmt_command(const std::vector<std::string>& files, bool check, bool to_stdout, const Options& options) {
+        using templide::middleend::Diagnostic;
+        using templide::middleend::Level;
+        if (files.empty() || (to_stdout && (files.size() != 1 || check))) {
+            std::cerr << "usage: templide fmt [--check | --stdout] [--format text|json|github] <file>...\n";
+            return 2;
+        }
+        Reporter reporter(options);
+        bool io_error = false;
+        for (const auto& path : files) {
+            const auto bytes = read_bytes(path);
+            if (!bytes) {
+                reporter.add(Diagnostic{path, 0, 0, "Cannot open file", 0, Level::Error, "E2162"});
+                io_error = true;
+                continue;
+            }
+            std::string decode_error;
+            const auto text = templide::middleend::decode_source(*bytes, decode_error);
+            if (!text) {
+                reporter.add(Diagnostic{path, 0, 0, path + " " + decode_error, 0, Level::Error, "E2002"});
+                io_error = true;
+                continue;
+            }
+            const auto result = templide::format::format_source(path, *text);
+            for (const auto& diagnostic : result.diagnostics) {
+                reporter.add(diagnostic);
+            }
+            if (!result.ok) {
+                continue;
+            }
+            if (!result.has_settings) {
+                reporter.note("skipped " + path + " (no #fmt)");
+                continue;
+            }
+            if (to_stdout) {
+                std::string shown;
+                for (const char c : result.text) {
+                    if (c != '\r') {
+                        shown += c;
+                    }
+                }
+                std::cout << shown;
+                continue;
+            }
+            if (result.text == *text) {
+                reporter.note("unchanged " + path);
+            } else if (check) {
+                reporter.add(Diagnostic{path, 0, 0, "File is not formatted; run 'templide fmt' to format it", 0, Level::Error, "E4003"});
+            } else {
+                std::ofstream out(templide::backend::utf8_path(path), std::ios::binary | std::ios::trunc);
+                out << templide::middleend::encode_like(*bytes, result.text);
+                if (!out) {
+                    reporter.add(Diagnostic{path, 0, 0, "Cannot write file", 0, Level::Error, "E4004"});
+                    io_error = true;
+                    continue;
+                }
+                reporter.note("formatted " + path);
+            }
+        }
+        reporter.finish();
+        return io_error ? 2 : reporter.exit_code();
+    }
+
     // 고른 target들(없으면 전부)의 파일을 쓴다. check면 파일을 쓰지 않고 에러와 경고만 알아본다
-    int build(const ir::Document& document, const std::vector<std::string>& selected, const std::filesystem::path& base_dir, const std::filesystem::path& libs_dir, bool check) {
+    void build(const ir::Document& document, const std::vector<std::string>& selected, const std::filesystem::path& base_dir, const std::filesystem::path& libs_dir, bool check,
+               Reporter& reporter) {
         bool failed = false;
         for (const auto& name : selected) {
             const bool exists = std::any_of(document.targets.begin(), document.targets.end(), [&](const ir::Target& target) { return target.name == name; });
             if (!exists) {
-                std::cerr << "error: unknown target: " << name << '\n';
+                reporter.add_error("E3001", "unknown target: " + name);
                 failed = true;
             }
         }
         if (failed) {
-            return 1;
+            return;
         }
         if (document.targets.empty()) {
             if (check) {
-                std::cout << "no target; only the document was checked\n";
-                return 0;
+                reporter.note("no target; only the document was checked");
+                return;
             }
-            std::cerr << "error: no target to build\n";
-            return 1;
+            reporter.add_error("E3002", "no target to build");
+            return;
         }
         for (const auto& target : document.targets) {
             if (!selected.empty() && std::find(selected.begin(), selected.end(), target.name) == selected.end()) {
                 continue;
             }
-            std::vector<std::string> warnings;
+            std::vector<templide::backend::Warning> warnings;
             const auto errors = templide::backend::write_target(document, target, base_dir, libs_dir, warnings, check);
-            for (const auto& message : warnings) {
-                std::cerr << message << '\n';
+            for (const auto& warning : warnings) {
+                reporter.add(templide::backend::to_diagnostic(warning));
             }
             for (const auto& message : errors) {
-                std::cerr << "error: target " << target.name << ": " << message << '\n';
+                reporter.add_error("E3003", "target " + target.name + ": " + message);
             }
             if (errors.empty()) {
                 // png는 슬라이드마다 파일 하나다 (slides.png -> slides-<n>.png)
@@ -730,12 +873,9 @@ namespace {
                     const std::size_t dot = written.rfind('.');
                     written = written.substr(0, dot) + "-<n>" + (dot == std::string::npos ? "" : written.substr(dot));
                 }
-                std::cout << target.name << (check ? ": ok" : ": wrote " + written) << '\n';
-            } else {
-                failed = true;
+                reporter.note(target.name + (check ? ": ok" : ": wrote " + written));
             }
         }
-        return failed ? 1 : 0;
     }
 
     // 문서가 있는 폴더. target의 상대 경로는 여기 기준이다
@@ -821,11 +961,45 @@ namespace {
 
     enum class Mode { BUILD, AST, IR };
 
-    // 문서 하나를 분석해 target 파일을 만들거나(--check면 검사만 한다) AST, IR을 출력한다.
+    // #fmt가 있는 파일(표준 라이브러리는 뺀다)이 포맷되어 있는지 본다. 되어 있지 않으면 경고
+    void check_formatting(const templide::middleend::Result& result, const char* program, Reporter& reporter) {
+        const std::string packages = templide::middleend::default_packages_dir(program).lexically_normal().string();
+        for (const auto& [file, text] : result.sources) {
+            if (std::filesystem::path(file).lexically_normal().string().starts_with(packages)) {
+                continue;
+            }
+            const auto formatted = templide::format::format_source(file, text);
+            if (formatted.ok && formatted.has_settings && formatted.text != text) {
+                reporter.add(templide::middleend::Diagnostic{file, 0, 0, "File is not formatted; run 'templide fmt' to format it", 0, templide::middleend::Level::Warning, "W4001"});
+            }
+        }
+    }
+
+    // templide tool access <file>: 문서의 접근성을 검사한다. 문서에 오류가 있으면 그 오류를 알리고 끝낸다
+    int access_command(const std::string& path, const char* program, const Options& options) {
+        const auto result = templide::middleend::analyze(templide::backend::utf8_path(path), templide::middleend::default_packages_dir(program));
+        Reporter reporter(options);
+        bool unreadable = false;
+        for (const auto& diagnostic : result.diagnostics) {
+            unreadable = unreadable || (diagnostic.line == 0 && (diagnostic.code == "E2162" || diagnostic.code == "E2002"));
+            reporter.add(diagnostic);
+        }
+        if (!result.document) {
+            reporter.finish();
+            return unreadable ? 2 : 1;
+        }
+        for (const auto& diagnostic : templide::middleend::check_accessibility(*result.document, result.sources)) {
+            reporter.add(diagnostic);
+        }
+        reporter.finish();
+        return reporter.exit_code();
+    }
+
+    // 문서 하나를 분석해 target 파일을 만들거나(--check면 검사만 한다) AST, IR을 출력한다. 종료 코드: 0 성공, 1 검사 실패, 2 파일을 읽을 수 없음.
     // dependencies가 있으면 읽은 파일들을 거기에 모은다. 분석에 실패해도 읽은 .tlide 파일은 모은다
-    int compile(const std::string& path, Mode mode, const std::vector<std::string>& selected, bool check, const char* program, Dependencies* dependencies) {
+    int compile(const std::string& path, Mode mode, const std::vector<std::string>& selected, bool check, const char* program, Dependencies* dependencies, const Options& options) {
         if (mode == Mode::AST) {
-            return dump_ast(path);
+            return dump_ast(path, options);
         }
         const auto result = templide::middleend::analyze(templide::backend::utf8_path(path), templide::middleend::default_packages_dir(program));
         if (dependencies != nullptr) {
@@ -839,27 +1013,40 @@ namespace {
                 dependencies->add_document(*result.document);
             }
         }
-        const auto report = [](const templide::middleend::Diagnostic& diagnostic, const char* kind) {
-            std::cerr << diagnostic.path;
-            if (diagnostic.line > 0) {
-                std::cerr << ':' << diagnostic.line << ':' << diagnostic.column;
-            }
-            std::cerr << ": " << kind << ": " << diagnostic.message << '\n';
-        };
+        // --ir은 stdout에 IR을 쓰므로 진단은 늘 text로 stderr에 쓴다
+        Options shown = options;
+        if (mode == Mode::IR) {
+            shown.format = templide::middleend::ReportFormat::Text;
+        }
+        Reporter reporter(shown);
+        // 문서 파일을 열거나 해독하지 못한 오류(위치 없음)는 검사 실패가 아니라 입출력 오류다
+        bool unreadable = false;
         for (const auto& diagnostic : result.diagnostics) {
-            report(diagnostic, "error");
+            unreadable = unreadable || (diagnostic.line == 0 && (diagnostic.code == "E2162" || diagnostic.code == "E2002"));
+            reporter.add(diagnostic);
         }
         for (const auto& diagnostic : result.warnings) {
-            report(diagnostic, "warning");
+            reporter.add(diagnostic);
+        }
+        if (options.check_format) {
+            check_formatting(result, program, reporter);
+        }
+        if (options.check_access && result.document) {
+            for (const auto& diagnostic : templide::middleend::check_accessibility(*result.document, result.sources)) {
+                reporter.add(diagnostic);
+            }
         }
         if (!result.document) {
-            return 1;
+            reporter.finish();
+            return unreadable ? 2 : 1;
         }
         if (mode == Mode::IR) {
             print_document(*result.document);
-            return 0;
+            return reporter.exit_code();
         }
-        return build(*result.document, selected, base_dir_of(path), templide::middleend::default_libs_dir(program), check);
+        build(*result.document, selected, base_dir_of(path), templide::middleend::default_libs_dir(program), check, reporter);
+        reporter.finish();
+        return reporter.exit_code();
     }
 
     // 파일의 크기와 수정 시각. 없는 파일은 exists가 false다
@@ -886,12 +1073,12 @@ namespace {
     }
 
     // 문서와 그것이 읽는 파일이 바뀔 때마다 다시 만든다. Ctrl+C로 끝낸다. 저장이 끝날 때까지(수정이 멈출 때까지) 기다렸다가 만든다
-    int watch(const std::string& path, const std::vector<std::string>& selected, bool check, const char* program) {
+    int watch(const std::string& path, const std::vector<std::string>& selected, bool check, const char* program, const Options& options) {
         std::set<std::filesystem::path> files;
         const auto cycle = [&]() {
             Dependencies dependencies{base_dir_of(path), {}};
             dependencies.add(templide::backend::utf8_path(path));
-            compile(path, Mode::BUILD, selected, check, program, &dependencies);
+            compile(path, Mode::BUILD, selected, check, program, &dependencies, options);
             files = std::move(dependencies.files);
             std::cout << std::flush;
             std::cerr << std::flush;
@@ -928,10 +1115,17 @@ namespace {
     }
 }
 
-// templide [--ast | --ir | --check] [--watch] [--target <name>]... [file]
+// templide [--ast | --ir | --check] [--watch] [--target <name>]... [--format text|json|github] [--strict] [--fmt] [file]
+// templide fmt [--check | --stdout] [--format text|json|github] <file>...
+// templide tool access [--format text|json|github] [--strict] <file>
 // templide --serve
 // 기본은 target 파일을 만든다. --ast는 parser의 AST를, --ir은 middle end의 IR을 출력한다.
-// --check는 파일을 쓰지 않고 에러와 경고만 알아본다(에러가 있으면 종료 코드 1). --watch는 문서와 그것이 읽는 파일이 바뀔 때마다 다시 만든다.
+// --check는 파일을 쓰지 않고 에러와 경고만 알아본다. --watch는 문서와 그것이 읽는 파일이 바뀔 때마다 다시 만든다.
+// --format은 진단을 보여 주는 형식이다 (text는 stderr, json과 github는 stdout).
+// --strict는 경고가 있어도 실패로 센다. --fmt는 --check에서 #fmt가 있는 파일이 포맷되어 있는지도 본다.
+// tool access는 문서의 접근성(대체 텍스트, 색 대비, 글자 크기, 제목, 읽는 순서 등)을 검사한다. --access는 --check에서 같은 검사를 함께 한다.
+// fmt는 .tlide 파일을 #fmt 지시문의 설정대로 다시 쓴다 (--check는 고치지 않고 알리기만, --stdout은 파일 대신 화면에 쓴다).
+// 종료 코드: 0 성공, 1 검사 실패(오류가 있다), 2 사용법이나 파일 입출력 오류
 // --serve는 편집기와 stdin/stdout으로 대화하는 언어 서버다 (server/server.h)
 int main(int argc, char* argv[]) {
     if (argc == 2 && std::string(argv[1]) == "--serve") {
@@ -941,11 +1135,23 @@ int main(int argc, char* argv[]) {
     Mode mode = Mode::BUILD;
     bool check = false;
     bool watching = false;
+    bool to_stdout = false;
+    Options options;
     std::vector<std::string> selected;
-    std::string path;
+    std::vector<std::string> files;
     const std::vector<std::string> arguments = templide::middleend::command_line_arguments(argc, argv);
-    for (std::size_t i = 1; i < arguments.size(); ++i) {
+    const bool format_command = arguments.size() > 1 && arguments[1] == "fmt";
+    const bool access_tool = arguments.size() > 2 && arguments[1] == "tool" && arguments[2] == "access";
+    // "--format json"과 "--format=json" 둘 다 받는다. 값이 없으면 nullopt
+    const auto value_of = [&](std::size_t& i, const std::string& argument, const std::string& name) -> std::optional<std::string> {
+        if (argument == name) {
+            return i + 1 < arguments.size() ? std::optional<std::string>(arguments[++i]) : std::nullopt;
+        }
+        return argument.substr(name.size() + 1);
+    };
+    for (std::size_t i = format_command ? 2 : access_tool ? 3 : 1; i < arguments.size(); ++i) {
         const std::string& argument = arguments[i];
+        const auto is_option = [&](const std::string& name) { return argument == name || argument.starts_with(name + "="); };
         if (argument == "--ast") {
             mode = Mode::AST;
         } else if (argument == "--ir") {
@@ -954,27 +1160,63 @@ int main(int argc, char* argv[]) {
             check = true;
         } else if (argument == "--watch") {
             watching = true;
+        } else if (argument == "--strict") {
+            options.strict = true;
+        } else if (argument == "--fmt") {
+            options.check_format = true;
+        } else if (argument == "--access") {
+            options.check_access = true;
+        } else if (argument == "--stdout") {
+            to_stdout = true;
         } else if (argument == "--target") {
             if (i + 1 >= arguments.size()) {
                 std::cerr << "error: --target needs a target name\n";
-                return 1;
+                return 2;
             }
             selected.push_back(arguments[++i]);
+        } else if (is_option("--format")) {
+            const auto value = value_of(i, argument, "--format");
+            const auto format = value ? templide::middleend::report_format_from_name(*value) : std::nullopt;
+            if (!format) {
+                std::cerr << "error: --format must be text, json or github\n";
+                return 2;
+            }
+            options.format = *format;
+        } else if (argument.starts_with("--")) {
+            std::cerr << "error: unknown option: " << argument << '\n';
+            return 2;
         } else {
-            path = argument;
+            files.push_back(argument);
         }
     }
+    if (format_command) {
+        return fmt_command(files, check, to_stdout, options);
+    }
+    if (to_stdout) {
+        std::cerr << "error: --stdout is only for 'templide fmt'\n";
+        return 2;
+    }
+    if (access_tool) {
+        if (files.size() != 1) {
+            std::cerr << "usage: templide tool access [--format text|json|github] [--strict] <file>\n";
+            return 2;
+        }
+        return access_command(files.front(), argv[0], options);
+    }
+    const std::string path = files.empty() ? "" : files.back();
     if (path.empty()) {
-        std::cerr << "usage: templide [--ast | --ir | --check] [--watch] [--target <name>]... <file>\n"
+        std::cerr << "usage: templide [--ast | --ir | --check] [--watch] [--target <name>]... [--format text|json|github] [--strict] [--fmt] [--access] <file>\n"
+                  << "       templide fmt [--check | --stdout] <file>...\n"
+                  << "       templide tool access <file>\n"
                   << "       templide --serve\n";
-        return 1;
+        return 2;
     }
     if ((check || watching) && mode != Mode::BUILD) {
         std::cerr << "error: --check and --watch cannot be used with --ast or --ir\n";
-        return 1;
+        return 2;
     }
     if (watching) {
-        return watch(path, selected, check, argv[0]);
+        return watch(path, selected, check, argv[0], options);
     }
-    return compile(path, mode, selected, check, argv[0], nullptr);
+    return compile(path, mode, selected, check, argv[0], nullptr, options);
 }

@@ -9,11 +9,13 @@
 - 편집기 화면: editor의 npm 패키지 중 실행에 쓰는 것 (devDependencies와 타입 정의는 뺀다)
 - 편집기 프로그램: src-tauri가 그 타깃에서 링크하는 Rust 크레이트 (빌드에만 쓰는 크레이트와 proc-macro는 뺀다)
 - 컴파일러: templide에 들어가는 C++ 라이브러리. Windows는 MinGW-w64 런타임과 GCC 또는 LLVM 런타임도 들어간다
-- 함께 넣은 파일: libs의 reveal.js, monaco-editor에 든 Codicons 아이콘 글꼴, Windows는 AI 탭의 ConPTY
+- 함께 넣은 파일: libs의 reveal.js와 KaTeX(수식), monaco-editor에 든 Codicons 아이콘 글꼴, Windows는 AI 탭의 ConPTY
 
 패키지에 라이선스 파일이 없는 것은 원본에서 받아 tools/licenses에 둔 본문을 쓴다
 - webview2-rs.txt: webview2-com, webview2-com-sys (https://github.com/wravery/webview2-rs 의 LICENSE)
 - webview2-sdk.txt: webview2-com-sys가 링크하는 WebView2LoaderStatic.lib (NuGet Microsoft.Web.WebView2 의 LICENSE.txt)
+- katex-fonts-ofl.txt: libs/katex/fonts의 KaTeX 글꼴 (SIL OFL 1.1). 글꼴 파일에 적힌 저작권 고지와 OFL 본문이다.
+  KaTeX 코드의 MIT 본문은 libs/katex/LICENSE에 있다
 - codicons.txt: monaco-editor에 든 codicon.ttf (https://github.com/microsoft/vscode-codicons 의 LICENSE, CC BY 4.0).
   monaco-editor의 MIT 고지에는 들어 있지 않아 따로 고지한다
 - mingw-winpthreads.txt, mingw-w64-runtime.txt, gcc-runtime-exception.txt: MinGW-w64 배포판의 licenses 폴더
@@ -211,6 +213,8 @@ def compiler_packages(collector, target):
 def bundled_packages(collector, target):
     packages = [
         {'name': 'reveal.js', 'version': '', 'license': 'MIT', 'url': 'https://revealjs.com', 'texts': [collector.text((ROOT / 'libs' / 'reveal' / 'LICENSE').read_text(encoding='utf-8'))]},
+        {'name': 'KaTeX', 'version': '0.16.11', 'license': 'MIT', 'url': 'https://katex.org', 'texts': [collector.text((ROOT / 'libs' / 'katex' / 'LICENSE').read_text(encoding='utf-8'))]},
+        {'name': 'KaTeX 글꼴', 'version': '0.16.11', 'license': 'OFL-1.1', 'url': 'https://github.com/KaTeX/KaTeX', 'texts': [saved(collector, 'katex-fonts-ofl.txt')]},
         # CC BY 4.0은 저작자, 라이선스, 수정 여부를 밝히도록 한다
         {'name': 'Codicons (monaco-editor의 아이콘 글꼴)', 'version': '', 'license': 'CC-BY-4.0', 'url': 'https://github.com/microsoft/vscode-codicons',
          'texts': [collector.text('Codicons\n'

@@ -1,0 +1,431 @@
+tlide fmt의 케이스. 케이스마다 `#fmt` 줄이 정하는 설정으로 `templide fmt --stdout`이 어떻게 다시 쓰는지와, 결과를 다시 포맷해도 같은지(멱등성)를 본다.
+-- basic.tlide --
+#fmt indent_size 2
+#include   <std/stddef>
+/* 설명 */
+object tile {var text text;   var fill color=hex(fff);}
+
+
+template card { var text title = "x";
+  put tile { text = title; fill = hex(0F0) ; }
+}
+slide {
+put card { title = "a" ; }
+    put text_box{text="hello world";x=10px;y= 5px;width=50%;height=30px;}
+}
+slide { }
+target out { path = "o.pptx"; type = pptx; }
+-- basic.expected --
+$ templide fmt --stdout basic.tlide
+[exit] 0
+[stdout]
+#fmt indent_size 2
+#include <std/stddef>
+/* 설명 */
+object tile { var text text; var fill color = hex(fff); }
+
+template card {
+  var text title = "x";
+  put tile { text = title; fill = hex(0F0); }
+}
+slide {
+  put card { title = "a"; }
+  put text_box { text = "hello world"; x = 10px; y = 5px; width = 50%; height = 30px; }
+}
+slide { }
+target out { path = "o.pptx"; type = pptx; }
+-- comments.tlide --
+#fmt indent_size 4
+/* 파일 머리 */
+
+#include <std/stddef>   /* 줄 끝 */
+
+/* 정의 앞 */
+object tile { var text text; } /* 정의 뒤 */
+
+slide { /* 열자마자 */
+    /* put 앞 */
+    put tile { text = "a"; } /* put 뒤 */
+    put tile {
+        /* 속성 앞 */
+        text = /* 값 앞 */ "b"; /* 속성 뒤 */
+        /* 끝 */
+    }
+    /* 슬라이드 끝 */
+}
+/* 파일 끝 */
+-- comments.expected --
+$ templide fmt --stdout comments.tlide
+[exit] 0
+[stdout]
+#fmt indent_size 4
+/* 파일 머리 */
+
+#include <std/stddef> /* 줄 끝 */
+
+/* 정의 앞 */
+object tile { var text text; } /* 정의 뒤 */
+
+slide { /* 열자마자 */
+    /* put 앞 */
+    put tile { text = "a"; } /* put 뒤 */
+    put tile {
+        /* 속성 앞 */
+        text = /* 값 앞 */ "b"; /* 속성 뒤 */
+        /* 끝 */
+    }
+    /* 슬라이드 끝 */
+}
+/* 파일 끝 */
+-- blocks_and_brackets.tlide --
+#fmt indent_size 4
+#include <std/stddef>
+#include <std/styles>
+slide {
+    put table { x = 80px; y = 120px; width = 1120px; height = 300px;
+        cells = [
+          ["이름", "1학기"],
+               ["철수", bold "20"]
+        ];
+        col_widths = [400px,   360px]; row_heights = [60px, 120px];
+        cell(1, 1) { align = right; padding_left = 20px; }
+        cell(2, 1) {
+            align = right;
+        }
+    }
+}
+-- blocks_and_brackets.expected --
+$ templide fmt --stdout blocks_and_brackets.tlide
+[exit] 0
+[stdout]
+#fmt indent_size 4
+#include <std/stddef>
+#include <std/styles>
+slide {
+    put table {
+        x = 80px;
+        y = 120px;
+        width = 1120px;
+        height = 300px;
+        cells = [
+            ["이름", "1학기"],
+            ["철수", bold "20"]
+        ];
+        col_widths = [400px, 360px];
+        row_heights = [60px, 120px];
+        cell(1, 1) { align = right; padding_left = 20px; }
+        cell(2, 1) {
+            align = right;
+        }
+    }
+}
+-- control_flow.tlide --
+#fmt indent_size 4
+enum mode { fast, slow }
+object label { var text text; var int x = 0; }
+template rows {
+    var int n;
+    var mode mode = fast;
+    for (int i in 1..n) { put label { text = f"{mode} 줄 {i}"; x = i * 10px; } }
+    if (mode == slow) { put label { text = "느림"; } } else if (n == 3) { put label { text = "셋"; } } else { put label { text = "그 밖의 경우를 위한 아주 긴 문자열 그 밖의 경우를 위한 아주 긴 문자열 그 밖의 경우를 위한 아주 긴 문자열"; } }
+}
+slide { put rows { n = 2; } }
+-- control_flow.expected --
+$ templide fmt --stdout control_flow.tlide
+[exit] 0
+[stdout]
+#fmt indent_size 4
+enum mode { fast, slow }
+object label { var text text; var int x = 0; }
+template rows {
+    var int n;
+    var mode mode = fast;
+    for (int i in 1..n) { put label { text = f"{mode} 줄 {i}"; x = i * 10px; } }
+    if (mode == slow) {
+        put label { text = "느림"; }
+    } else if (n == 3) {
+        put label { text = "셋"; }
+    } else {
+        put label { text = "그 밖의 경우를 위한 아주 긴 문자열 그 밖의 경우를 위한 아주 긴 문자열 그 밖의 경우를 위한 아주 긴 문자열"; }
+    }
+}
+slide { put rows { n = 2; } }
+-- brace_next_line.tlide --
+#fmt indent_size 4
+#fmt brace_style next_line
+object label { var text text; }
+template rows {
+    var int n;
+    if (n == 3) { put label { text = "a"; } } else { put label { text = "b"; } }
+    put label {
+        text = "x";
+    }
+}
+slide { put rows { n = 3; } put label { text = "c"; } }
+-- brace_next_line.expected --
+$ templide fmt --stdout brace_next_line.tlide
+[exit] 0
+[stdout]
+#fmt indent_size 4
+#fmt brace_style next_line
+object label { var text text; }
+template rows
+{
+    var int n;
+    if (n == 3) { put label { text = "a"; } } else { put label { text = "b"; } }
+    put label
+    {
+        text = "x";
+    }
+}
+slide { put rows { n = 3; } put label { text = "c"; } }
+-- tabs_and_width.tlide --
+#fmt indent_style tab
+#fmt indent_size 4
+#fmt max_line_length 50
+object label { var text text; var int x = 0; }
+slide { put label { text = "짧다"; } put label { text = "이 줄은 설정한 길이보다 길어서 펼쳐진다"; x = 100; } }
+-- tabs_and_width.expected --
+$ templide fmt --stdout tabs_and_width.tlide
+[exit] 0
+[stdout]
+#fmt indent_style tab
+#fmt indent_size 4
+#fmt max_line_length 50
+object label { var text text; var int x = 0; }
+slide {
+	put label { text = "짧다"; }
+	put label {
+		text = "이 줄은 설정한 길이보다 길어서 펼쳐진다";
+		x = 100;
+	}
+}
+-- expand_blocks.tlide --
+#fmt short_blocks expand
+object label { var text text; }
+slide { put label { text = "a"; } put label { text = "b"; } }
+-- expand_blocks.expected --
+$ templide fmt --stdout expand_blocks.tlide
+[exit] 0
+[stdout]
+#fmt short_blocks expand
+object label {
+    var text text;
+}
+slide {
+    put label {
+        text = "a";
+    }
+    put label {
+        text = "b";
+    }
+}
+-- inline_limit.tlide --
+#fmt inline_max_statements 2
+object label { var text text; var int x = 0; var int y = 0; }
+slide { put label { text = "a"; } put label { text = "b"; x = 1; } put label { text = "c"; x = 1; y = 2; } }
+-- inline_limit.expected --
+$ templide fmt --stdout inline_limit.tlide
+[exit] 0
+[stdout]
+#fmt inline_max_statements 2
+object label {
+    var text text;
+    var int x = 0;
+    var int y = 0;
+}
+slide {
+    put label { text = "a"; }
+    put label { text = "b"; x = 1; }
+    put label {
+        text = "c";
+        x = 1;
+        y = 2;
+    }
+}
+-- sort_and_hex.tlide --
+#fmt sort_properties alphabetical
+#fmt sort_includes alphabetical
+#fmt hex_case upper
+#include <std/styles>
+#include "b.tlide"
+#include <std/stddef>
+#include "a.tlide"
+object label { var text text; var color fill = hex(abc); var int x = 0; }
+slide {
+    put label {
+        x = 2;
+        /* 글 */
+        text = "t"; /* 뒤 */
+        fill = hex(0f0f0f);
+    }
+    put label { text = "u"; fill = hex(fFf); x = 1; }
+}
+-- sort_and_hex.expected --
+$ templide fmt --stdout sort_and_hex.tlide
+[exit] 0
+[stdout]
+#fmt sort_properties alphabetical
+#fmt sort_includes alphabetical
+#fmt hex_case upper
+#include <std/stddef>
+#include <std/styles>
+#include "a.tlide"
+#include "b.tlide"
+object label { var text text; var color fill = hex(ABC); var int x = 0; }
+slide {
+    put label {
+        fill = hex(0F0F0F);
+        /* 글 */
+        text = "t"; /* 뒤 */
+        x = 2;
+    }
+    put label { fill = hex(FFF); text = "u"; x = 1; }
+}
+-- spacing_options.tlide --
+#fmt space_around_assign false
+#fmt space_around_operators false
+#fmt space_after_comma false
+#fmt space_inside_parens true
+#fmt inline_brace_space false
+#fmt empty_blocks tight
+object label { var text text; var int x = 0; var list<int> xs = [1, 2]; }
+slide { put label { text = "a"; x = (1 + 2) * 3 - 4; } put label { text = "b"; } }
+slide { }
+-- spacing_options.expected --
+$ templide fmt --stdout spacing_options.tlide
+[exit] 0
+[stdout]
+#fmt space_around_assign false
+#fmt space_around_operators false
+#fmt space_after_comma false
+#fmt space_inside_parens true
+#fmt inline_brace_space false
+#fmt empty_blocks tight
+object label {var text text; var int x=0; var list<int> xs=[1,2];}
+slide {put label {text="a"; x=( 1+2 )*3-4;} put label {text="b";}}
+slide {}
+-- blank_lines.tlide --
+#fmt max_blank_lines 1
+#fmt blank_lines_before_slide 2
+#fmt blank_lines_after_includes 1
+#include <std/stddef>
+#include <std/styles>
+object label { var text text; }
+
+
+
+object other { var text text; }
+slide { put label { text = "a"; }
+
+
+    put label { text = "b"; } }
+slide { }
+-- blank_lines.expected --
+$ templide fmt --stdout blank_lines.tlide
+[exit] 0
+[stdout]
+#fmt max_blank_lines 1
+#fmt blank_lines_before_slide 2
+#fmt blank_lines_after_includes 1
+#include <std/stddef>
+#include <std/styles>
+
+object label { var text text; }
+
+object other { var text text; }
+
+
+slide {
+    put label { text = "a"; }
+
+    put label { text = "b"; }
+}
+
+
+slide { }
+-- directives_in_blocks.tlide --
+#fmt indent_size 4
+object label { var text text; }
+slide {
+#fmt indent_size 2
+    put label { text = "a"; }
+}
+-- directives_in_blocks.expected --
+$ templide fmt --stdout directives_in_blocks.tlide
+[exit] 0
+[stdout]
+#fmt indent_size 4
+object label { var text text; }
+slide {
+  #fmt indent_size 2
+  put label { text = "a"; }
+}
+[stderr]
+directives_in_blocks.tlide:4:6: warning[W2004]: Duplicate #fmt option: indent_size; the last one is used
+-- fmt_problems.tlide --
+#fmt indent_siz 4
+#fmt indent_size 99
+#fmt indent_size 2
+#fmt indent_size 3
+#fmt brace_style center
+object label { var text text; }
+slide { put label { text = "a"; } }
+-- fmt_problems.expected --
+$ templide fmt --stdout fmt_problems.tlide
+[exit] 0
+[stdout]
+#fmt indent_siz 4
+#fmt indent_size 99
+#fmt indent_size 2
+#fmt indent_size 3
+#fmt brace_style center
+object label { var text text; }
+slide { put label { text = "a"; } }
+[stderr]
+fmt_problems.tlide:1:6: warning[W2002]: Unknown #fmt option: indent_siz
+  help: did you mean 'indent_size'?
+fmt_problems.tlide:2:18: warning[W2003]: Invalid value '99' for #fmt option 'indent_size'; expected an integer from 1 to 16
+fmt_problems.tlide:4:6: warning[W2004]: Duplicate #fmt option: indent_size; the last one is used
+fmt_problems.tlide:5:18: warning[W2003]: Invalid value 'center' for #fmt option 'brace_style'; expected one of same_line, next_line
+-- no_fmt.tlide --
+object   label { var text text; }
+slide{put label{text="a";}}
+-- no_fmt.expected --
+$ templide fmt --stdout no_fmt.tlide
+[exit] 0
+[stdout]
+skipped no_fmt.tlide (no #fmt)
+-- syntax_error.tlide --
+#fmt indent_size 4
+object label { var text text; }
+slide { put label { text = ; } }
+-- syntax_error.expected --
+$ templide fmt --stdout syntax_error.tlide
+[exit] 1
+[stderr]
+syntax_error.tlide:3:28: error[E1007]: Expected expression, but got ';'
+-- hyphen_units_generics.tlide --
+#fmt indent_size 4
+object box { var list<list<int>> grid = [[1, 2], [3]]; var float w = -5px; var int n = 10; var float p = 30%; }
+template t { var int n; for (int i in 0 .. n) { put box { } } }
+slide { put box { w = 10px; p = 50%; } }
+-- hyphen_units_generics.expected --
+$ templide fmt --stdout hyphen_units_generics.tlide
+[exit] 0
+[stdout]
+#fmt indent_size 4
+object box { var list<list<int>> grid = [[1, 2], [3]]; var float w = -5px; var int n = 10; var float p = 30%; }
+template t { var int n; for (int i in 0..n) { put box { } } }
+slide { put box { w = 10px; p = 50%; } }
+-- hex_and_fstring_verbatim.tlide --
+#fmt hex_case lower
+object label { var text text; var color c = hex( F00 ); }
+slide { put label { text = f"a  {  1+2  }   b"; c = hex(A0B1C2); } }
+-- hex_and_fstring_verbatim.expected --
+$ templide fmt --stdout hex_and_fstring_verbatim.tlide
+[exit] 0
+[stdout]
+#fmt hex_case lower
+object label { var text text; var color c = hex(f00); }
+slide { put label { text = f"a  {  1+2  }   b"; c = hex(a0b1c2); } }

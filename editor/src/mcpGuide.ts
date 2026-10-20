@@ -28,8 +28,9 @@ Fills: color | linear(angle, c1, c2) | radial(c1, c2) | pattern(kind, fg, bg) | 
 put card { title = "A"; x = 10; y = 10; }
 Templates expand to built-in objects (shape, text_box, ...). Defaults must be constants. A named put/group becomes a PowerPoint group. Values written inside a template are locked in the visual editor.`,
 
-    master: `master brand(color ink) { theme = main; case title { background = hex(FFF); put placeholder { role = title; text = "Title"; x = 80; y = 60; width = 1100; height = 100; } } case body { ... } }
-slide { layout = brand(hex(222)).title; title = "My title"; subtitle = "..."; body = bullets ["a"]; }   (layout is written master(args).case or master.case)
+    master: `master brand { var color ink = hex(222); theme = main; case title { background = hex(FFF); put placeholder { role = title; text = "Title"; x = 80; y = 60; width = 1100; height = 100; } } case body { ... } }
+Master parameters are 'var' lines like a template's (defaults must be constants; a var without a default must be given by every slide).
+slide { layout = brand(hex(F00)).title; title = "My title"; subtitle = "..."; body = bullets ["a"]; }   (layout is master.case, or master(args).case; args may be omitted from the end when they have defaults, or named like Python: brand(ink = hex(F00)).title)
 theme main { dark1 = hex(222222); accent1 = hex(3498DB); heading_font = font("Arial"); body_font = font("Arial"); }
 Slide properties: see topic slide. Each slide picks its own layout; a target has no master.`,
 
@@ -50,6 +51,20 @@ get_resources lists the bundles and their files.`,
 col_widths / row_heights = [2, 1, 1] ratios scaled to width/height (empty = equal); rows grow with text. header_rows / header_cols (bold + header_fill), banded_rows / banded_cols (band_fill), fill = base cell fill, header_fill, band_fill, line_color/line_width/line_dash = all borders (default 1px gray), padding (+padding_left/top/right/bottom), anchor (top|middle|bottom), align (left|center|right|justify).
 cell(row, col) { col_span = 2; row_span = 2; fill = ...; align = ...; anchor = ...; padding = ...; line_color/line_width/line_dash and line_color_left|top|right|bottom, line_width_left|... } - row/col are 1-based. Cells covered by a merge must be "". At most one cell block per cell.
 Not allowed on tables: rotation, flip, radius, opacity, shadows, glow, bevel, depth, 3D.`,
+
+    chart: `put chart { kind = column|bar|line|area|pie|scatter; values = [[1, 2], [3, 4]]; categories = ["a", "b"]; names = ["s1", "s2"]; x; y; width; height; title; x_title; y_title; legend = none|top|bottom|left|right; stacked; data_labels; smooth; markers; gridlines; colors = [hex(2E86AB)]; range = [0, 100]; font_size; text_color; alt = "..."; }
+values = one row per series, each row as long as categories (empty categories = 1, 2, 3 ...). x_title labels the category axis, y_title the value axis. pie draws the first series only (categories = slice names). scatter: xs = [[x values]] per series instead of categories, values = y values. stacked: column/bar/area. smooth/markers: line, scatter. range = [min, max] of the value axis (empty = auto). colors repeat when short; empty = theme accent1..6.
+Data lives inline. pptx gets a native, data-editable chart; html/web/pdf/png draw the same chart as SVG. Give it alt text (accessibility).`,
+
+    math: `put math { latex = "\\\\frac{a}{b} + \\\\sqrt{x}"; x; y; width; height; font_size = 32px; text_color = hex(000000); align = center; anchor = middle; alt; }
+latex is LaTeX math; write each backslash as \\\\ inside the string. pptx: becomes a PowerPoint equation (editable); html/web/pdf/png: KaTeX. Broken LaTeX syntax is always an error. Commands PowerPoint cannot take (\\\\xrightarrow, aligned/array environments, & or a line break outside a matrix/cases ...) are an error only when a pptx target exists in the document; html/pdf/png still draw them.
+Supported for pptx: fractions, roots, sub/superscripts, \\\\sum \\\\int \\\\lim with limits, \\\\left \\\\right, matrices (matrix pmatrix bmatrix vmatrix ...) and cases, accents (\\\\vec \\\\hat \\\\bar), \\\\mathbb \\\\text, Greek letters, common operators and functions (\\\\sin \\\\log ...).`,
+
+    format: `Formatting: a file is formatted only if it has #fmt lines (one option per line, anywhere): #fmt indent_style space; #fmt indent_size 4; #fmt brace_style same_line|next_line; #fmt short_blocks keep|expand; #fmt hex_case keep|upper|lower; ... Unknown options and bad values are warnings (W2002, W2003).
+The editor formats with the toolbar wand button (Alt+Shift+F); CLI: templide fmt [--check|--stdout] file.tlide. The formatter re-parses its result and refuses to write if anything but layout would change.`,
+
+    quality: `Diagnostics have codes (E1xxx parse, E2xxx analysis, W warnings, A accessibility) and often a 'help: did you mean ...' line. In the editor, get_accessibility lists the accessibility problems with their lines and fixes. CLI: templide file.tlide --check [--fmt] [--access] [--strict] [--format text|json|github]; exit code 0 ok, 1 errors (or warnings with --strict), 2 usage/IO error. templide tool access file.tlide runs only the accessibility check.
+Accessibility (A0001 error: image/video/audio/chart without alt; alt = "" marks decoration), contrast (A0002), text under 12pt (A0003), slide without title (A0004), reading order (A0005), many animations (A0006), table without header (A0007), shape without alt (A0008).`,
 
     widgets: `#include <std/widget/NAME> with NAME = flat | material | skeuomorphism | neumorphism | glassmorphism | claymorphism | neobrutalism gives templates prefixed flat_, material_, skeuo_, neu_, glass_, clay_, brutal_ (e.g. flat_card { title; content; x; y; width; height }, flat_button { text; ... }, flat_rect, flat_round_rect, flat_circle, flat_pill). Files: get_resources shows their paths; read one to see the exact templates.`,
 
@@ -87,6 +102,8 @@ const NOTES: Record<string, string> = {
     video: 'mp4/webm. start = click_sequence|auto|when_clicked; poster, loop, rewind, volume, trim_*, fade_*.',
     audio: 'mp3/wav/m4a, shows a speaker icon (width/height default 48). start, across_slides, loop, hide_icon.',
     table: 'see topic table.',
+    chart: 'see topic chart.',
+    math: 'see topic math.',
 };
 
 function objectsText(schema: Schema): string {
@@ -124,7 +141,7 @@ function animationsText(schema: Schema): string {
 }
 
 const INDEX = `templide .tlide guide. Call get_language_guide with a topic:
-syntax, text, units (also colors/fills), template, master, slide, animation, target, assets, table, widgets, workflow (static)
+syntax, text, units (also colors/fills), template, master, slide, animation, target, assets, table, chart, math, format (#fmt), quality (diagnostics, --check, accessibility), widgets, workflow (static)
 objects, common, enums, style, transitions, animations, cell, templates (generated from the compiler for the open document)
 or an object/template/style/enum/master name for its signature (e.g. "table", "text_box").
 Core: slide { put text_box { text = "Hi"; x = 80px; y = 40px; width = 600px; height = 80px; } } target out { path = "out.pptx"; type = pptx; } with #include <std/stddef> first. No unit = px.`;
@@ -135,7 +152,7 @@ export function guide(topic: string | undefined, schema: Schema | null): string 
         return INDEX;
     }
     const lower = name.toLowerCase();
-    const aliases: Record<string, string> = { colors: 'units', color: 'units', fills: 'units', fill: 'units', transition: 'transitions', animate: 'animations', object: 'objects', types: 'syntax', list: 'syntax', lists: 'syntax' };
+    const aliases: Record<string, string> = { colors: 'units', color: 'units', fills: 'units', fill: 'units', transition: 'transitions', animate: 'animations', object: 'objects', types: 'syntax', list: 'syntax', lists: 'syntax', charts: 'chart', equation: 'math', latex: 'math', fmt: 'format', formatter: 'format', accessibility: 'quality', a11y: 'quality', diagnostics: 'quality', check: 'quality' };
     const key = aliases[lower] ?? lower;
     if (key in TOPICS) {
         return TOPICS[key];
@@ -172,7 +189,7 @@ export function guide(topic: string | undefined, schema: Schema | null): string 
     }
     if (schema.masters[name]) {
         const master = schema.masters[name];
-        return `master ${name}(${master.parameters.join(', ')}) cases: ${master.cases.join(' ')}`;
+        return `master ${name} { ${master.parameters.map((each) => `var ${variable(each)};`).join(' ')} } cases: ${master.cases.join(' ')}`;
     }
     return `Unknown topic "${name}". ${INDEX.split('\n')[1]}`;
 }

@@ -184,7 +184,7 @@ export function AgentPanel({ visible, folder, session }: { visible: boolean; fol
                         <IconButton icon={Square} title={t('멈추기')} onClick={stop} danger />
                     </>
                     : <IconButton icon={Play} title={t('{0} 실행', agent.label)} onClick={start}>{t('실행')}</IconButton>}
-                <span className="agent-folder muted" title={folder ?? undefined}>{folder ?? t('파일을 열지 않아 홈 폴더에서 실행합니다')}</span>
+                <span className="agent-folder muted" title={folder ?? undefined}>{folder ?? t('열려 있는 파일이 없어 홈 폴더에서 실행합니다.')}</span>
                 {message && (
                     <span className="agent-message">
                         {message}
@@ -197,7 +197,7 @@ export function AgentPanel({ visible, folder, session }: { visible: boolean; fol
                 {status === 'idle' && (
                     <div className="agent-idle">
                         <button className="play-button" onClick={start}><Play size={14} fill="currentColor" /> {t('{0} 실행', agent.label)}</button>
-                        <span className="muted">{t('설치된 {0}을(를) 문서 폴더에서 그대로 실행합니다. 로그인과 요금은 본인 계정을 따릅니다.', agent.label)}</span>
+                        <span className="muted">{t('설치된 {0}을(를) 문서 폴더에서 실행합니다. 로그인과 요금은 본인 계정을 사용합니다.', agent.label)}</span>
                     </div>
                 )}
             </div>

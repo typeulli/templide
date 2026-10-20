@@ -4,13 +4,15 @@ import { message, open as openDialog, save as saveDialog } from '@tauri-apps/plu
 import { emitTo, listen } from '@tauri-apps/api/event';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { lsp, pathToUri, type DeckResult, type Diagnostic, type Origin, type Range, type Schema } from './lsp';
+import { lsp, pathToUri, type AccessFinding, type DeckResult, type DefinitionRef, type Diagnostic, type FmtOptionsReply, type FormatReply, type Origin, type Range, type Schema } from './lsp';
+import { fmtEdits, fmtState, noFmtDocument, type FmtChange, type FmtState } from './fmtSettings';
 import { SlideView, findElement, lockOf, selectionIn, type EditingRun, type Point, type Resize } from './SlideView';
 import { FormatBar, IconButton, Thumbnail, fontToggles, type StyleProperty, type Toggle } from './Panels';
 import { ElementPanel, SlidePanel, type Pickers } from './Properties';
 import { anchorsIn, cellsLock, clampSel, rectOf, sameSel, splitTargets, tableOf, type CellAction, type CellSel } from './Table';
 import { TableGrid, TableInsertButton, TableMenu, TableToolbar, structural, tableState, type CellControls, type TableCommand } from './TableUi';
 import { AnimationPane, type AnimationOp } from './Animations';
+import { DefinitionBar, DefinitionList, DefinitionPanel, DefinitionSections } from './DefinitionUi';
 import { quote, type SetValue } from './Fields';
 import { AgentPanel } from './Agents';
 import { ExportDialog, type BuildResult, type ExportTarget } from './ExportDialog';
@@ -18,12 +20,15 @@ import type { EditorAccess } from './mcp';
 import { attachDocument } from './navigation';
 import { FontPopup } from './FontPicker';
 import { EncodingPopup } from './EncodingPopup';
+import { AccessPanel, type AccessCounts } from './AccessPanel';
+import { AssetLibrary, type AssetPick } from './AssetLibrary';
+import { DocumentHistory, HistoryPanel, editLabel, type HistoryEntry, type HistoryOrigin } from './History';
 import { compilerReads, encodingLabel } from './encodings';
 import { readTextFile, writeTextFile, type TextFile } from './textFile';
 import logo from '../../assets/icon/templide.svg';
 import {
-    Blend, Bot, ChevronDown, ChevronUp, CircleAlert, CircleCheck, CodeXml, Copy, FileOutput, FilePlus, Film, FolderOpen, Image as ImageIcon, Maximize, Minus,
-    Music, PanelBottomClose, PanelBottomOpen, PanelRightClose, PanelRightOpen, PenTool, Play, Plus, Redo2, Save, Slash, Sparkles, Spline, Square, Trash2, TriangleAlert, Type, Undo2, X,
+    Blend, Bot, ChartColumn, ChartLine, ChartPie, ChevronDown, ChevronUp, CircleAlert, CircleCheck, CodeXml, Copy, FileOutput, FilePlus, Film, FolderOpen, History as HistoryIcon, Image as ImageIcon, Images, LayoutTemplate, Maximize, Minus,
+    Music, PanelBottomClose, PanelBottomOpen, PanelRightClose, PanelRightOpen, PenTool, Play, Plus, Redo2, Save, ScanEye, Slash, Sparkles, Spline, Square, Trash2, Sigma, TriangleAlert, Type, Undo2, WandSparkles, X,
 } from 'lucide-react';
 import { t } from './i18n';
 import { getSettings, useSettings, type Settings } from './settings';
@@ -76,7 +81,7 @@ type ServerEdit = { uri: string; range: Range; newText: string };
 
 // 이 화면(탭)이 받는 단축키. 창 전체의 것(열기, 탭 닫기, 설정)은 Shell이 받는다
 const tabCommands: CommandId[] = [
-    'newFile', 'save', 'export', 'undo', 'redo', 'copy', 'cut', 'paste', 'duplicate', 'delete', 'bold', 'italic', 'underline',
+    'newFile', 'save', 'export', 'format', 'undo', 'redo', 'copy', 'cut', 'paste', 'duplicate', 'delete', 'bold', 'italic', 'underline',
     'newSlide', 'zoomIn', 'zoomOut', 'zoomFit', 'showFromStart', 'showFromCurrent',
 ];
 
@@ -114,7 +119,24 @@ export type DocumentHandle = {
     reveal(range: Range): void; // 코드에서 그 자리를 보여 준다
     refresh(): void;          // 다시 컴파일한 덱을 받는다 (묶음이 바뀌었을 때)
     reconnect(): void;        // 컴파일러를 다시 띄웠을 때: 문서를 새 컴파일러에 다시 올리고 분석을 다시 받는다
+    fmt(): Promise<FmtState>; // 설정 창의 '포맷' 페이지가 보여 줄, 이 문서의 #fmt 설정
+    changeFmt(change: FmtChange): Promise<boolean>; // 설정 창에서 바꾼 #fmt 옵션을 문서에 적는다. 한 번의 실행 취소로 되돌릴 수 있다
 };
+
+// 새 .tlide에 처음 들어갈 내용 (슬라이드 한 장과 pptx target). file은 새 파일의 경로다
+export function starterDocument(file: string): string {
+    const name = file.split(/[\\/]/).pop()!.replace(/\.tlide$/i, '');
+    return [
+        '#include <std/stddef>',
+        '',
+        'slide {',
+        `    put text_box { text = "${t('제목을 입력하세요')}"; x = 80px; y = 280px; width = 1120px; height = 120px; anchor = middle; }`,
+        '}',
+        '',
+        `target out { path = "${name.replace(/"/g, '')}.pptx"; type = pptx; }`,
+        '',
+    ].join('\n');
+}
 
 type DocumentProps = {
     tab: string;          // 탭 id. AI 탭의 에이전트는 MCP로 이 탭의 문서를 고친다
@@ -133,6 +155,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
     const [deck, setDeck] = useState<DeckResult | null>(null);
     const [deckError, setDeckError] = useState<string | null>(null);
     const [page, setPage] = useState(0);
+    const [definition, setDefinition] = useState<DefinitionRef | null>(null); // 편집 화면으로 열어 둔 template 또는 master case
     const [target, setTarget] = useState<string | null>(null);
     const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([]);
     const [selected, setSelected] = useState<string | null>(null);
@@ -144,6 +167,10 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
     const [codeOpen, setCodeOpen] = useState(() => settings.general.codePanelOpen); // 코드 패널을 펼친 채로 시작할지는 설정
     const propsOpen = usePropsOpen(); // 오른쪽 패널 (속성)
     const [bottomTab, setBottomTab] = useState<BottomTab>('code'); // 코드 패널에서 보이는 탭
+    const [history] = useState(() => new DocumentHistory()); // 이 탭의 변경 기록 (탭을 닫으면 사라진다)
+    const labelHold = useRef<{ label: string; origin: HistoryOrigin; changed: boolean } | null>(null); // 이름을 붙여 고치는 중
+    const typingTimer = useRef(0);
+    const [accessCounts, setAccessCounts] = useState<AccessCounts>({ errors: 0, warnings: 0, infos: 0 });
     const [sizes, setSizes] = useState<Sizes>(loadSizes); // 경계를 끌어 바꾼 패널 크기
     const sizesRef = useRef(sizes);
     sizesRef.current = sizes;
@@ -157,6 +184,8 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
     const [preview, setPreview] = useState<{ transition: boolean; key: number } | null>(null); // 캔버스에서 재생하는 중
     const [mode, setMode] = useState<'connect' | 'draw' | null>(null); // 연결선의 두 번째 개체 고르기, 자유형 그리기
     const connectFrom = useRef<string | null>(null);
+    const modeRef = useRef(mode);
+    modeRef.current = mode;
     const [cells, setCells] = useState<CellSel | null>(null);           // 고른 표의 칸 범위
     const [cellMenu, setCellMenu] = useState<Point | null>(null);       // 칸 오른쪽 단추 메뉴의 자리
     const [cellFocus, setCellFocus] = useState(0);                      // 바뀌면 칸 입력창이 포커스를 되찾는다
@@ -214,10 +243,15 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
     const diskText = useRef<string | null>(null); // 마지막으로 읽거나 저장한 파일 내용. 밖에서 바뀌었는지 볼 때 쓴다
     const selectedRef = useRef<string | null>(null);
     const pageRef = useRef(0);
+    const definitionRef = useRef<DefinitionRef | null>(null);
+    const pageBeforeDefinition = useRef(0); // 정의 편집 화면에 들어가기 전에 보던 슬라이드
+    const revealDefinition = useRef(false);  // 정의 편집 화면에 들어온 뒤 첫 덱이 오면 코드에서 그 정의를 보여 준다
     // 슬라이드를 옮기거나 넣은 뒤 보여 줄 슬라이드. 지금 덱에서 바로 고르면 옛 순서의 슬라이드가 잠깐 보이므로 새 덱이 오면 고른다
     const nextPage = useRef<number | null>(null);
+    const editError = useRef(''); // 캔버스 편집(requestEdit)이 마지막으로 실패한 이유. MCP 도구가 에이전트에게 알린다
     selectedRef.current = selected;
     pageRef.current = page;
+    definitionRef.current = definition;
     deckRef.current = deck;
     textRef.current = text;
     diagnosticsRef.current = diagnostics;
@@ -303,9 +337,10 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             return;
         }
         const requested = version.current;
-        const result = await lsp.request<DeckResult>('templide/deck', { uri: uri.current, target: targetRef.current });
-        if (requested !== version.current) {
-            return; // 그 사이에 문서가 또 바뀌었다
+        const requestedDefinition = definitionRef.current;
+        const result = await lsp.request<DeckResult>('templide/deck', { uri: uri.current, target: targetRef.current, definition: requestedDefinition ?? undefined });
+        if (requested !== version.current || requestedDefinition !== definitionRef.current) {
+            return; // 그 사이에 문서가 또 바뀌었거나 다른 정의(또는 슬라이드)로 옮겼다
         }
         if (result.error) {
             // 오류가 있으면 마지막으로 그린 덱을 그대로 둔다
@@ -316,6 +351,10 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
         setDeckError(null);
         setDeck(result);
         retrackIds(result);
+        if (revealDefinition.current && result.definition?.range && result.definition.uri === uri.current && editor.current) {
+            revealDefinition.current = false;
+            editor.current.revealRangeInCenterIfOutsideViewport(toMonaco(result.definition.range));
+        }
         const model = editor.current?.getModel();
         const kept = anchor.current;
         if (selectedRef.current && !result.elements[selectedRef.current] && model && kept && kept.decorations.length) {
@@ -388,6 +427,53 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
         refreshDeck();
     }, [refreshDeck]);
 
+    // 문서가 바뀔 때마다 기록에 남긴다. 이름을 붙여 고치는 중(withLabel)이면 끝난 뒤에 한 번, 실행 취소와 다시 실행은 그 이름으로 바로,
+    // 나머지(손으로 입력)는 입력이 잠깐 멈춘 뒤에 '코드 수정'으로 기록한다
+    const recordChange = useCallback((event: { isUndoing: boolean; isRedoing: boolean }) => {
+        const instance = editor.current;
+        if (!instance) {
+            return;
+        }
+        if (labelHold.current) {
+            labelHold.current.changed = true;
+            return;
+        }
+        window.clearTimeout(typingTimer.current);
+        if (event.isUndoing || event.isRedoing) {
+            typingTimer.current = 0;
+            history.record(event.isUndoing ? t('실행 취소') : t('다시 실행'), 'user', instance.getValue());
+            return;
+        }
+        typingTimer.current = window.setTimeout(() => {
+            typingTimer.current = 0;
+            history.record(t('코드 수정'), 'user', editor.current?.getValue() ?? '');
+        }, 800);
+    }, [history]);
+
+    // 입력하던 것이 기록되기 전에 다른 고침이 오면, 그 입력까지를 먼저 기록한다
+    const flushTyping = useCallback(() => {
+        if (typingTimer.current) {
+            window.clearTimeout(typingTimer.current);
+            typingTimer.current = 0;
+            history.record(t('코드 수정'), 'user', editor.current?.getValue() ?? '');
+        }
+    }, [history]);
+
+    // fn이 하는 고침을 이름을 붙여 기록에 하나로 남긴다
+    const withLabel = useCallback(<T,>(label: string, origin: HistoryOrigin, fn: () => T): T => {
+        flushTyping();
+        labelHold.current = { label, origin, changed: false };
+        try {
+            return fn();
+        } finally {
+            const hold = labelHold.current;
+            labelHold.current = null;
+            if (hold?.changed && editor.current) {
+                history.record(hold.label, hold.origin, editor.current.getValue());
+            }
+        }
+    }, [flushTyping, history]);
+
     // 컴파일러가 돌려준 원문 수정을 Monaco에 넣는다. 한 번의 실행 취소로 되돌릴 수 있다
     // 여러 편집을 하나의 실행 취소 단위로 묶을 수 있다.
     const applyEdits = useCallback((edits: ServerEdit[], stops: { before?: boolean; after?: boolean } = {}) => {
@@ -407,25 +493,28 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
         return true;
     }, [showNotice]);
 
-    const requestEdit = useCallback(async (edits: object[], stops?: { before?: boolean; after?: boolean }): Promise<boolean> => {
+    const requestEdit = useCallback(async (edits: object[], stops?: { before?: boolean; after?: boolean }, origin: HistoryOrigin = 'user'): Promise<boolean> => {
+        editError.current = '';
         if (!uri.current || !editor.current) {
             return false;
         }
         if (!fresh()) {
+            editError.current = 'The source is still compiling or has errors; fix the errors first (get_editor_state)';
             showNotice(t('다시 컴파일하는 중이거나 코드에 오류가 있어 지금은 캔버스에서 고칠 수 없습니다'));
             return false;
         }
         // 값과 함께 온 선언(declare)은 모아서 파일 위쪽에 넣는 op 하나로 보낸다
         const declarations = (edits as { declare?: string }[]).map((each) => each.declare ?? '').join('');
         const ops = [...(declarations ? [{ op: 'declare', text: declarations }] : []), ...(edits as { declare?: string }[]).map(({ declare: _, ...rest }) => rest)];
-        const result = await lsp.request<{ edits?: ServerEdit[]; error?: string }>('templide/edit', { uri: uri.current, target: targetRef.current, edits: ops });
+        const result = await lsp.request<{ edits?: ServerEdit[]; error?: string }>('templide/edit', { uri: uri.current, target: targetRef.current, definition: definitionRef.current ?? undefined, edits: ops });
         if (result.error) {
+            editError.current = result.error;
             showNotice(result.error);
             return false;
         }
-        return applyEdits(result.edits ?? [], stops);
+        return withLabel(editLabel(ops), origin, () => applyEdits(result.edits ?? [], stops));
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [applyEdits, showNotice, deckError]);
+    }, [applyEdits, showNotice, deckError, withLabel]);
 
     const onMove = useCallback((id: string, dx: number, dy: number) => requestEdit([{ op: 'move', id, dx, dy }]), [requestEdit]);
     const onResize = useCallback((id: string, change: Resize, instance: boolean) =>
@@ -971,6 +1060,158 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
         }
     }, [pickAsset, insertObject]);
 
+    // 수식: 슬라이드 너비의 절반 크기로 가운데에 넣는다. LaTeX는 속성 패널이나 코드에서 고친다
+    const insertMath = useCallback(() => insertObject('math', (deckRef.current?.width ?? 1280) / 2, 120, [{ name: 'latex', string: '\\frac{a}{b} + \\sqrt{x}' }]), [insertObject]);
+
+    // 차트: 슬라이드 너비의 절반 크기로 가운데에 넣는다. 예시 데이터는 코드에서 고친다
+    const insertChart = useCallback((kind: 'column' | 'line' | 'pie') => {
+        const current = deckRef.current;
+        const sample = kind === 'pie' ? '[[40, 35, 25]]' : '[[3, 5, 4], [2, 4, 6]]';
+        return insertObject('chart', (current?.width ?? 1280) / 2, (current?.height ?? 720) / 2, [
+            { name: 'kind', enum: kind },
+            { name: 'categories', code: '["A", "B", "C"]' },
+            ...(kind === 'pie' ? [] : [{ name: 'names', code: '["1", "2"]' }]),
+            { name: 'values', code: sample },
+            { name: 'title', string: t('차트 제목') },
+        ]);
+    }, [insertObject]);
+
+    // 에셋 패널에서 고른 그림, 비디오, 오디오를 슬라이드 가운데에 넣는다. 그림은 비율을 지켜 슬라이드의 절반 안에 들어가게 한다
+    const insertAsset = useCallback(async ({ kind, code, src }: AssetPick) => {
+        const current = deckRef.current;
+        if (!current) {
+            return;
+        }
+        let w = kind === 'audio' ? 48 : 640;
+        let h = kind === 'audio' ? 48 : 360;
+        if (kind === 'image' && src) {
+            const size = await new Promise<{ w: number; h: number }>((resolve) => {
+                const image = new Image();
+                image.onload = () => resolve({ w: image.naturalWidth, h: image.naturalHeight });
+                image.onerror = () => resolve({ w: 400, h: 300 });
+                image.src = src;
+            });
+            w = size.w;
+            h = size.h;
+        }
+        if (kind !== 'audio') {
+            const fit = Math.min(1, current.width / 2 / w, current.height / 2 / h);
+            w *= fit;
+            h *= fit;
+        }
+        await insertObject(kind, w, h, [{ name: 'data', code }]);
+    }, [insertObject]);
+
+    // 기록의 한 시점으로 되돌린다. 되돌린 것도 기록에 남고, 한 번의 실행 취소로 취소할 수 있다
+    const restoreHistory = useCallback((entry: HistoryEntry) => {
+        const instance = editor.current;
+        const model = instance?.getModel();
+        if (!instance || !model) {
+            return;
+        }
+        withLabel(t('복원: {0}', entry.label), 'restore', () => {
+            instance.pushUndoStop();
+            model.pushEditOperations([], [{ range: model.getFullModelRange(), text: entry.text }], () => null);
+            instance.pushUndoStop();
+        });
+        showNotice(t('이전 상태로 되돌렸습니다. 실행 취소로 다시 취소할 수 있습니다'));
+    }, [withLabel, showNotice]);
+
+    // #fmt 설정대로 코드를 정리한다. #fmt가 없으면 포맷하지 않고, 기본 설정을 파일 맨 위에 넣을지 묻는다.
+    // agent(MCP)는 묻지 않고 컴파일러의 답(status)을 돌려준다
+    const formatCore = useCallback(async (agent: boolean): Promise<FormatReply | null> => {
+        const instance = editor.current;
+        const model = instance?.getModel();
+        if (!instance || !model || !uri.current) {
+            return null;
+        }
+        flushChange();
+        let reply: FormatReply;
+        try {
+            reply = await lsp.request<FormatReply>('templide/format', { uri: uri.current });
+        } catch (error) {
+            showNotice(String(error));
+            return { status: 'error', message: String(error) };
+        }
+        if (reply.status === 'unchanged') {
+            showNotice(t('이미 포맷되어 있습니다'));
+        } else if (reply.status === 'formatted' && reply.text !== undefined) {
+            const before = model.getValue();
+            const after = reply.text;
+            // 바뀐 가운데 부분만 고쳐서 커서와 접힌 곳이 가능한 한 그대로 있게 한다
+            let head = 0;
+            while (head < before.length && head < after.length && before[head] === after[head]) {
+                head++;
+            }
+            let tail = 0;
+            while (tail < before.length - head && tail < after.length - head && before[before.length - 1 - tail] === after[after.length - 1 - tail]) {
+                tail++;
+            }
+            const start = model.getPositionAt(head);
+            const end = model.getPositionAt(before.length - tail);
+            withLabel(t('포맷'), agent ? 'ai' : 'user', () => {
+                instance.pushUndoStop();
+                model.pushEditOperations([], [{ range: { startLineNumber: start.lineNumber, startColumn: start.column, endLineNumber: end.lineNumber, endColumn: end.column }, text: after.slice(head, after.length - tail) }], () => null);
+                instance.pushUndoStop();
+            });
+            const warning = reply.diagnostics?.find((each) => each.level === 'warning');
+            showNotice(warning ? t('포맷했습니다. 설정에 문제가 있습니다: {0}', warning.message) : t('포맷했습니다'));
+        } else if (reply.status === 'noSettings') {
+            const choice = agent ? 'no' : await choose(t('이 파일에는 #fmt 설정이 없어 포맷하지 않았습니다. 기본 설정을 파일 맨 위에 넣을까요? 넣은 뒤 값을 고쳐 원하는 모양으로 바꿀 수 있습니다.'), t('포맷 설정이 없습니다'),
+                { yes: t('기본 설정 넣기'), no: t('취소') });
+            if (choice === 'yes' && reply.defaults) {
+                withLabel(t('포맷 설정 넣기'), 'user', () => {
+                    instance.pushUndoStop();
+                    model.pushEditOperations([], [{ range: { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 }, text: reply.defaults! + '\n' }], () => null);
+                    instance.pushUndoStop();
+                });
+            }
+        } else {
+            showNotice(reply.diagnostics?.[0]?.message ?? reply.message ?? t('코드에 문법 오류가 있어 포맷할 수 없습니다. 문제 탭을 확인하세요'));
+        }
+        return reply;
+    }, [flushChange, showNotice, withLabel]);
+    const formatDocument = useCallback(async () => {
+        await formatCore(false);
+    }, [formatCore]);
+
+    // 설정 창의 '포맷' 페이지를 위해: 컴파일러가 알려 주는 옵션 목록과 이 문서의 #fmt 줄
+    const readFmt = useCallback(async (): Promise<FmtOptionsReply | null> => {
+        if (!uri.current) {
+            return null;
+        }
+        flushChange();
+        const reply = await lsp.request<FmtOptionsReply>('templide/fmtOptions', { uri: uri.current });
+        return reply.error ? null : reply;
+    }, [flushChange]);
+
+    const fmtOfDocument = useCallback(async (): Promise<FmtState> => {
+        const reply = await readFmt();
+        return reply ? fmtState(pathRef.current?.split(/[\\/]/).pop() ?? t('새 탭'), reply) : noFmtDocument;
+    }, [readFmt]);
+
+    const changeFmt = useCallback(async (change: FmtChange): Promise<boolean> => {
+        const instance = editor.current;
+        const model = instance?.getModel();
+        const reply = await readFmt();
+        if (!instance || !model || !reply) {
+            return false;
+        }
+        const edits = fmtEdits(reply, change, model.getLinesContent());
+        if (edits.length === 0) {
+            return true;
+        }
+        withLabel(t('포맷 설정'), 'user', () => {
+            instance.pushUndoStop();
+            model.pushEditOperations([], edits.map((edit) => ({
+                range: { startLineNumber: edit.startLine, startColumn: edit.startColumn, endLineNumber: edit.endLine, endColumn: edit.endColumn }, text: edit.text,
+            })), () => null);
+            instance.pushUndoStop();
+        });
+        flushChange();
+        return true;
+    }, [readFmt, flushChange, withLabel]);
+
     // 선은 가운데 가로로, 배경 흐림은 가운데 사각형으로 넣는다
     const insertLine = useCallback(async () => {
         const current = deckRef.current;
@@ -1059,7 +1300,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             try {
                 script = (await readTextFile(current.script)).text;
             } catch (error) {
-                showNotice(t('script를 읽을 수 없어 run 동작 없이 보여 줍니다: {0}', current.script));
+                showNotice(t('script를 읽을 수 없어 run 동작 없이 표시합니다: {0}', current.script));
             }
         }
         (await WebviewWindow.getByLabel('show'))?.close();
@@ -1074,24 +1315,29 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
         });
     }, [showNotice]);
 
-    // 고른 target의 파일을 저장하지 않은 내용으로 만든다
-    const exportTarget = useCallback(async () => {
+    // 고른 target(names를 주면 그 target들)의 파일을 저장하지 않은 내용으로 만든다. target마다 결과가 하나씩이다
+    const exportTarget = useCallback(async (names?: string[]) => {
         if (!uri.current) {
             return;
         }
         flushChange();
-        const result = await lsp.request<{ path?: string; errors?: string[]; error?: string; warnings?: string[] }>('templide/build', { uri: uri.current, target: targetRef.current });
+        const results: (BuildResult & { target: string | null })[] = [];
+        for (const name of names?.length ? names : [targetRef.current]) {
+            results.push({ target: name, ...await lsp.request<BuildResult>('templide/build', { uri: uri.current, target: name }) });
+        }
         // 경고는 "파일:줄:칸: warning: 내용"이다. 토스트에는 "줄 N: 내용"으로 보인다
-        const warnings = (result.warnings ?? []).map((line) => {
+        const warnings = results.flatMap((result) => result.warnings ?? []).map((line) => {
             const match = /^.*:(\d+):\d+: warning: (.*)$/.exec(line);
             return match ? t('줄 {0}: {1}', match[1], match[2]) : line;
         });
-        if (result.error || result.errors?.length) {
-            setToast({ message: result.error ?? result.errors!.join('\n'), error: true, warnings });
+        const failed = results.filter((result) => result.error || result.errors?.length);
+        if (failed.length > 0) {
+            setToast({ message: failed.map((result) => result.error ?? result.errors!.join('\n')).join('\n'), error: true, warnings });
         } else {
-            setToast({ message: t('만들었습니다: {0}', result.path), path: result.path, warnings });
+            const paths = results.map((result) => result.path);
+            setToast({ message: t('만들었습니다: {0}', paths.join(', ')), path: paths.length === 1 ? paths[0] : undefined, warnings });
         }
-        return result;
+        return results;
     }, [flushChange]);
 
     // 새 .tlide를 만들고 연다
@@ -1100,18 +1346,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
         if (!file) {
             return;
         }
-        const name = file.split(/[\\/]/).pop()!.replace(/\.tlide$/i, '');
-        const content = [
-            '#include <std/stddef>',
-            '',
-            'slide {',
-            `    put text_box { text = "${t('제목을 입력하세요')}"; x = 80px; y = 280px; width = 1120px; height = 120px; anchor = middle; }`,
-            '}',
-            '',
-            `target out { path = "${name.replace(/"/g, '')}.pptx"; type = pptx; }`,
-            '',
-        ].join('\n');
-        await writeTextFile(file, content, 'UTF-8', false);
+        await writeTextFile(file, starterDocument(file), 'UTF-8', false);
         onOpenRef.current(file);
     }, []);
 
@@ -1167,27 +1402,83 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
     }, [requestEdit]);
 
     // slide 추가, 복제, 삭제, 순서. 끝나면 보던 slide를 따라간다
-    const slideAction = useCallback(async (action: 'add' | 'duplicate' | 'delete' | 'up' | 'down', current = pageRef.current) => {
-        nextPage.current = action === 'add' || action === 'duplicate' || action === 'down' ? current + 1 : Math.max(0, current - 1);
-        if (await requestEdit([{ op: 'slide', action, page: current + 1 }])) {
-            setSelected(null);
-        } else {
-            nextPage.current = null;
+    const slideAction = useCallback(async (action: 'add' | 'duplicate' | 'delete' | 'up' | 'down', current = pageRef.current, origin: HistoryOrigin = 'user'): Promise<boolean> => {
+        if (definitionRef.current) {
+            return false; // 정의 편집 화면에는 슬라이드가 하나뿐이고 문서의 슬라이드가 아니다
         }
+        nextPage.current = action === 'add' || action === 'duplicate' || action === 'down' ? current + 1 : Math.max(0, current - 1);
+        if (await requestEdit([{ op: 'slide', action, page: current + 1 }], undefined, origin)) {
+            setSelected(null);
+            return true;
+        }
+        nextPage.current = null;
+        return false;
     }, [requestEdit]);
 
     // 썸네일을 끌어 놓은 자리로 옮긴다. to는 옮긴 뒤의 자리 (0부터)
-    const moveSlide = useCallback(async (from: number, to: number) => {
+    const moveSlide = useCallback(async (from: number, to: number, origin: HistoryOrigin = 'user'): Promise<boolean> => {
         if (from === to) {
-            return;
+            return false;
         }
         nextPage.current = to;
-        if (await requestEdit([{ op: 'slide', action: 'move', page: from + 1, to: to + 1 }])) {
+        if (await requestEdit([{ op: 'slide', action: 'move', page: from + 1, to: to + 1 }], undefined, origin)) {
             setSelected(null);
-        } else {
-            nextPage.current = null;
+            return true;
         }
+        nextPage.current = null;
+        return false;
     }, [requestEdit]);
+
+    // template, master의 편집 화면(Unity의 프리팹 모드)에 들어가고 나온다. 덱은 그 정의 하나를 슬라이드 한 장으로 펼친 것이다
+    const enterDefinition = useCallback((next: DefinitionRef) => {
+        if (!definitionRef.current) {
+            pageBeforeDefinition.current = pageRef.current;
+        }
+        flushChange();
+        definitionRef.current = next;
+        setDefinition(next);
+        setBottomTab((tab) => tab === 'assets' ? 'code' : tab); // 템플릿 편집 화면에는 에셋 탭이 없다
+        setSelected(null);
+        setCells(null);
+        setMode(null);
+        setPreview(null);
+        setPaneOpen(false);
+        setPage(0);
+        deckVersion.current = -1; // 새 덱이 올 때까지 옛 덱으로는 고치지 못한다
+        revealDefinition.current = true;
+        resetIds();
+        refreshDeck();
+    }, [flushChange, refreshDeck, resetIds]);
+
+    const exitDefinition = useCallback(() => {
+        if (!definitionRef.current) {
+            return;
+        }
+        flushChange();
+        definitionRef.current = null;
+        setDefinition(null);
+        setSelected(null);
+        setCells(null);
+        setMode(null);
+        nextPage.current = pageBeforeDefinition.current;
+        deckVersion.current = -1;
+        resetIds();
+        refreshDeck();
+    }, [flushChange, refreshDeck, resetIds]);
+
+    // 템플릿이 만든 요소 -> 그 요소를 만든 put의 template 이름
+    const templateOf = useCallback((id: string): string | null => {
+        const info = deckRef.current?.elements[id];
+        const source = info?.fromTemplate ? readSource(info.source) : null;
+        return source ? /^\s*put\s+([A-Za-z_]\w*)/.exec(source)?.[1] ?? null : null;
+    }, [readSource]);
+
+    const openTemplateOf = useCallback((id: string) => {
+        const name = templateOf(id);
+        if (name) {
+            enterDefinition({ kind: 'template', name });
+        }
+    }, [templateOf, enterDefinition]);
 
     const remove = useCallback(async () => {
         const id = selectedRef.current;
@@ -1274,7 +1565,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
         const { MarkerSeverity } = monaco.current.monaco;
         monaco.current.monaco.editor.setModelMarkers(model, 'templide', [
             // 컴파일러의 경고(severity 2, sRGB 밖의 색 등)는 노란 밑줄
-            ...list.map((d) => ({ ...toMonaco(d.range), message: d.message, severity: d.severity === 2 ? MarkerSeverity.Warning : MarkerSeverity.Error })),
+            ...list.map((d) => ({ ...toMonaco(d.range), message: d.message, code: d.code, severity: d.severity === 3 ? MarkerSeverity.Info : d.severity === 2 ? MarkerSeverity.Warning : MarkerSeverity.Error })),
             ...warningList.map((d) => ({ ...toMonaco(d.range), message: d.message, severity: MarkerSeverity.Warning })),
         ]);
     }, []);
@@ -1312,11 +1603,13 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             return;
         }
         resetIds();
-        instance.pushUndoStop();
-        model.pushEditOperations([], [{ range: model.getFullModelRange(), text: content }], () => null);
-        instance.pushUndoStop();
+        withLabel(t('파일에서 다시 읽음'), 'user', () => {
+            instance.pushUndoStop();
+            model.pushEditOperations([], [{ range: model.getFullModelRange(), text: content }], () => null);
+            instance.pushUndoStop();
+        });
         setDirty(false);
-    }, [resetIds, applyEncoding]);
+    }, [resetIds, applyEncoding, withLabel]);
 
     // AI 탭의 에이전트가 MCP로 코드를 고친다. 한 번의 실행 취소로 되돌릴 수 있고, 다시 컴파일될 때까지 기다린다
     const editDocument = useCallback(async (oldText: string, newText: string, all: boolean) => {
@@ -1340,18 +1633,20 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             return { error: `old_string occurs ${offsets.length} times. Add surrounding text to make it unique, or use replace_all` };
         }
         lastRenamed.current = {};
-        instance.pushUndoStop();
-        instance.executeEdits('agent', offsets.map((at) => {
-            const start = model.getPositionAt(at);
-            const end = model.getPositionAt(at + from.length);
-            return { range: { startLineNumber: start.lineNumber, startColumn: start.column, endLineNumber: end.lineNumber, endColumn: end.column }, text: to, forceMoveMarkers: true };
-        }));
-        instance.pushUndoStop();
+        withLabel(t('AI 편집 ({0}곳)', offsets.length), 'ai', () => {
+            instance.pushUndoStop();
+            instance.executeEdits('agent', offsets.map((at) => {
+                const start = model.getPositionAt(at);
+                const end = model.getPositionAt(at + from.length);
+                return { range: { startLineNumber: start.lineNumber, startColumn: start.column, endLineNumber: end.lineNumber, endColumn: end.column }, text: to, forceMoveMarkers: true };
+            }));
+            instance.pushUndoStop();
+        });
         window.clearTimeout(pending.current);
         await sendChange();
         await new Promise((done) => setTimeout(done, 100)); // 오류 알림과 화면 갱신을 기다린다
         return { count: offsets.length, renamed: lastRenamed.current };
-    }, [sendChange]);
+    }, [sendChange, withLabel]);
 
     // 저장한다. target을 주면 그 인코딩으로 저장하고 이 파일의 인코딩도 그것으로 바뀐다
     const persist = useCallback(async (target: { name: string; bom: boolean } | null): Promise<boolean> => {
@@ -1428,7 +1723,9 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             theme: 'templide',
         });
         editor.current = instance;
-        instance.onDidChangeModelContent(() => {
+        history.record(t('열었을 때'), 'user', instance.getValue());
+        instance.onDidChangeModelContent((event) => {
+            recordChange(event);
             setDirty(true);
             window.clearTimeout(pending.current);
             // 입력이 잠깐 멈추면 저장하지 않은 내용으로 다시 컴파일한다
@@ -1646,9 +1943,14 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             const id = matchCommand(event, tabCommands);
             if (!id) {
                 if (event.key === 'Escape' && !isTextInput(target)) {
+                    const busy = modeRef.current !== null;
                     connectFrom.current = null;
                     setMode((current) => current === 'connect' ? null : current);
                     setPreview(null);
+                    // 고른 것도 하고 있는 일도 없으면 Esc로 정의 편집 화면에서 나온다
+                    if (!busy && definitionRef.current && !selectedRef.current) {
+                        exitDefinition();
+                    }
                 }
                 return;
             }
@@ -1656,7 +1958,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             if (isTextInput(target) && commands[id].scope === 'canvas' && !(fontKey && target.closest('[contenteditable="true"]'))) {
                 return;
             }
-            if (id === 'save' && target.closest('.code-host')) {
+            if ((id === 'save' || id === 'format') && target.closest('.code-host')) {
                 return;
             }
             if ((id === 'copy' || id === 'cut' || id === 'duplicate' || fontKey) && !selectedRef.current) {
@@ -1667,6 +1969,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
                 case 'newFile': newFile(); break;
                 case 'save': save(); break;
                 case 'export': if (deckRef.current) setExportOpen(true); break;
+                case 'format': formatDocument(); break;
                 case 'undo': editor.current.trigger('canvas', 'undo', null); break;
                 case 'redo': editor.current.trigger('canvas', 'redo', null); break;
                 case 'copy':
@@ -1697,7 +2000,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
         };
         window.addEventListener('keydown', keydown);
         return () => window.removeEventListener('keydown', keydown);
-    }, [save, remove, slideAction, startShow, paste, cut, showNotice, newFile, applyStyle, clearCellText, zoom, fitScale]);
+    }, [save, remove, slideAction, startShow, paste, cut, showNotice, newFile, applyStyle, clearCellText, zoom, fitScale, exitDefinition, formatDocument]);
 
     // 코드 편집기의 저장 동작. 키는 설정을 따른다 (addCommand는 마지막에 만든 편집기에 걸리므로, 탭마다 있는 편집기에는 그 편집기에만 붙는 동작으로 둔다)
     useEffect(() => {
@@ -1711,8 +2014,17 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             keybindings: bindings('save', settings.shortcuts).flatMap((binding) => monacoKeybinding(loaded, binding) ?? []),
             run: () => { save(); },
         });
-        return () => action.dispose();
-    }, [monacoReady, settings.shortcuts, settings.language, save]);
+        // Shift+Alt+F는 Monaco의 '문서 서식'이 먼저 받으므로, 같은 키로 templide 포맷을 이 편집기에 건다
+        const formatAction = instance.addAction({
+            id: 'templide.format', label: t('포맷'),
+            keybindings: bindings('format', settings.shortcuts).flatMap((binding) => monacoKeybinding(loaded, binding) ?? []),
+            run: () => { formatDocument(); },
+        });
+        return () => {
+            action.dispose();
+            formatAction.dispose();
+        };
+    }, [monacoReady, settings.shortcuts, settings.language, save, formatDocument]);
 
     // 코드 편집기 설정
     useEffect(() => {
@@ -1780,6 +2092,12 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             setTimeout(() => setCellFocus((count) => count + 1), 50); // 실행 취소가 포커스를 코드로 가져가므로 칸 입력창에 돌려준다
         }
     };
+    // 에이전트가 고친 뒤: 입력 대기를 끊고 다시 컴파일할 때까지 기다린다 (editDocument와 같다)
+    const settle = async () => {
+        window.clearTimeout(pending.current);
+        await sendChange();
+        await new Promise((done) => setTimeout(done, 100)); // 오류 알림과 화면 갱신을 기다린다
+    };
     mcpAccess.current = {
         path,
         dirty,
@@ -1810,6 +2128,74 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             setSelected(id);
         },
         build: exportTarget,
+        save: async () => pathRef.current ? persist(null) : false,
+        format: async () => {
+            const reply = await formatCore(true);
+            if (reply?.status === 'formatted') {
+                await settle();
+            }
+            return reply;
+        },
+        selectTarget: async (name) => {
+            if (!deckRef.current?.targets.some((each) => each.name === name)) {
+                return false;
+            }
+            targetRef.current = name;
+            setTarget(name);
+            await refreshDeck();
+            await new Promise((done) => setTimeout(done, 100)); // 새 덱으로 화면을 다시 그릴 때까지 (도구가 바뀐 크기를 읽는다)
+            return true;
+        },
+        slides: async (action, pageNumber, to) => {
+            if (definitionRef.current) {
+                return { error: 'A template or master is open for editing in the editor, so the slides cannot be changed now' };
+            }
+            await whenReady();
+            const done = action === 'move' ? await moveSlide(pageNumber - 1, (to ?? pageNumber) - 1, 'ai') : await slideAction(action, pageNumber - 1, 'ai');
+            if (!done) {
+                return { error: editError.current || 'Nothing changed' };
+            }
+            await settle();
+            return {};
+        },
+        history: () => history.entries.map(({ id, time, label, origin }) => ({ id, time, label, origin })),
+        undo: async (redo, steps) => {
+            const instance = editor.current;
+            const model = instance?.getModel();
+            if (!instance || !model) {
+                return 0;
+            }
+            let done = 0;
+            while (done < steps) {
+                const before = model.getVersionId();
+                instance.trigger('agent', redo ? 'redo' : 'undo', null);
+                if (model.getVersionId() === before) {
+                    break; // 더 되돌릴 것이 없다
+                }
+                done++;
+            }
+            if (done > 0) {
+                await settle();
+            }
+            return done;
+        },
+        restore: async (id) => {
+            const entry = history.entries.find((each) => each.id === id);
+            if (!entry) {
+                return false;
+            }
+            restoreHistory(entry);
+            await settle();
+            return true;
+        },
+        accessibility: async () => {
+            if (!uri.current) {
+                return null;
+            }
+            flushChange(); // 입력 중인 내용도 검사한다
+            const result = await lsp.request<{ findings?: AccessFinding[]; error?: string }>('templide/accessibility', { uri: uri.current });
+            return { uri: uri.current, ...result };
+        },
         resolve: (id) => deck?.elements[id] ? id : idAliases.current.get(id) ?? null,
     };
     accesses.set(tab, mcpAccess.current);
@@ -1824,8 +2210,8 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
         lsp.notify('textDocument/didOpen', { textDocument: { uri: uri.current, languageId: 'tlide', version: version.current, text: editor.current?.getValue() ?? textRef.current } });
         refreshDeck();
     }, [refreshDeck]);
-    const latest = useRef({ save, flushChange, applyEdits, revealProblem, refreshDeck, reconnect });
-    latest.current = { save, flushChange, applyEdits, revealProblem, refreshDeck, reconnect };
+    const latest = useRef({ save, flushChange, applyEdits, revealProblem, refreshDeck, reconnect, fmtOfDocument, changeFmt });
+    latest.current = { save, flushChange, applyEdits, revealProblem, refreshDeck, reconnect, fmtOfDocument, changeFmt };
     useEffect(() => {
         register({
             path: () => pathRef.current,
@@ -1837,6 +2223,8 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             reveal: (range) => latest.current.revealProblem({ range, message: '', severity: 1 }),
             refresh: () => { latest.current.refreshDeck(); },
             reconnect: () => { latest.current.reconnect(); },
+            fmt: () => latest.current.fmtOfDocument(),
+            changeFmt: (change) => latest.current.changeFmt(change),
         });
         return () => register(null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1876,9 +2264,13 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
                     <IconButton icon={Film} title={t('비디오 넣기 (mp4, webm)')} disabled={!ready} onClick={insertVideo} />
                     <InsertMenu disabled={!ready} items={[
                         { icon: Music, label: t('오디오'), title: 'mp3, wav, m4a', onClick: insertAudio },
+                        { icon: Sigma, label: t('수식'), title: t('LaTeX로 적는 수식 (pptx에서는 PowerPoint 수식)'), onClick: insertMath },
+                        { icon: ChartColumn, label: t('막대 차트'), title: t('데이터는 코드의 values에 있습니다'), onClick: () => insertChart('column') },
+                        { icon: ChartLine, label: t('선 차트'), title: t('데이터는 코드의 values에 있습니다'), onClick: () => insertChart('line') },
+                        { icon: ChartPie, label: t('원 차트'), title: t('데이터는 코드의 values에 있습니다'), onClick: () => insertChart('pie') },
                         { icon: Slash, label: t('선'), title: t('가운데에 가로선'), onClick: insertLine },
-                        { icon: Spline, label: t('연결선'), title: t('고른 개체에서 다음에 누르는 개체로 잇습니다'), onClick: startConnect, disabled: !selected },
-                        { icon: PenTool, label: t('자유형 그리기'), title: t('누를 때마다 점, 두 번 눌러 끝내기, Esc 취소'), onClick: () => setMode('draw') },
+                        { icon: Spline, label: t('연결선'), title: t('선택한 개체와 다음에 누를 개체를 연결합니다.'), onClick: startConnect, disabled: !selected },
+                        { icon: PenTool, label: t('자유형 그리기'), title: t('누를 때마다 점을 추가합니다. 두 번 누르면 끝나고, Esc를 누르면 취소합니다.'), onClick: () => setMode('draw') },
                         { icon: Blend, label: t('배경 흐림'), title: t('뒤의 배경을 흐리게 비추는 유리 효과'), onClick: () => insertObject('backdrop', 300, 200, [{ name: 'kind', enum: 'roundRect' }, { name: 'blur', length: 16 }]) },
                     ]} active={mode !== null} extra={(close) => <><span className="menu-label">{t('표')}</span><TableGrid onPick={(rows, columns) => { close(); insertTable(rows, columns); }} /></>} />
                 </span>}
@@ -1892,25 +2284,41 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
                 <span className="tool-group">
                     <IconButton icon={Undo2} title={withShortcut(t('실행 취소'), 'undo')} disabled={!monacoReady} onClick={() => undo(false)} />
                     <IconButton icon={Redo2} title={withShortcut(t('다시 실행'), 'redo')} disabled={!monacoReady} onClick={() => undo(true)} />
+                    <IconButton icon={WandSparkles} title={withShortcut(t('포맷 (코드의 #fmt 설정대로 정리)'), 'format')} disabled={!monacoReady} onClick={formatDocument} />
                     <IconButton icon={Trash2} title={withShortcut(t('선택한 요소 지우기'), 'delete')} disabled={!selected || !monacoReady} onClick={remove} danger />
                 </span>
+                {!definition && selected && templateOf(selected) && (
+                    <>
+                        <span className="separator" />
+                        <IconButton icon={LayoutTemplate} title={t('이 요소를 만든 템플릿 {0} 편집 (두 번 누르기)', templateOf(selected))} onClick={() => openTemplateOf(selected)} />
+                    </>
+                )}
                 <span className="spacer" data-tauri-drag-region />
                 {/* 오른쪽 패널은 고른 개체가 있으면 개체 설정, 없으면 슬라이드 설정을 보인다 */}
                 <IconButton icon={propsOpen ? PanelRightClose : PanelRightOpen} title={propsOpen ? t('오른쪽 패널 닫기') : t('오른쪽 패널 열기')} onClick={() => setPropsOpen(!propsOpen)} />
-                <IconButton icon={Sparkles} title={t('애니메이션 창')} disabled={!deck} active={paneOpen} onClick={() => setPaneOpen(!paneOpen)} />
+                <IconButton icon={Sparkles} title={t('애니메이션 창')} disabled={!deck || !!definition} active={paneOpen} onClick={() => setPaneOpen(!paneOpen)} />
                 <TargetPicker deck={deck} target={target} onTarget={(name) => { targetRef.current = name; setTarget(name); refreshDeck(); }} />
-                <button className="play-button" disabled={!deck} title={t('슬라이드 쇼 ({0}: 처음부터, {1}: 지금 슬라이드부터)', shortcutText('showFromStart'), shortcutText('showFromCurrent'))} onClick={() => startShow(false)}>
+                <button className="play-button" disabled={!deck || !!definition} title={t('슬라이드 쇼 ({0}: 처음부터, {1}: 지금 슬라이드부터)', shortcutText('showFromStart'), shortcutText('showFromCurrent'))} onClick={() => startShow(false)}>
                     <Play size={14} fill="currentColor" /> {t('슬라이드 쇼')}
                 </button>
             </header>
             <nav className="slides">
-                <SlideList deck={deck} count={slideCount} page={Math.min(page, slideCount - 1)} ready={ready} onPage={setPage} onAction={slideAction} onMove={moveSlide} />
+                {definition
+                    ? <DefinitionList schema={schema} current={definition} onOpen={enterDefinition} />
+                    : (
+                        <>
+                            <SlideList deck={deck} count={slideCount} page={Math.min(page, slideCount - 1)} ready={ready} onPage={setPage} onAction={slideAction} onMove={moveSlide} />
+                            <DefinitionList schema={schema} current={null} onOpen={enterDefinition} collapsible />
+                        </>
+                    )}
             </nav>
-            <main className="canvas-area">
+            <main className={'canvas-area' + (definition ? ' definition' : '')}>
+                {definition && <DefinitionBar definition={definition} info={deck?.definition} error={deckError ? (deckError === 'The document has errors' ? t('코드에 오류가 있어 마지막 상태를 보여 줍니다. 문제 탭을 확인하세요') : deckError) : null}
+                    onExit={exitDefinition} onCase={(name) => enterDefinition({ ...definition, case: name })} />}
                 {deck && slideCount > 0 && (
                     <SlideView deck={deck} index={Math.min(page, slideCount - 1)} selected={selected} editable={monacoReady && !deckError} editing={editing}
                         zoom={zoom} onZoom={(next, fit) => { setFitScale(fit); setZoom(next); }}
-                        onSelect={select} onPaint={onFirstPaint} onMove={onMove} onResize={onResize} onText={onText} onNotice={showNotice} stale={!!deckError}
+                        onSelect={select} onPaint={onFirstPaint} onMove={onMove} onResize={onResize} onText={onText} onNotice={showNotice} onOpenTemplate={definition ? undefined : openTemplateOf} stale={!!deckError}
                         preview={preview} onPreviewEnd={stopPreview} drawing={mode === 'draw'} onDraw={onDraw}
                         connecting={mode === 'connect'} cells={cellSel} focusSignal={cellFocus} onCells={onCells} onCellText={onCellText} onTableSizes={onTableSizes} onCellAction={cellAction}
                         onCellMenu={setCellMenu} />
@@ -1962,12 +2370,16 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
             {!propsOpen ? null : deck && selected && deck.elements[selected]
                 ? <ElementPanel key={selected} deck={deck} schema={schema} page={Math.min(page, slideCount - 1)} id={selected} info={deck.elements[selected]} pickers={pickers}
                     readSource={readSource} onSet={onSetProperty} onUnset={onUnsetProperty} onOrder={order} onAnimation={onAnimation} onPreview={() => startPreview(false)}
+                    plain={!!definition} onOpenTemplate={definition ? undefined : () => openTemplateOf(selected)}
+                    extra={definition ? <DefinitionSections deck={deck} schema={schema} pickers={pickers} definition={definition} onEdit={(ops) => { requestEdit(ops); }} onOpen={enterDefinition} collapsed /> : undefined}
                     table={selectedTable ? { state: cellState, controls: cellControls } : undefined} />
                 : deck && slideCount > 0
-                    ? <SlidePanel deck={deck} schema={schema} page={Math.min(page, slideCount - 1)} pickers={pickers} readSource={readSource}
-                        onSlide={onSlide} onDocument={onDocument} onPreview={startPreview} />
-                    : <aside className="props"><div className="props-empty">{t('파일을 열면')}<br />{t('여기서 속성을 바꿀 수 있습니다')}</div></aside>}
-            {paneOpen && deck && slideCount > 0 && (
+                    ? definition
+                        ? <DefinitionPanel deck={deck} schema={schema} pickers={pickers} definition={definition} onEdit={(ops) => { requestEdit(ops); }} onOpen={enterDefinition} />
+                        : <SlidePanel deck={deck} schema={schema} page={Math.min(page, slideCount - 1)} pickers={pickers} readSource={readSource}
+                            onSlide={onSlide} onDocument={onDocument} onPreview={startPreview} onEditLayout={(master, layout) => enterDefinition({ kind: 'master', name: master, case: layout })} />
+                    : <aside className="props"><div className="props-empty">{t('파일을 열면 여기서 속성을 바꿀 수 있습니다.')}</div></aside>}
+            {paneOpen && deck && slideCount > 0 && !definition && (
                 <AnimationPane deck={deck} schema={schema} page={Math.min(page, slideCount - 1)} selected={selected} playing={!!preview}
                     onSelect={select} onOp={onAnimation} onPreview={() => startPreview(false)} onStop={stopPreview} onClose={() => setPaneOpen(false)} />
             )}
@@ -1987,6 +2399,22 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
                                 : <CircleCheck size={15} className="problems-ok" />}
                         {t('문제')}
                     </button>
+                    <button className={'code-tab' + (bottomTab === 'access' ? ' active' : '')} onClick={() => openTab('access')}>
+                        {accessCounts.errors > 0
+                            ? <span className="error-count">{accessCounts.errors}</span>
+                            : accessCounts.warnings > 0
+                                ? <span className="warning-count">{accessCounts.warnings}</span>
+                                : <ScanEye size={15} />}
+                        {t('접근성')}
+                    </button>
+                    <button className={'code-tab' + (bottomTab === 'history' ? ' active' : '')} onClick={() => openTab('history')}>
+                        <HistoryIcon size={15} /> {t('기록')}
+                    </button>
+                    {!definition && (
+                        <button className={'code-tab' + (bottomTab === 'assets' ? ' active' : '')} onClick={() => openTab('assets')}>
+                            <Images size={15} /> {t('에셋')}
+                        </button>
+                    )}
                     <span className="spacer" />
                     <span className="code-status">
                         {notice
@@ -2009,6 +2437,14 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
                     <div ref={codeHost} className="code-host" style={{ display: monacoReady && bottomTab === 'code' ? 'block' : 'none' }} />
                     {!monacoReady && bottomTab === 'code' && <pre className="code-placeholder">{text}</pre>}
                     <AgentPanel visible={codeOpen && bottomTab === 'ai'} folder={folder} session={tab} />
+                    {/* 접근성 검사는 탭에 개수를 보이려고 다른 탭을 보고 있을 때도 돌린다 */}
+                    <div className="panel-slot" hidden={bottomTab !== 'access'}>
+                        <AccessPanel uri={path ? uri.current : null} deck={deck} onCounts={setAccessCounts} onReveal={(range) => revealProblem({ range, message: '', severity: 2 })} />
+                    </div>
+                    {bottomTab === 'history' && <HistoryPanel history={history} onRestore={restoreHistory} />}
+                    <div className="panel-slot" hidden={bottomTab !== 'assets'}>
+                        <AssetLibrary uri={path ? uri.current : null} deck={deck} active={codeOpen && bottomTab === 'assets'} onInsert={insertAsset} />
+                    </div>
                     {bottomTab === 'problems' && (
                         <div className="problems">
                             {errorCount === 0 && warningCount === 0 && <div className="problems-empty"><CircleCheck size={13} /> {t('오류 없음')}</div>}
@@ -2016,6 +2452,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
                                 <button key={'e' + i} className="problems-item error" onClick={() => revealProblem(diagnostic)}>
                                     <CircleAlert size={13} />
                                     <span className="problems-message">{diagnostic.message}</span>
+                                    {diagnostic.code && <span className="problems-code">{diagnostic.code}</span>}
                                     <span className="problems-line">{t('줄 {0}', diagnostic.range.start.line + 1)}</span>
                                 </button>
                             ))}
@@ -2023,6 +2460,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
                                 <button key={'c' + i} className="problems-item warning" onClick={() => revealProblem(warning)}>
                                     <TriangleAlert size={13} />
                                     <span className="problems-message">{warning.message}</span>
+                                    {warning.code && <span className="problems-code">{warning.code}</span>}
                                     <span className="problems-line">{t('줄 {0}', warning.range.start.line + 1)}</span>
                                 </button>
                             ))}
@@ -2075,7 +2513,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
                 <Resizer area="props" edge="left" value={sizes.props} min={200}
                     max={() => window.innerWidth - sizes.slides - (paneOpen ? sizes.pane : 0) - 200} onChange={(props) => setSizes((old) => ({ ...old, props }))} onEnd={storeSizes} />
             )}
-            {paneOpen && deck && slideCount > 0 && (
+            {paneOpen && deck && slideCount > 0 && !definition && (
                 <Resizer area="pane" edge="left" value={sizes.pane} min={200}
                     max={() => window.innerWidth - sizes.slides - (propsOpen ? sizes.props : 0) - 200} onChange={(pane) => setSizes((old) => ({ ...old, pane }))} onEnd={storeSizes} />
             )}
@@ -2087,7 +2525,7 @@ export function App({ tab, file, active, accesses, register, onInfo, onOpen }: D
     );
 }
 
-type BottomTab = 'code' | 'ai' | 'problems';
+type BottomTab = 'code' | 'ai' | 'problems' | 'access' | 'history' | 'assets';
 
 // 패널 크기. 다음에 열 때도 쓰도록 이 컴퓨터에 적어 둔다
 
@@ -2203,7 +2641,7 @@ function InsertMenu({ items, disabled, active, extra }: { items: InsertItem[]; d
     }, [open]);
     return (
         <span className="menu-anchor" ref={anchor}>
-            <IconButton icon={Plus} title={t('더 넣기 (오디오, 선, 연결선, 자유형, 배경 흐림)')} disabled={disabled} active={open || active} onClick={() => setOpen(!open)} />
+            <IconButton icon={Plus} title={t('더 넣기 (오디오, 수식, 차트, 선, 연결선, 자유형, 배경 흐림)')} disabled={disabled} active={open || active} onClick={() => setOpen(!open)} />
             {open && (
                 <span className="menu list-menu insert-menu">
                     {items.map(({ icon: Icon, label, title, onClick, disabled: off }) => (

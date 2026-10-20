@@ -96,6 +96,39 @@ namespace templide::middleend {
         }
     }
 
+    std::string encode_like(const std::string& original, const std::string& utf8) {
+        const std::string_view head = original;
+        const bool utf16_le = head.substr(0, 2) == "\xFF\xFE" && head.substr(0, 4) != std::string_view("\xFF\xFE\x00\x00", 4);
+        const bool utf16_be = head.substr(0, 2) == "\xFE\xFF";
+        if (!utf16_le && !utf16_be) {
+            return head.substr(0, 3) == "\xEF\xBB\xBF" ? "\xEF\xBB\xBF" + utf8 : utf8;
+        }
+        std::string out = utf16_le ? "\xFF\xFE" : "\xFE\xFF";
+        const auto unit = [&](char32_t value) {
+            const char low = static_cast<char>(value & 0xFF);
+            const char high = static_cast<char>((value >> 8) & 0xFF);
+            out += utf16_le ? low : high;
+            out += utf16_le ? high : low;
+        };
+        for (std::size_t i = 0; i < utf8.size();) {
+            const auto lead = static_cast<unsigned char>(utf8[i]);
+            const std::size_t length = lead < 0x80 ? 1 : lead < 0xE0 ? 2 : lead < 0xF0 ? 3 : 4;
+            char32_t code = length == 1 ? lead : lead & (0xFF >> (length + 1));
+            for (std::size_t k = 1; k < length && i + k < utf8.size(); ++k) {
+                code = (code << 6) | (static_cast<unsigned char>(utf8[i + k]) & 0x3F);
+            }
+            i += length;
+            if (code >= 0x10000) {
+                code -= 0x10000;
+                unit(0xD800 + (code >> 10));
+                unit(0xDC00 + (code & 0x3FF));
+            } else {
+                unit(code);
+            }
+        }
+        return out;
+    }
+
     std::optional<std::string> decode_source(const std::string& bytes, std::string& error) {
         const std::string_view text = bytes;
         if (text.substr(0, 4) == std::string_view("\xFF\xFE\x00\x00", 4) || text.substr(0, 4) == std::string_view("\x00\x00\xFE\xFF", 4)) {

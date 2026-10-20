@@ -1,5 +1,6 @@
 #pragma once
 
+#include "diagnostic.h"
 #include "ir.h"
 
 #include <cstddef>
@@ -10,14 +11,6 @@
 #include <vector>
 
 namespace templide::middleend {
-    struct Diagnostic {
-        std::string path;
-        std::size_t line;   // 위치가 없으면 0
-        std::size_t column;
-        std::string message;
-        std::size_t length = 0; // 칠할 바이트 수. 0이면 그 자리의 낱말 하나
-    };
-
     // #include 한 줄. 편집기가 include한 파일의 오류를 이 줄에도 알리는 데 쓴다
     struct Include {
         std::string from; // #include가 적힌 파일의 경로
@@ -36,7 +29,7 @@ namespace templide::middleend {
     };
 
     struct SymbolMaster {
-        std::vector<std::string> parameters; // 매개변수의 타입
+        std::vector<SymbolVar> parameters; // 매개변수 (var). 기본값이 없으면 required
         std::vector<std::string> cases;
     };
 
@@ -49,6 +42,17 @@ namespace templide::middleend {
         std::vector<std::string> namespaces;        // * as NAME
         std::map<std::string, std::string> aliases; // 이름 as NAME: NAME -> 묶음 안 파일 이름
         std::vector<std::string> entries;           // 묶음 안의 파일. 열 수 없으면 비어 있다
+    };
+
+    // 편집기가 정의를 찾아 가는 데 쓰는 목록
+    struct SymbolDefinition {
+        std::string kind; // template, master
+        std::string name;
+        std::vector<std::string> cases;
+        std::string path;
+        std::size_t begin = 0;
+        std::size_t end = 0;
+        bool package = false;
     };
 
     struct Symbols {
@@ -70,6 +74,38 @@ namespace templide::middleend {
         std::map<std::string, std::vector<std::string>> animations;  // "종류.효과" -> 옵션 (첫 옵션이 기본값, 옵션이 없으면 비어 있다)
         std::vector<std::string> endless_animations;                 // 끝나는 시간이 없어 길이를 정할 수 없는 "종류.효과"
         std::vector<std::string> theme_colors;
+        std::vector<SymbolDefinition> definitions;
+    };
+
+    // 편집기가 template이나 master의 case 하나를 슬라이드처럼 편집하려고 요청한 정의
+    struct DefinitionRequest {
+        std::string kind;   // template 또는 master
+        std::string name;
+        std::string layout; // master일 때 case 이름. 비어 있으면 첫 case
+    };
+
+    // template, master의 var 하나. 값이 없으면 타입의 기본값(int는 0, list는 빈 목록 ...)으로 미리 본다
+    struct DefinitionVar {
+        std::string name;
+        std::string type;
+        bool has_default = false;
+        std::string default_text;   // 기본값의 원문
+        ir::Value value;            // 미리 보는 데 쓴 값 (기본값 또는 타입의 기본값)
+        ir::Origin default_origin;  // 기본값을 적은 곳. 고칠 수 있으면 LITERAL
+        ir::SourceRange declaration; // var 문장 전체
+        ir::SourceRange default_range; // 기본값 식. 기본값이 없으면 path가 비어 있다
+    };
+
+    struct DefinitionInfo {
+        std::string kind;
+        std::string name;
+        std::string layout;
+        std::vector<std::string> cases;         // master의 case 이름들
+        bool package = false;                   // 표준 라이브러리에 있어 고칠 수 없다
+        ir::SourceRange statement;              // template, master 문장 전체
+        std::vector<DefinitionVar> vars;
+        std::string error;                      // 정의를 찾지 못했을 때
+        std::vector<Diagnostic> diagnostics;    // 미리 보려고 펼치다 난 오류. 덱은 만들 수 있는 만큼 만든다
     };
 
     struct Result {
@@ -80,6 +116,9 @@ namespace templide::middleend {
         std::vector<std::pair<std::string, std::string>> sources;
         std::vector<Include> includes; // 읽은 순서
         Symbols symbols;
+        // 정의를 요청했을 때: 그 정의 하나를 슬라이드 한 장(page 1)으로 만든 문서와 정보
+        std::optional<ir::Document> definition_document;
+        DefinitionInfo definition;
     };
 
     // 디스크 대신 쓸 파일 내용 (편집기에서 저장하지 않은 문서 등). 파일 경로 -> 내용
@@ -88,5 +127,7 @@ namespace templide::middleend {
     // path 파일과 그 파일이 include하는 파일을 읽어 IR을 만든다.
     // #include <이름>은 packages_dir/<이름>.tlide, #include "이름"은 include한 파일의 폴더/<이름>.tlide에서 찾는다.
     // overlays에 있는 파일은 디스크에서 읽지 않고 그 내용을 쓴다
-    Result analyze(const std::filesystem::path& path, const std::filesystem::path& packages_dir, const Overlays& overlays = {});
+    // definition이 있으면 분석이 끝난 뒤 그 template이나 master case를 Result::definition_document로 만든다
+    Result analyze(const std::filesystem::path& path, const std::filesystem::path& packages_dir, const Overlays& overlays = {},
+                   const std::optional<DefinitionRequest>& definition = std::nullopt);
 }

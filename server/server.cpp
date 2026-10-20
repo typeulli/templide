@@ -6,7 +6,10 @@
 #include "../backend/html.h"
 #include "../backend/png.h"
 #include "../backend/table.h"
+#include "../format/formatter.h"
+#include "../middleend/accessibility.h"
 #include "../middleend/analyzer.h"
+#include "../middleend/report.h"
 #include "../middleend/tasset.h"
 #include "../middleend/color.h"
 #include "../importer/pptx_import.h"
@@ -509,6 +512,7 @@ namespace templide::server {
             std::map<std::string, middleend::Symbols> symbols_; // file_key -> 마지막으로 분석에 성공한 이름들 (쓰는 중에는 구문 오류가 잦다)
             std::map<std::string, Document> documents_; // file_key -> 열린 문서
             std::map<std::string, Compiled> compiled_;  // file_key -> 그 문서를 main으로 컴파일한 결과
+            mutable std::unique_ptr<Compiled> definition_slot_; // 가장 최근에 요청한 정의의 결과
             std::map<std::string, std::set<std::string>> published_; // file_key -> 오류를 보낸 URI들
             mutable std::map<std::string, std::string> uris_;        // 분석기가 쓴 경로 -> URI
             bool shutdown_ = false;
@@ -631,6 +635,14 @@ namespace templide::server {
                         reply(id, document_symbols(params));
                     } else if (method == "templide/build") {
                         reply(id, build(params));
+                    } else if (method == "templide/assets") {
+                        reply(id, assets(params));
+                    } else if (method == "templide/accessibility") {
+                        reply(id, accessibility(params));
+                    } else if (method == "templide/format") {
+                        reply(id, format(params));
+                    } else if (method == "templide/fmtOptions") {
+                        reply(id, fmt_options(params));
                     } else if (method == "templide/targets") {
                         reply(id, targets(params));
                     } else if (method == "templide/deck") {
@@ -758,8 +770,8 @@ namespace templide::server {
                 json result = json::array();
                 for (const auto& warning : backend::target_warnings(document, target)) {
                     // 위치를 읽을 수 없으면 파일 처음을 가리킨다
-                    const middleend::Diagnostic diagnostic = diagnostic_at(warning.where, warning.message).value_or(middleend::Diagnostic{warning.where, 0, 0, warning.message});
-                    result.push_back({{"uri", uri_of(diagnostic.path)}, {"range", diagnostic_range(compiled, diagnostic)}, {"severity", 2}, {"message", warning.message}});
+                    const middleend::Diagnostic diagnostic = backend::to_diagnostic(warning);
+                    result.push_back({{"uri", uri_of(diagnostic.path)}, {"range", diagnostic_range(compiled, diagnostic)}, {"severity", 2}, {"message", localized(diagnostic)}, {"code", warning.code}});
                 }
                 return result;
             }
@@ -835,17 +847,35 @@ namespace templide::server {
                 }
             }
 
+            // 편집기에 보이는 글: 메시지와 (있으면) 다음 줄의 고치는 방법
+            static std::string localized(const middleend::Diagnostic& diagnostic) {
+                return diagnostic.message + (diagnostic.help.empty() ? "" : "\n" + diagnostic.help);
+            }
+
+            static int severity_of(middleend::Level level) {
+                switch (level) {
+                    case middleend::Level::Error: return 1;
+                    case middleend::Level::Warning: return 2;
+                    case middleend::Level::Info: return 3;
+                }
+                return 1;
+            }
+
             void publish(const std::string& key, const Compiled& compiled) {
                 std::map<std::string, json> by_uri;
-                // 오류는 severity 1, 컴파일은 되지만 알릴 것(sRGB 밖의 색 등)은 2
-                for (const auto& [list, severity] : {std::pair{&compiled.result.diagnostics, 1}, std::pair{&compiled.result.warnings, 2}}) {
+                // 오류는 severity 1, 컴파일은 되지만 알릴 것(sRGB 밖의 색 등)은 2, 정보는 3
+                for (const auto* list : {&compiled.result.diagnostics, &compiled.result.warnings}) {
                     for (const auto& diagnostic : *list) {
-                        by_uri[uri_of(diagnostic.path)].push_back({
+                        json entry = {
                             {"range", diagnostic_range(compiled, diagnostic)},
-                            {"severity", severity},
+                            {"severity", severity_of(diagnostic.level)},
                             {"source", "templide"},
-                            {"message", diagnostic.message},
-                        });
+                            {"message", localized(diagnostic)},
+                        };
+                        if (!diagnostic.code.empty()) {
+                            entry["code"] = diagnostic.code;
+                        }
+                        by_uri[uri_of(diagnostic.path)].push_back(std::move(entry));
                     }
                 }
                 include_errors(compiled, documents_.at(key).path.string(), by_uri);
@@ -865,7 +895,39 @@ namespace templide::server {
 
             // 덱과 편집
 
+            // 정의(template, master case)를 슬라이드 한 장으로 펼친 결과. 요청마다 새로 분석하고 마지막 것만 둔다
+            const Compiled& definition_compiled(const json& params) const {
+                const auto document = documents_.find(file_key(uri_to_path(params.at("uri").get<std::string>())));
+                if (document == documents_.end()) {
+                    throw std::runtime_error("The document is not open");
+                }
+                const json& wanted = params.at("definition");
+                middleend::DefinitionRequest request{wanted.at("kind").get<std::string>(), wanted.at("name").get<std::string>(), wanted.value("case", std::string())};
+                middleend::Overlays overlays;
+                for (const auto& [key, each] : documents_) {
+                    overlays[each.path] = each.text;
+                }
+                auto compiled = std::make_unique<Compiled>();
+                compiled->result = middleend::analyze(document->second.path, packages_dir_, overlays, request);
+                for (auto& [path, text] : compiled->result.sources) {
+                    compiled->texts[path] = text;
+                    compiled->sources[path] = index_source(std::move(text));
+                }
+                compiled->result.sources.clear();
+                if (compiled->result.definition_document) {
+                    compiled->result.document = std::move(compiled->result.definition_document);
+                    compiled->result.definition_document.reset();
+                } else if (compiled->result.document) {
+                    compiled->result.document.reset(); // 정의를 찾지 못했다. 오류는 definition.error에 있다
+                }
+                definition_slot_ = std::move(compiled);
+                return *definition_slot_;
+            }
+
             const Compiled& compiled_for(const json& params) const {
+                if (params.contains("definition") && params.at("definition").is_object()) {
+                    return definition_compiled(params);
+                }
                 const auto it = compiled_.find(file_key(uri_to_path(params.at("uri").get<std::string>())));
                 if (it == compiled_.end()) {
                     throw std::runtime_error("The document is not open");
@@ -1031,7 +1093,7 @@ namespace templide::server {
                 }
                 json masters = json::object();
                 for (const auto& [name, master] : symbols.masters) {
-                    masters[name] = {{"parameters", master.parameters}, {"cases", master.cases}};
+                    masters[name] = {{"parameters", vars(master.parameters)}, {"cases", master.cases}};
                 }
                 json assets = json::array();
                 for (const auto& asset : symbols.assets) {
@@ -1047,7 +1109,15 @@ namespace templide::server {
                         files.push_back({{"path", path}, {"package", key.size() > packages.size() && key.compare(0, packages.size(), packages) == 0 && key[packages.size()] == '/'}});
                     }
                 }
+                json definitions = json::array();
+                if (const auto compiled = compiled_.find(it->first); compiled != compiled_.end()) {
+                    for (const auto& each : symbols.definitions) {
+                        definitions.push_back({{"kind", each.kind}, {"name", each.name}, {"cases", each.cases}, {"package", each.package},
+                                               {"uri", uri_of(each.path)}, {"range", range_of(compiled->second, {each.path, each.begin, each.end})}});
+                    }
+                }
                 return {
+                    {"definitions", definitions},
                     {"assets", assets}, {"constants", symbols.constants}, {"styles", symbols.styles}, {"files", files},
                     {"objects", objects}, {"templates", templates}, {"enums", symbols.enums}, {"masters", masters}, {"themes", symbols.themes},
                     {"commonProperties", vars(symbols.common_properties)}, {"textProperties", vars(symbols.text_properties)},
@@ -1177,6 +1247,10 @@ namespace templide::server {
             // 덱 JSON은 이미 글자로 만들어져 있으므로 다시 읽지 않고 결과에 끼워 넣는다
             void reply_deck(const json& id, const json& params) const {
                 const Compiled& compiled = compiled_for(params);
+                if (params.contains("definition") && params.at("definition").is_object() && compiled.result.document.has_value() == false && !compiled.result.definition.error.empty()) {
+                    reply(id, {{"error", compiled.result.definition.error}});
+                    return;
+                }
                 if (!compiled.result.document) {
                     reply(id, {{"error", "The document has errors"}});
                     return;
@@ -1208,7 +1282,7 @@ namespace templide::server {
                     document_info = {{"title", target->title}, {"author", target->author}, {"loop", target->loop}, {"type", target->type},
                                      {"path", target->path}, {"source", origin_json(compiled, target->source)}, {"properties", properties}};
                 }
-                const json result = {
+                json result = {
                     {"targets", targets},
                     {"target", target != nullptr ? json(target->name) : json()},
                     {"width", size.width},
@@ -1221,8 +1295,76 @@ namespace templide::server {
                     {"elements", elements},
                     {"document", document_info},
                 };
+                if (params.contains("definition") && params.at("definition").is_object()) {
+                    result["definition"] = definition_json(compiled, size);
+                }
                 const std::string rest = result.dump(-1, ' ', false, json::error_handler_t::replace);
                 send_text("{\"jsonrpc\":\"2.0\",\"id\":" + id.dump() + ",\"result\":{\"deck\":" + deck + "," + rest.substr(1) + "}");
+            }
+
+            // 정의를 편집할 때 편집기가 보는 정보: 매개변수(var)와 master의 case, 펼치다 난 오류
+            json definition_json(const Compiled& compiled, SlideSize size) const {
+                const middleend::DefinitionInfo& info = compiled.result.definition;
+                json vars = json::array();
+                for (const auto& var : info.vars) {
+                    json entry = {{"name", var.name}, {"type", var.type}, {"hasDefault", var.has_default}, {"defaultText", var.default_text},
+                                  {"declaration", range_of(compiled, var.declaration)}};
+                    if (json value = value_json(var.name, var.value, size); !value.is_null()) {
+                        entry["value"] = std::move(value);
+                    }
+                    if (var.has_default) {
+                        entry["origin"] = origin_json(compiled, var.default_origin);
+                    }
+                    vars.push_back(std::move(entry));
+                }
+                json diagnostics = json::array();
+                for (const auto& each : info.diagnostics) {
+                    diagnostics.push_back({{"message", each.message}});
+                }
+                json result = {{"kind", info.kind}, {"name", info.name}, {"case", info.layout}, {"cases", info.cases},
+                               {"package", info.package}, {"vars", vars}, {"diagnostics", diagnostics}};
+                if (!info.statement.path.empty()) {
+                    result["uri"] = uri_of(info.statement.path);
+                    result["range"] = range_of(compiled, info.statement);
+                }
+                return result;
+            }
+
+            // 정의의 매개변수(var)를 고친다. 기본값이 없는 var는 타입의 기본값을 흐리게 보여 주다가 값을 넣으면 기본값이 생긴다
+            static EditResult var_edit(const Editor& editor, const Compiled& compiled, const std::string& kind, const json& op) {
+                const middleend::DefinitionInfo& info = compiled.result.definition;
+                if (info.package) {
+                    return {{}, lock_message("package")};
+                }
+                if (kind == "var_add") {
+                    std::optional<ir::SourceRange> last;
+                    if (!info.vars.empty()) {
+                        last = info.vars.back().declaration;
+                    }
+                    return editor.add_var(info.statement, last, op.at("type").get<std::string>(), op.at("name").get<std::string>(), op.value("default", std::string()));
+                }
+                const std::string name = op.at("name").get<std::string>();
+                const auto found = std::find_if(info.vars.begin(), info.vars.end(), [&](const middleend::DefinitionVar& var) { return var.name == name; });
+                if (found == info.vars.end()) {
+                    return {{}, "The template has no variable '" + name + "'"};
+                }
+                if (kind == "var_remove") {
+                    ir::Origin statement;
+                    statement.kind = ir::Origin::Kind::BLOCK;
+                    statement.range = found->declaration;
+                    return editor.remove_statement(statement);
+                }
+                if (kind == "var_default_clear") {
+                    if (!found->has_default) {
+                        return {};
+                    }
+                    return editor.clear_default(found->default_range);
+                }
+                std::optional<ir::SourceRange> existing;
+                if (found->has_default) {
+                    existing = found->default_range;
+                }
+                return editor.set_default(found->declaration, existing, found->default_origin, name, new_value(op));
             }
 
             static json script_path(const ir::Document& document, const ir::Target* target, const std::filesystem::path& base) {
@@ -2138,17 +2280,211 @@ namespace templide::server {
                     return {{"error", "There is no target; add one such as target out { path = \"out.pptx\"; type = pptx; }"}};
                 }
                 const std::filesystem::path base = uri_to_path(params.at("uri").get<std::string>()).parent_path();
-                // 분석기의 경고(sRGB 밖의 색 등)도 "파일:줄:칸: warning: 내용"으로 함께 알린다
+                // 분석기의 경고(sRGB 밖의 색 등)도 "파일:줄:칸: warning[코드]: 내용"으로 함께 알린다
                 std::vector<std::string> warnings;
                 for (const auto& warning : compiled.result.warnings) {
-                    warnings.push_back(warning.path + ":" + std::to_string(warning.line) + ":" + std::to_string(warning.column) + ": warning: " + warning.message);
+                    warnings.push_back(middleend::format_text(warning));
                 }
-                const auto errors = backend::write_target(document, *target, base, libs_dir_, warnings);
+                std::vector<backend::Warning> target_warnings;
+                const auto errors = backend::write_target(document, *target, base, libs_dir_, target_warnings);
+                for (const auto& warning : target_warnings) {
+                    warnings.push_back(middleend::format_text(backend::to_diagnostic(warning)));
+                }
                 std::filesystem::path output = (base / backend::utf8_path(target->path)).lexically_normal();
                 if (target->type == "png") {
                     output = backend::png::numbered_path(output, 1); // 슬라이드마다 파일이 하나씩이라 첫 파일을 알린다
                 }
                 return {{"path", backend::display(output)}, {"type", target->type}, {"errors", errors}, {"warnings", warnings}};
+            }
+
+            // 문서가 쓰는 그림, 비디오, 오디오 파일의 경로(문서 폴더 기준)를 모은다. 묶음 안의 파일은 "x.tasset/이름"이다
+            static void collect_media_uses(const std::vector<ir::Element>& elements, std::set<std::string>& used) {
+                for (const auto& element : elements) {
+                    for (const auto& property : element.properties) {
+                        if (const auto* image = std::get_if<ir::Image>(&property.value)) {
+                            used.insert(image->path);
+                        } else if (const auto* text = std::get_if<std::string>(&property.value); text != nullptr && (property.name == "data" || property.name == "poster")) {
+                            used.insert(*text);
+                        }
+                    }
+                    collect_media_uses(element.children, used);
+                }
+            }
+
+            static std::string path_key(const std::filesystem::path& path) {
+                const std::u8string generic = path.lexically_normal().generic_u8string();
+                std::string key(generic.begin(), generic.end());
+#ifdef _WIN32
+                for (auto& c : key) {
+                    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                }
+#endif
+                return key;
+            }
+
+            static std::string media_kind(std::string extension) {
+                std::transform(extension.begin(), extension.end(), extension.begin(), [](char c) { return static_cast<char>(std::tolower(static_cast<unsigned char>(c))); });
+                for (const char* image : {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}) {
+                    if (extension == image) {
+                        return "image";
+                    }
+                }
+                for (const char* video : {".mp4", ".webm", ".mov"}) {
+                    if (extension == video) {
+                        return "video";
+                    }
+                }
+                for (const char* audio : {".mp3", ".wav", ".m4a", ".ogg"}) {
+                    if (extension == audio) {
+                        return "audio";
+                    }
+                }
+                return extension == ".tasset" ? "tasset" : "";
+            }
+
+            // 문서 폴더(아래 세 단계까지)의 그림, 비디오, 오디오와 .tasset 묶음 안의 파일. 에셋 패널이 보여 준다.
+            // used는 지금 문서가 쓰는 것이다 (문서를 아직 분석하지 못했으면 모두 false)
+            json assets(const json& params) const {
+                const auto path = uri_to_path(params.at("uri").get<std::string>());
+                const std::filesystem::path folder = path.parent_path();
+                std::set<std::string> used_paths;
+                if (const auto it = compiled_.find(file_key(path)); it != compiled_.end() && it->second.result.document) {
+                    std::set<std::string> written;
+                    const ir::Document& document = *it->second.result.document;
+                    for (const auto& slide : document.slides) {
+                        collect_media_uses(slide.elements, written);
+                        if (slide.background) {
+                            if (const auto* image = std::get_if<ir::Image>(&*slide.background)) {
+                                written.insert(image->path);
+                            }
+                        }
+                    }
+                    for (const auto& master : document.masters) {
+                        for (const auto& layout : master.layouts) {
+                            collect_media_uses(layout.elements, written);
+                            if (layout.background) {
+                                if (const auto* image = std::get_if<ir::Image>(&*layout.background)) {
+                                    written.insert(image->path);
+                                }
+                            }
+                        }
+                    }
+                    for (const auto& each : written) {
+                        used_paths.insert(path_key(folder / backend::utf8_path(each)));
+                    }
+                }
+                json files = json::array();
+                json bundles = json::array();
+                std::error_code error;
+                constexpr std::size_t max_files = 500;
+                constexpr int max_depth = 3;
+                std::size_t count = 0;
+                std::vector<std::pair<std::filesystem::path, std::string>> found;
+                for (std::filesystem::recursive_directory_iterator it(folder, std::filesystem::directory_options::skip_permission_denied, error), end; !error && it != end; it.increment(error)) {
+                    const std::filesystem::path& entry = it->path();
+                    const std::string name = backend::display(entry.filename());
+                    if (it->is_directory(error)) {
+                        if (name.empty() || name[0] == '.' || name == "node_modules" || it.depth() + 1 >= max_depth) {
+                            it.disable_recursion_pending();
+                        }
+                        continue;
+                    }
+                    const std::string kind = media_kind(backend::display(entry.extension()));
+                    if (kind.empty() || ++count > max_files) {
+                        continue;
+                    }
+                    found.emplace_back(entry, kind);
+                }
+                std::sort(found.begin(), found.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+                for (const auto& [entry, kind] : found) {
+                    const std::filesystem::path relative = entry.lexically_relative(folder);
+                    std::string shown = backend::display(relative);
+                    std::replace(shown.begin(), shown.end(), '\\', '/');
+                    std::error_code size_error;
+                    const auto size = std::filesystem::file_size(entry, size_error);
+                    if (kind != "tasset") {
+                        files.push_back({{"path", shown}, {"kind", kind}, {"size", size_error ? 0 : size}, {"used", used_paths.contains(path_key(entry))}});
+                        continue;
+                    }
+                    std::string bundle_error;
+                    json items = json::array();
+                    if (const auto listed = tasset::entries(entry, bundle_error)) {
+                        for (const auto& item : *listed) {
+                            const std::string item_kind = media_kind(backend::display(std::filesystem::path(backend::utf8_path(item.name)).extension()));
+                            if (item_kind.empty() || item_kind == "tasset") {
+                                continue;
+                            }
+                            items.push_back({{"name", item.name}, {"kind", item_kind}, {"size", item.size}, {"used", used_paths.contains(path_key(entry / backend::utf8_path(item.name)))}});
+                        }
+                    }
+                    bundles.push_back({{"path", shown}, {"entries", items}, {"error", bundle_error}});
+                }
+                return {{"folder", backend::display(folder)}, {"files", files}, {"bundles", bundles}, {"truncated", count > max_files}};
+            }
+
+            // 열려 있는 문서의 접근성 검사 결과. 편집기의 접근성 패널이 보여 준다 (문서에 오류가 있으면 error만 있다)
+            json accessibility(const json& params) const {
+                const Compiled& compiled = compiled_for(params);
+                if (!compiled.result.document) {
+                    return {{"error", "The document has errors"}};
+                }
+                std::vector<std::pair<std::string, std::string>> sources(compiled.texts.begin(), compiled.texts.end());
+                json findings = json::array();
+                for (const auto& diagnostic : middleend::check_accessibility(*compiled.result.document, sources)) {
+                    json entry = {{"uri", uri_of(diagnostic.path)}, {"range", diagnostic_range(compiled, diagnostic)}, {"severity", severity_of(diagnostic.level)},
+                                  {"level", middleend::level_name(diagnostic.level)}, {"code", diagnostic.code}, {"message", localized(diagnostic)}};
+                    if (const auto* catalog_entry = middleend::find_catalog(diagnostic.code); catalog_entry != nullptr && catalog_entry->name[0] != '\0') {
+                        entry["name"] = catalog_entry->name;
+                    }
+                    findings.push_back(std::move(entry));
+                }
+                return {{"findings", findings}};
+            }
+
+            // 열려 있는 문서를 #fmt 설정대로 포맷한다. status: formatted(text가 새 내용), unchanged, noSettings(#fmt가 없다. defaults가 넣을 기본 설정 줄들), error
+            json format(const json& params) const {
+                const auto path = uri_to_path(params.at("uri").get<std::string>());
+                const auto it = documents_.find(file_key(path));
+                if (it == documents_.end()) {
+                    return {{"status", "error"}, {"message", "The document is not open"}};
+                }
+                const auto result = format::format_source(path.string(), it->second.text);
+                json messages = json::array();
+                for (const auto& diagnostic : result.diagnostics) {
+                    messages.push_back({{"level", middleend::level_name(diagnostic.level)}, {"code", diagnostic.code}, {"message", localized(diagnostic)}});
+                }
+                if (!result.ok) {
+                    return {{"status", "error"}, {"diagnostics", messages}};
+                }
+                if (!result.has_settings) {
+                    return {{"status", "noSettings"}, {"defaults", format::default_directives()}, {"diagnostics", messages}};
+                }
+                if (result.text == it->second.text) {
+                    return {{"status", "unchanged"}, {"diagnostics", messages}};
+                }
+                return {{"status", "formatted"}, {"text", result.text}, {"diagnostics", messages}};
+            }
+
+            // 설정 창의 '포맷' 페이지가 쓴다: 모든 #fmt 옵션(이름, 종류, 값의 범위, 기본값)과 이 문서에 적힌 #fmt 줄의 자리 (줄과 열은 1부터)
+            json fmt_options(const json& params) const {
+                const auto path = uri_to_path(params.at("uri").get<std::string>());
+                const auto it = documents_.find(file_key(path));
+                if (it == documents_.end()) {
+                    return {{"error", "The document is not open"}};
+                }
+                json options = json::array();
+                for (const auto& spec : format::option_specs()) {
+                    using format::OptionKind;
+                    const char* kind = spec.kind == OptionKind::Integer ? "integer" : spec.kind == OptionKind::Boolean ? "boolean" : spec.kind == OptionKind::Choice ? "choice" : "keepOrInteger";
+                    options.push_back({{"name", spec.name}, {"kind", kind}, {"choices", format::option_values(spec)}, {"min", spec.min}, {"max", spec.max},
+                                       {"default", spec.default_value}, {"description", spec.description}});
+                }
+                json directives = json::array();
+                for (const auto& directive : format::read_directives(it->second.text)) {
+                    directives.push_back({{"name", directive.key}, {"value", directive.value}, {"line", directive.line}, {"column", directive.column},
+                                          {"valueLine", directive.value_line}, {"valueColumn", directive.value_column}, {"valueLength", directive.value_length}});
+                }
+                return {{"options", options}, {"directives", directives}, {"defaults", format::default_directives()}};
             }
 
             // 내보내기 창이 보여 주는 target. 덱 전체를 만들지 않으므로 가볍다
@@ -2353,6 +2689,8 @@ namespace templide::server {
                             throw std::runtime_error("No slide " + std::to_string(page));
                         }
                         result = animation_edit(editor, document.slides[page - 1], op, symbols_for(params));
+                    } else if (kind == "var_add" || kind == "var_remove" || kind == "var_default" || kind == "var_default_clear") {
+                        result = var_edit(editor, compiled, kind, op);
                     } else if (kind == "declare") {
                         result = declare(compiled, params, op.at("text").get<std::string>());
                     } else {

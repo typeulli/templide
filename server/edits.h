@@ -8,9 +8,12 @@
 #include <string>
 #include <vector>
 
-// 편집기가 화면에서 바꾼 값을 원문 수정으로 바꾼다. 원문은 고친 곳만 잘라 바꾸므로 주석과 줄 맞춤이 남는다
+/**
+ * 편집기에서 바꾼 값을 원문 수정으로 변환한다.
+ * 실제로 변경한 구간만 교체하므로 사용자가 작성한 주석과 줄 맞춤을 보존한다.
+ */
 namespace templide::server {
-    // 원문 한 곳을 바꾸는 것. begin, end는 바이트 위치이고 같으면 끼워 넣기다
+    /** 원문에서 [begin, end) 구간을 text로 교체한다. 위치는 UTF-8 바이트 기준이다. */
     struct TextEdit {
         std::string path;
         std::size_t begin;
@@ -18,7 +21,7 @@ namespace templide::server {
         std::string text;
     };
 
-    // 편집 결과. 바꿀 수 없으면 edits가 비어 있고 error에 이유가 있다
+    /** 편집 결과. 적용할 수 없으면 edits는 비어 있고 error에 이유를 기록한다. */
     struct EditResult {
         std::vector<TextEdit> edits;
         std::string error;
@@ -103,6 +106,13 @@ namespace templide::server {
         EditResult table_unset_cell(const ir::Element& element, std::size_t row, std::size_t column, const std::string& property) const;
         // col_widths(columns) 또는 row_heights를 px 값들로 다시 쓴다
         EditResult table_set_sizes(const ir::Element& element, bool columns, const std::vector<double>& pixels) const;
+        // template의 var 기본값을 value로 바꾼다. existing이 없으면 선언 끝의 ';' 앞에 ' = 값'을 넣는다. literal은 기존 기본값의 출처(단위를 지키는 데 쓴다)
+        EditResult set_default(const ir::SourceRange& declaration, const std::optional<ir::SourceRange>& existing, const ir::Origin& literal, const std::string& name, const NewValue& value) const;
+        // var 선언에서 ' = 기본값'을 지운다
+        EditResult clear_default(const ir::SourceRange& existing) const;
+        // 정의(template, master) 블록의 var 선언들 맨 끝(last_var 다음, 없으면 블록 맨 앞)에 'var 타입 이름 = 기본값;'을 넣는다. 맨 끝인 것은 master를 위치로 부르는 layout의 인자 순서가 바뀌지 않게 하려는 것이다.
+        // default_code가 비어 있으면 기본값 없이 넣는다
+        EditResult add_var(const ir::SourceRange& definition, const std::optional<ir::SourceRange>& last_var, const std::string& type, const std::string& name, const std::string& default_code) const;
         // 원문 내용. 없으면 nullptr
         const std::string* source_text(const std::string& path) const { return text_of(path); }
 
@@ -120,6 +130,8 @@ namespace templide::server {
         EditResult swap(const ir::SourceRange& a, const ir::SourceRange& b) const;
         // statement를 지우고 target 앞이나 뒤의 줄로 옮긴다
         EditResult move_lines(const ir::SourceRange& statement, const ir::SourceRange& target, bool after) const;
+        // 문장 바로 위(빈 줄 없이)에 자기 줄을 차지한 /* */ 주석들까지 넓힌 범위. 그런 주석이 없거나 문장이 줄 전체를 차지하지 않으면 그대로다
+        ir::SourceRange with_leading_comments(const ir::SourceRange& range) const;
     };
 
     // 문자열 리터럴. 따옴표와 이스케이프를 붙인다

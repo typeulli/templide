@@ -5,9 +5,9 @@
 #include <utility>
 #include <vector>
 
-// backdrop_blur에 쓰는 그림 처리. 배경 그림을 읽고, 흐리게 하고, png로 만든다
+/** backdrop_blur에 사용하는 래스터 이미지의 디코딩과 처리를 담당한다. */
 namespace templide::backend::raster {
-    // 불투명한 RGB 그림. 채널 값은 0~255
+    /** 불투명한 RGB 이미지. 각 채널은 0부터 255까지의 값을 사용한다. */
     struct Raster {
         int width = 0;
         int height = 0;

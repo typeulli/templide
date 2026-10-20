@@ -232,12 +232,12 @@ slide {
     put glow { c = oklch(65%, 0.35, 330deg); }
 }
 -- colors_gamut_warning.ir --
-# stderr: colors_gamut_warning.tlide:11:22: warning: This oklch color is outside the sRGB range that pptx and html can show; using the nearest color hex(00C248)
-# stderr: colors_gamut_warning.tlide:12:22: warning: This lab color is outside the sRGB range that pptx and html can show; using the nearest color hex(EE007D)
-# stderr: colors_gamut_warning.tlide:13:22: warning: This lch color is outside the sRGB range that pptx and html can show; using the nearest color hex(F50021)
-# stderr: colors_gamut_warning.tlide:14:22: warning: This oklab color is outside the sRGB range that pptx and html can show; using the nearest color hex(A91FFF)
-# stderr: colors_gamut_warning.tlide:16:20: warning: This oklch color is outside the sRGB range that pptx and html can show; using the nearest color hex(EE00E7)
-# stderr: colors_gamut_warning.tlide:17:20: warning: This oklch color is outside the sRGB range that pptx and html can show; using the nearest color hex(EE00E7)
+# stderr: colors_gamut_warning.tlide:11:22: warning[W2001]: This oklch color is outside the sRGB range that pptx and html can show; using the nearest color hex(00C248)
+# stderr: colors_gamut_warning.tlide:12:22: warning[W2001]: This lab color is outside the sRGB range that pptx and html can show; using the nearest color hex(EE007D)
+# stderr: colors_gamut_warning.tlide:13:22: warning[W2001]: This lch color is outside the sRGB range that pptx and html can show; using the nearest color hex(F50021)
+# stderr: colors_gamut_warning.tlide:14:22: warning[W2001]: This oklab color is outside the sRGB range that pptx and html can show; using the nearest color hex(A91FFF)
+# stderr: colors_gamut_warning.tlide:16:20: warning[W2001]: This oklch color is outside the sRGB range that pptx and html can show; using the nearest color hex(EE00E7)
+# stderr: colors_gamut_warning.tlide:17:20: warning[W2001]: This oklch color is outside the sRGB range that pptx and html can show; using the nearest color hex(EE00E7)
 Document
   Slide 1
     Element swatch
@@ -935,7 +935,9 @@ Document
 /* 매개변수가 있는 master. 같은 값으로 쓰면 master 하나를 함께 쓰고, 값이 다르면 master가 따로 생긴다 */
 object label { var text text; }
 
-master brand(color accent, string name) {
+master brand {
+    var color accent;
+    var string name;
     case cover {
         background = accent;
         put label { text = name; }
@@ -2678,3 +2680,148 @@ Document
           Run "안녕하세요"
 -- 한글_폴더/_공통.tlide --
 object box { var text body; }
+-- master_defaults.tlide --
+/* master 매개변수의 기본값. 뒤에서부터 생략하고, python 함수처럼 이름으로 넘길 수 있다. 기본값이 모두 있으면 master.case로 쓴다 */
+object label { var text text; }
+
+master brand {
+    var color accent = hex(F00);
+    var string name = "기본";
+    case cover {
+        background = accent;
+        put label { text = name; }
+    }
+}
+
+slide { layout = brand.cover; }
+slide { layout = brand(hex(00F)).cover; }
+slide { layout = brand(hex(00F), "푸른").cover; }
+slide { layout = brand(name = "이름만").cover; }
+slide { layout = brand(hex(0F0), name = "둘 다").cover; }
+slide { layout = brand(name = "기본", accent = hex(F00)).cover; }
+-- master_defaults.ir --
+Document
+  Master brand(rgba(255, 0, 0, 1), "기본")
+    Layout cover
+      background: rgba(255, 0, 0, 1)
+      Element label
+        text:
+          Paragraph
+            Run "기본"
+  Master brand(rgba(0, 0, 255, 1), "기본")
+    Layout cover
+      background: rgba(0, 0, 255, 1)
+      Element label
+        text:
+          Paragraph
+            Run "기본"
+  Master brand(rgba(0, 0, 255, 1), "푸른")
+    Layout cover
+      background: rgba(0, 0, 255, 1)
+      Element label
+        text:
+          Paragraph
+            Run "푸른"
+  Master brand(rgba(255, 0, 0, 1), "이름만")
+    Layout cover
+      background: rgba(255, 0, 0, 1)
+      Element label
+        text:
+          Paragraph
+            Run "이름만"
+  Master brand(rgba(0, 255, 0, 1), "둘 다")
+    Layout cover
+      background: rgba(0, 255, 0, 1)
+      Element label
+        text:
+          Paragraph
+            Run "둘 다"
+  Slide 1 layout brand(rgba(255, 0, 0, 1), "기본").cover
+  Slide 2 layout brand(rgba(0, 0, 255, 1), "기본").cover
+  Slide 3 layout brand(rgba(0, 0, 255, 1), "푸른").cover
+  Slide 4 layout brand(rgba(255, 0, 0, 1), "이름만").cover
+  Slide 5 layout brand(rgba(0, 255, 0, 1), "둘 다").cover
+  Slide 6 layout brand(rgba(255, 0, 0, 1), "기본").cover
+-- chart_basic.tlide --
+/* chart. 데이터는 개체 안에 적는다. values는 계열마다 한 줄이고, categories를 비우면 1, 2, 3...이다 */
+#include <std/stddef>
+
+slide {
+    put chart {
+        kind = column; categories = ["1분기", "2분기"]; names = ["서울", "부산"]; values = [[10, 20], [8.5, 12]];
+        x = 100px; y = 100px; width = 600px; height = 400px; title = "매출"; x_title = "분기"; y_title = "억 원";
+        legend = top; data_labels = true; colors = [hex(2E86AB), hex(F18F01)]; range = [0, 30]; alt = "분기별 매출 막대 차트";
+    }
+}
+
+target deck { path = "deck.pptx"; type = pptx; }
+-- chart_basic.ir --
+Document
+  Slide 1
+    Element chart
+      kind: column
+      values:
+        List
+          Item 10
+          Item 20
+        List
+          Item 8.5
+          Item 12
+      categories:
+        Item "1분기"
+        Item "2분기"
+      names:
+        Item "서울"
+        Item "부산"
+      xs:
+      x: 100px
+      y: 100px
+      width: 600px
+      height: 400px
+      title: "매출"
+      x_title: "분기"
+      y_title: "억 원"
+      legend: top
+      stacked: false
+      data_labels: true
+      smooth: false
+      markers: true
+      gridlines: true
+      colors:
+        Item rgba(46, 134, 171, 1)
+        Item rgba(241, 143, 1, 1)
+      range:
+        Item 0
+        Item 30
+      font_size: 14px
+      text_color: rgba(64, 64, 64, 1)
+      alt: "분기별 매출 막대 차트"
+  Target deck
+    path: "deck.pptx"
+    type: pptx
+-- math_basic.tlide --
+/* math. latex는 LaTeX 수식이고 \는 \\로 적는다. font_size, text_color, align, anchor는 선택이다 */
+#include <std/stddef>
+
+slide {
+    put math { latex = "\\frac{a}{b} + \\sqrt{x}"; x = 100px; y = 100px; width = 600px; height = 120px; font_size = 40px; text_color = hex(2E86AB); align = left; alt = "분수와 제곱근"; }
+}
+
+target deck { path = "deck.pptx"; type = pptx; }
+-- math_basic.ir --
+Document
+  Slide 1
+    Element math
+      latex: "\frac{a}{b} + \sqrt{x}"
+      x: 100px
+      y: 100px
+      width: 600px
+      height: 120px
+      font_size: 40px
+      text_color: rgba(46, 134, 171, 1)
+      align: left
+      anchor: middle
+      alt: "분수와 제곱근"
+  Target deck
+    path: "deck.pptx"
+    type: pptx

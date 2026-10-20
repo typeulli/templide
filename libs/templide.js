@@ -1108,6 +1108,418 @@
         lgDashDotDot: 'dashed', sysDashDot: 'dashed', sysDashDotDot: 'dashed',
     };
 
+    // ---- 차트 (SVG). el.k는 종류(column, bar, line, area, pie, scatter), el.cat은 범주, el.ser는 계열({n 이름, v 값들, x 점의 x(산점도), c 색}),
+    // el.pc는 원의 조각 색이다. ti, xt, yt는 제목과 축 제목(xt는 범주 축, yt는 값 축)이고 lg는 범례의 자리다. st 쌓기, dl 값 표시, sm 부드럽게,
+    // mk 표시점, gr 눈금선, min/max 값 축의 범위, fs 글자 크기, tc 글자 색이다
+
+    let chartContext = null;
+
+    function chartTextWidth(text, size) {
+        if (!chartContext) {
+            chartContext = document.createElement('canvas').getContext('2d');
+        }
+        chartContext.font = `${size}px Calibri, "Malgun Gothic", sans-serif`;
+        return chartContext.measureText(String(text)).width;
+    }
+
+    // 값을 짧게: 소수 둘째 자리까지, 끝의 0은 버린다
+    const chartNumber = (value) => String(Math.round(value * 100) / 100);
+
+    // 범위를 보기 좋은 눈금(1, 2, 5의 배수)으로. PowerPoint처럼 위쪽에 5%의 여유를 두고, 눈금 칸이 maxIntervals 이하인 가장 작은 간격을 쓴다.
+    // fixedMin, fixedMax가 있으면 그 범위를 그대로 쓴다
+    function chartScale(low, high, fixedMin, fixedMax, zero, maxIntervals) {
+        const fixed = fixedMin !== undefined && fixedMax !== undefined;
+        if (fixed) {
+            low = fixedMin;
+            high = fixedMax;
+        } else {
+            // Excel처럼 0에서 시작해도 차이가 크게 줄지 않으면 0부터 그린다
+            if (zero && low >= 0 && (high <= 0 || (high - low) / high > 1 / 6)) {
+                low = 0;
+            }
+            if (high <= low) {
+                high = low === 0 ? 1 : low + Math.abs(low) * 0.1;
+            }
+            const headroom = (high - low) * 0.05;
+            high += headroom;
+            if (low < 0) {
+                low -= headroom;
+            }
+        }
+        const limit = maxIntervals || 10;
+        let step = 1;
+        const magnitude = Math.pow(10, Math.floor(Math.log10((high - low) / limit)));
+        for (const factor of [1, 2, 5, 10, 20, 50]) {
+            step = factor * magnitude;
+            if (Math.ceil((high - low) / step - 1e-9) <= limit) {
+                break;
+            }
+        }
+        const min = fixed ? low : Math.floor(low / step + 1e-9) * step;
+        const max = fixed ? high : Math.ceil(high / step - 1e-9) * step;
+        const ticks = [];
+        for (let value = min; value <= max + step / 2; value += step) {
+            ticks.push(Math.round(value * 1e9) / 1e9);
+        }
+        return {min, max, ticks};
+    }
+
+    function chartPath(points, smooth) {
+        if (!smooth || points.length < 3) {
+            return points.map((p, i) => `${i ? 'L' : 'M'}${round(p[0])} ${round(p[1])}`).join(' ');
+        }
+        // Catmull-Rom 곡선을 베지어로
+        let d = `M${round(points[0][0])} ${round(points[0][1])}`;
+        for (let i = 0; i < points.length - 1; i++) {
+            const p0 = points[Math.max(0, i - 1)];
+            const p1 = points[i];
+            const p2 = points[i + 1];
+            const p3 = points[Math.min(points.length - 1, i + 2)];
+            const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
+            const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
+            d += ` C${round(c1[0])} ${round(c1[1])} ${round(c2[0])} ${round(c2[1])} ${round(p2[0])} ${round(p2[1])}`;
+        }
+        return d;
+    }
+
+    function chartNode(el, w, h) {
+        const fs = el.fs || 14;
+        const ink = el.tc || '#404040';
+        const grid = '#d9d9d9';
+        const kind = el.k;
+        const series = el.ser || [];
+        const categories = el.cat || [];
+        const root = svg('svg', {width: w, height: h, viewBox: `0 0 ${round(w)} ${round(h)}`});
+        root.style.cssText = 'display:block;position:absolute;left:0;top:0;overflow:visible';
+        const text = (parent, x, y, content, size, anchor, attributes) => {
+            const node = svg('text', {x, y, 'font-size': size, 'text-anchor': anchor || 'start', fill: ink, 'dominant-baseline': 'central', ...(attributes || {})}, parent);
+            node.textContent = content;
+            return node;
+        };
+        const horizontal = kind === 'bar';
+        const pie = kind === 'pie';
+        const scatter = kind === 'scatter';
+
+        // 값 축의 범위
+        let low = Infinity;
+        let high = -Infinity;
+        let xLow = Infinity;
+        let xHigh = -Infinity;
+        const count = scatter ? 0 : Math.max(categories.length, ...series.map((s) => s.v.length));
+        if (scatter) {
+            for (const s of series) {
+                s.v.forEach((value, i) => {
+                    low = Math.min(low, value);
+                    high = Math.max(high, value);
+                    xLow = Math.min(xLow, s.x[i]);
+                    xHigh = Math.max(xHigh, s.x[i]);
+                });
+            }
+        } else if (el.st && !pie) {
+            for (let i = 0; i < count; i++) {
+                let up = 0;
+                let down = 0;
+                for (const s of series) {
+                    const value = s.v[i] || 0;
+                    value >= 0 ? (up += value) : (down += value);
+                }
+                low = Math.min(low, down, 0);
+                high = Math.max(high, up);
+            }
+        } else {
+            for (const s of series) {
+                for (const value of s.v) {
+                    low = Math.min(low, value);
+                    high = Math.max(high, value);
+                }
+            }
+        }
+        if (!Number.isFinite(low)) {
+            low = 0;
+            high = 1;
+        }
+        const barLike = kind === 'column' || kind === 'bar' || kind === 'area';
+        const scale = chartScale(barLike || el.st ? Math.min(low, 0) : low, Math.max(high, barLike ? 0 : high), el.min, el.max, !barLike && !el.st);
+        const xScale = scatter ? chartScale(xLow, xHigh, undefined, undefined, true, 5) : null;
+
+        // 여백과 제목, 범례, 축 제목에 쓸 자리
+        const pad = Math.round(fs * 0.8);
+        let left = pad;
+        let right = pad;
+        let top = pad;
+        let bottom = pad;
+        if (el.ti) {
+            const size = fs * 1.3;
+            text(root, w / 2, top + size / 2, el.ti, size, 'middle', {'font-weight': 'bold'});
+            top += size * 1.7;
+        }
+        const entries = pie ? categories.map((name, i) => ({n: name, c: (el.pc || [])[i] || '#888'})) : series.map((s) => ({n: s.n, c: s.c}));
+        // PowerPoint처럼, 가로 막대(묶음)와 왼쪽, 오른쪽 범례의 쌓은 막대, 영역은 범례를 거꾸로 늘어놓는다 (그림의 차례와 맞춘다)
+        if ((kind === 'bar' && !el.st) || ((kind === 'column' || kind === 'area') && el.st && (el.lg === 'left' || el.lg === 'right'))) {
+            entries.reverse();
+        }
+        const legendSize = fs;
+        const legendWidth = (entry) => 14 + chartTextWidth(entry.n, legendSize) + 18;
+        if (el.lg && entries.length > 0) {
+            if (el.lg === 'top' || el.lg === 'bottom') {
+                const total = entries.reduce((sum, entry) => sum + legendWidth(entry), 0) - 18;
+                const y = el.lg === 'top' ? top + legendSize / 2 : h - bottom - legendSize / 2;
+                let x = (w - total) / 2;
+                for (const entry of entries) {
+                    svg('rect', {x, y: y - 5, width: 10, height: 10, fill: entry.c}, root);
+                    text(root, x + 14, y, entry.n, legendSize);
+                    x += legendWidth(entry);
+                }
+                if (el.lg === 'top') {
+                    top += legendSize * 1.8;
+                } else {
+                    bottom += legendSize * 1.8;
+                }
+            } else {
+                const widest = Math.max(...entries.map(legendWidth)) - 18;
+                const x = el.lg === 'left' ? left : w - right - widest;
+                const total = entries.length * legendSize * 1.7;
+                let y = top + (h - top - bottom - total) / 2 + legendSize * 0.85;
+                for (const entry of entries) {
+                    svg('rect', {x, y: y - 5, width: 10, height: 10, fill: entry.c}, root);
+                    text(root, x + 14, y, entry.n, legendSize);
+                    y += legendSize * 1.7;
+                }
+                if (el.lg === 'left') {
+                    left += widest + pad * 1.5;
+                } else {
+                    right += widest + pad * 1.5;
+                }
+            }
+        }
+
+        if (pie) {
+            const size = Math.max(0, Math.min(w - left - right, h - top - bottom));
+            const radius = size / 2 * 0.92;
+            const cx = left + (w - left - right) / 2;
+            const cy = top + (h - top - bottom) / 2;
+            const values = (series[0] ? series[0].v : []).map((value) => Math.max(0, value));
+            const sum = values.reduce((a, b) => a + b, 0) || 1;
+            let angle = -Math.PI / 2;
+            values.forEach((value, i) => {
+                const sweep = value / sum * Math.PI * 2;
+                const fill = (el.pc || [])[i] || '#888';
+                if (sweep >= Math.PI * 2 - 1e-6) {
+                    svg('circle', {cx, cy, r: radius, fill, stroke: '#fff', 'stroke-width': 1}, root);
+                } else if (sweep > 0) {
+                    const x1 = cx + radius * Math.cos(angle);
+                    const y1 = cy + radius * Math.sin(angle);
+                    const x2 = cx + radius * Math.cos(angle + sweep);
+                    const y2 = cy + radius * Math.sin(angle + sweep);
+                    svg('path', {d: `M${round(cx)} ${round(cy)} L${round(x1)} ${round(y1)} A${round(radius)} ${round(radius)} 0 ${sweep > Math.PI ? 1 : 0} 1 ${round(x2)} ${round(y2)} Z`, fill, stroke: '#fff', 'stroke-width': 1}, root);
+                }
+                if (el.dl && sweep > 0.05) {
+                    const middle = angle + sweep / 2;
+                    text(root, cx + radius * 0.65 * Math.cos(middle), cy + radius * 0.65 * Math.sin(middle), chartNumber(series[0].v[i]), fs, 'middle', {fill: '#fff'});
+                }
+                angle += sweep;
+            });
+            return root;
+        }
+
+        // 축 제목과 눈금 글자의 자리
+        const tickText = (value) => chartNumber(value);
+        const tickWidth = Math.max(...(scatter ? xScale.ticks : scale.ticks).map((v) => chartTextWidth(tickText(v), fs)), ...scale.ticks.map((v) => chartTextWidth(tickText(v), fs)));
+        const categoryWidth = Math.max(0, ...categories.map((name) => chartTextWidth(name, fs)));
+        const categoryAxis = horizontal ? 'left' : 'bottom';
+        const valueAxis = horizontal ? 'bottom' : 'left';
+        const xTitle = el.xt;
+        const yTitle = el.yt;
+        const labelHeight = fs * 1.6;
+        // 왼쪽: 범주(막대)나 값 눈금, 그리고 왼쪽 축 제목
+        const leftTitle = horizontal ? xTitle : yTitle;
+        const bottomTitle = horizontal ? yTitle : xTitle;
+        // 축 제목은 범례 안쪽(범례와 눈금 글자 사이)에 둔다
+        let leftTitleX = 0;
+        let bottomTitleY = 0;
+        if (leftTitle) {
+            leftTitleX = left + fs * 0.9;
+            left += fs * 1.8;
+        }
+        left += (horizontal ? categoryWidth : tickWidth) + 8;
+        if (bottomTitle) {
+            bottomTitleY = h - bottom - fs * 0.9;
+            bottom += fs * 1.8;
+        }
+        bottom += labelHeight;
+        const plotX = left;
+        const plotY = top + fs * 0.6;
+        const plotW = Math.max(1, w - left - right);
+        const plotH = Math.max(1, h - plotY - bottom);
+        void categoryAxis;
+        void valueAxis;
+
+        // 값 -> 좌표
+        const along = (value, sc) => (value - sc.min) / (sc.max - sc.min);
+        const vx = (value) => plotX + plotW * along(value, scale);
+        const vy = (value) => plotY + plotH * (1 - along(value, scale));
+        const sx = (value) => plotX + plotW * along(value, xScale);
+
+        // 눈금선과 값 눈금 글자
+        for (const tick of scale.ticks) {
+            if (horizontal) {
+                const x = vx(tick);
+                if (el.gr) {
+                    svg('line', {x1: x, y1: plotY, x2: x, y2: plotY + plotH, stroke: grid, 'stroke-width': 1}, root);
+                }
+                text(root, x, plotY + plotH + fs * 0.9, tickText(tick), fs, 'middle');
+            } else {
+                const y = vy(tick);
+                if (el.gr) {
+                    svg('line', {x1: plotX, y1: y, x2: plotX + plotW, y2: y, stroke: grid, 'stroke-width': 1}, root);
+                }
+                text(root, plotX - 8, y, tickText(tick), fs, 'end');
+            }
+        }
+        if (scatter) {
+            for (const tick of xScale.ticks) {
+                const x = sx(tick);
+                if (el.gr) {
+                    svg('line', {x1: x, y1: plotY, x2: x, y2: plotY + plotH, stroke: grid, 'stroke-width': 1}, root);
+                }
+                text(root, x, plotY + plotH + fs * 0.9, tickText(tick), fs, 'middle');
+            }
+        }
+
+        // 범주 칸. 막대는 칸 안에, 선은 칸의 가운데에, 영역은 칸의 가장자리에 놓는다
+        const band = scatter ? 0 : (horizontal ? plotH : plotW) / Math.max(1, count);
+        const center = (i) => (horizontal ? plotY + plotH - band * (i + 0.5) : plotX + band * (i + 0.5));
+        const areaX = (i) => plotX + (count > 1 ? plotW * i / (count - 1) : plotW / 2);
+
+        // 범주 눈금 글자. 겹치면 건너뛴다
+        if (!scatter) {
+            const skip = horizontal ? 1 : Math.max(1, Math.ceil((categoryWidth + 8) / Math.max(1, band)));
+            categories.forEach((name, i) => {
+                if (i % skip !== 0) {
+                    return;
+                }
+                if (horizontal) {
+                    text(root, plotX - 8, center(i), name, fs, 'end');
+                } else {
+                    text(root, kind === 'area' ? areaX(i) : center(i), plotY + plotH + fs * 0.9, name, fs, 'middle');
+                }
+            });
+        }
+
+        // 축 제목
+        if (leftTitle) {
+            text(root, leftTitleX, plotY + plotH / 2, leftTitle, fs, 'middle', {transform: `rotate(-90 ${round(leftTitleX)} ${round(plotY + plotH / 2)})`});
+        }
+        if (bottomTitle) {
+            text(root, plotX + plotW / 2, bottomTitleY, bottomTitle, fs, 'middle');
+        }
+
+        // 계열
+        const zeroY = vy(Math.max(scale.min, Math.min(0, scale.max)));
+        const zeroX = vx(Math.max(scale.min, Math.min(0, scale.max)));
+        const stacks = new Array(count).fill(0);
+        const negatives = new Array(count).fill(0);
+        series.forEach((s, index) => {
+            if (kind === 'column' || kind === 'bar') {
+                // 칸 폭은 막대 폭의 150%다 (PowerPoint의 gapWidth 기본값)
+                const bars = el.st ? 1 : series.length;
+                const group = band * bars / (bars + 1.5);
+                const barSize = el.st ? group : group / series.length;
+                s.v.forEach((value, i) => {
+                    let begin = 0;
+                    let end = value;
+                    if (el.st) {
+                        if (value >= 0) {
+                            begin = stacks[i];
+                            stacks[i] += value;
+                            end = stacks[i];
+                        } else {
+                            begin = negatives[i];
+                            negatives[i] += value;
+                            end = negatives[i];
+                        }
+                    }
+                    const offset = (el.st ? 0 : index * barSize) - group / 2;
+                    let box;
+                    if (horizontal) {
+                        const x1 = vx(begin);
+                        const x2 = vx(end);
+                        box = {x: Math.min(x1, x2), y: center(i) + (el.st ? -group / 2 : -group / 2 + (series.length - 1 - index) * barSize), width: Math.abs(x2 - x1), height: barSize};
+                    } else {
+                        const y1 = vy(begin);
+                        const y2 = vy(end);
+                        box = {x: center(i) + offset, y: Math.min(y1, y2), width: barSize, height: Math.abs(y2 - y1)};
+                    }
+                    svg('rect', {...box, fill: s.c}, root);
+                    if (el.dl) {
+                        if (horizontal) {
+                            text(root, el.st ? box.x + box.width / 2 : (value < 0 ? box.x - 4 : box.x + box.width + 4), box.y + box.height / 2, chartNumber(value), fs, el.st ? 'middle' : (value < 0 ? 'end' : 'start'));
+                        } else {
+                            text(root, box.x + box.width / 2, el.st ? box.y + box.height / 2 : (value < 0 ? box.y + box.height + fs * 0.7 : box.y - fs * 0.7), chartNumber(value), fs, 'middle');
+                        }
+                    }
+                });
+                void zeroX;
+            } else if (kind === 'line' || kind === 'scatter') {
+                const points = s.v.map((value, i) => scatter ? [sx(s.x[i]), vy(value)] : [center(i), vy(el.st ? (stacks[i] += value) : value)]);
+                if (kind === 'line' || el.sm) {
+                    svg('path', {d: chartPath(points, el.sm), fill: 'none', stroke: s.c, 'stroke-width': 2.25, 'stroke-linejoin': 'round', 'stroke-linecap': 'round'}, root);
+                }
+                if (el.mk || scatter) {
+                    for (const point of points) {
+                        svg('circle', {cx: point[0], cy: point[1], r: 4, fill: s.c, stroke: '#fff', 'stroke-width': 1}, root);
+                    }
+                }
+                if (el.dl) {
+                    s.v.forEach((value, i) => text(root, points[i][0], points[i][1] - fs * 0.9, chartNumber(value), fs, 'middle'));
+                }
+            } else if (kind === 'area') {
+                const top = s.v.map((value, i) => [areaX(i), vy((el.st ? stacks[i] : 0) + value)]);
+                const bottomLine = s.v.map((value, i) => [areaX(i), vy(el.st ? stacks[i] : 0)]).reverse();
+                if (el.st) {
+                    s.v.forEach((value, i) => (stacks[i] += value));
+                }
+                svg('path', {d: `${chartPath(top, false)} ${bottomLine.map((p) => `L${round(p[0])} ${round(p[1])}`).join(' ')} Z`, fill: s.c}, root);
+                if (el.dl) {
+                    s.v.forEach((value, i) => text(root, top[i][0], top[i][1] - fs * 0.8, chartNumber(value), fs, 'middle'));
+                }
+            }
+        });
+
+        // 축 선
+        if (horizontal) {
+            svg('line', {x1: zeroX, y1: plotY, x2: zeroX, y2: plotY + plotH, stroke: '#7f7f7f', 'stroke-width': 1}, root);
+        } else {
+            svg('line', {x1: plotX, y1: zeroY, x2: plotX + plotW, y2: zeroY, stroke: '#7f7f7f', 'stroke-width': 1}, root);
+        }
+        if (scatter) {
+            svg('line', {x1: plotX, y1: plotY, x2: plotX, y2: plotY + plotH, stroke: '#7f7f7f', 'stroke-width': 1}, root);
+        }
+        return root;
+    }
+
+    // 수식. 전역 katex(KaTeX)가 LaTeX를 그린다. el.ltx는 LaTeX, fs는 글자 크기(px), tc는 색, ha, va는 상자 안의 가로와 세로 위치다.
+    // KaTeX는 글자를 1.21배로 그리므로 상자의 글자 크기를 그만큼 줄여 fs가 수식의 크기가 되게 한다
+    function mathNode(el, w, h) {
+        const node = html('div', 'tl-math', {
+            width: `${round(w)}px`, height: `${round(h)}px`, fontSize: `${round(el.fs / 1.21)}px`, color: el.tc || '#000',
+            justifyContent: el.ha === 'l' ? 'flex-start' : el.ha === 'r' ? 'flex-end' : 'center',
+            alignItems: el.va === 't' ? 'flex-start' : el.va === 'b' ? 'flex-end' : 'center',
+        });
+        const inner = html('div');
+        if (typeof katex !== 'undefined') {
+            try {
+                katex.render(el.ltx, inner, {displayMode: true, throwOnError: false, strict: 'ignore'});
+            } catch (error) {
+                inner.textContent = el.ltx;
+            }
+        } else {
+            inner.textContent = el.ltx;
+        }
+        node.appendChild(inner);
+        return node;
+    }
+
     // 표. 칸은 CSS grid에 놓고 글이 길면 행이 늘어난다. 칸의 선은 왼쪽과 위쪽만 칸마다 그리고 오른쪽, 아래쪽은 표의 바깥 변일 때만 있다
     // (el.b는 왼쪽, 위, 오른쪽, 아래 순서이고 그리지 않는 쪽은 null이다). 칸의 행과 열은 0부터다
     function tableNode(el, w, context) {
@@ -1444,6 +1856,12 @@
                 break;
             case 'tbl':
                 node.appendChild(tableNode(el, w, context));
+                break;
+            case 'cht':
+                node.appendChild(chartNode(el, w, h));
+                break;
+            case 'mth':
+                node.appendChild(mathNode(el, w, h));
                 break;
             case 'bd': {
                 node.appendChild(backdropNode(el, w, h));
@@ -3614,6 +4032,8 @@
 .tl-text { position: absolute; display: flex; flex-direction: column; box-sizing: border-box !important; overflow: visible; }
 .tl-columns { box-sizing: border-box !important; }
 .tl-table { position: absolute; left: 0; top: 0; display: grid; }
+.tl-math { position: absolute; left: 0; top: 0; display: flex; white-space: nowrap; overflow: visible; }
+.tl-math .katex-display { margin: 0; }
 .tl-cell { display: flex; flex-direction: column; box-sizing: border-box !important; min-width: 0; }
 .tl-p { margin: 0; white-space: pre-wrap; overflow-wrap: break-word; }
 .tl-nowrap .tl-p { white-space: pre; }

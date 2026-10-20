@@ -65,6 +65,16 @@ p.setting-hint { margin: 6px 0 12px; }
 .notice.error { background: #fdecec; color: #b3282d; }
 .notice.warning { background: #fff4e0; color: var(--warning-text); }
 
+/* 포맷 */
+
+.setting-code { margin-left: 8px; color: var(--muted); font: 400 11px Consolas, "Malgun Gothic", monospace; }
+.setting-group { margin: 22px 0 0; padding-bottom: 4px; border-bottom: 1px solid var(--border-strong); color: var(--muted); font-size: 12px; font-weight: 600; }
+.setting-group + .setting-row { padding-top: 10px; }
+.fmt-control { display: flex; align-items: center; gap: 6px; }
+.settings .notice.warning { align-items: center; gap: 10px; margin: 0 0 4px; }
+.settings .notice.warning span { flex: 1; }
+.settings .notice.warning .plain-button { flex: none; height: 26px; }
+
 /* 단축키 */
 
 .shortcuts-bar { display: flex; align-items: center; gap: 8px; margin: 4px 0 0; }

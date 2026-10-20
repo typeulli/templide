@@ -3,7 +3,7 @@
 
 export const objectNames: Record<string, string> = {
     text_box: '글상자', shape: '도형', image: '그림', line: '선', group: '그룹', backdrop: '배경 흐림', connector: '연결선',
-    freeform: '자유형', placeholder: '개체 틀', video: '비디오', audio: '오디오', table: '표',
+    freeform: '자유형', placeholder: '개체 틀', video: '비디오', audio: '오디오', table: '표', chart: '차트', math: '수식',
 };
 
 export const propertyNames: Record<string, string> = {
@@ -25,11 +25,15 @@ export const propertyNames: Record<string, string> = {
     hide_icon: '쇼 동안 아이콘 숨기기', across_slides: '여러 슬라이드에 걸쳐 재생', volume: '음량', trim_start: '앞 자르기', trim_end: '뒤 자르기',
     fade_in: '소리 키우며 시작', fade_out: '소리 줄이며 끝', background: '배경', hidden: '슬라이드 숨기기', advance_after: '자동으로 넘기기',
     transition_sound: '전환 소리', title: '제목', author: '작성자',
+    latex: 'LaTeX 수식', values: '값', categories: '범주', names: '계열 이름', xs: 'X 값', x_title: '범주 축 제목', y_title: '값 축 제목', legend: '범례', data_labels: '값 표시',
+    smooth: '부드럽게', markers: '표시점', gridlines: '눈금선', colors: '색', range: '값 범위', font_size: '글자 크기', text_color: '글자 색',
     cells: '칸', col_widths: '열 너비', row_heights: '행 높이', header_rows: '머리글 행', header_cols: '머리글 열', banded_rows: '줄무늬 행',
     banded_cols: '줄무늬 열', header_fill: '머리글 채우기', band_fill: '줄무늬 채우기', align: '가로 맞춤',
 };
 
 export const enumNames: Record<string, string> = {
+    // 차트 종류, 범례
+    column: '세로 막대', bar: '가로 막대', line: '선', area: '영역', pie: '원', scatter: '산점도',
     // 세로 맞춤, 맞추기
     top: '위', middle: '가운데', bottom: '아래', stretch: '늘이기', cover: '채우기(자르기)', contain: '맞추기(다 보이게)',
     // 선

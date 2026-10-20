@@ -1,5 +1,7 @@
 #include "completion.h"
 
+#include "../format/options.h"
+
 #include <algorithm>
 #include <cctype>
 #include <optional>
@@ -36,10 +38,10 @@ namespace templide::server {
             std::size_t statement = 0; // 지금 쓰는 문장의 시작
         };
 
-        // text[begin, end)가 '#include ...'로 시작하는 문장인가
+        // text[begin, end)가 '#include ...'나 '#fmt ...'로 시작하는 문장인가
         bool is_include(const std::string& text, std::size_t begin, std::size_t end) {
             const auto first = text.find_first_not_of(" \t\r\n", begin);
-            return first != std::string::npos && first < end && text.compare(first, 8, "#include") == 0;
+            return first != std::string::npos && first < end && (text.compare(first, 8, "#include") == 0 || text.compare(first, 4, "#fmt") == 0);
         }
 
         Context scan(const std::string& text, std::size_t offset) {
@@ -47,8 +49,8 @@ namespace templide::server {
             std::size_t i = 0;
             while (i < offset) {
                 const char c = text[i];
-                // #include는 ;로 끝나지 않으므로 줄바꿈이 문장의 끝이다. 이어 붙으면 뒤의 블록 머리글이 '#include ... slide'로 읽힌다
-                if (c == '\n' && context.opens.empty() && is_include(text, context.statement, i)) {
+                // #include와 #fmt는 ;로 끝나지 않으므로 줄바꿈이 문장의 끝이다. 이어 붙으면 뒤의 블록 머리글이 '#include ... slide'로 읽힌다
+                if (c == '\n' && (context.opens.empty() || context.opens.back().bracket == '{') && is_include(text, context.statement, i)) {
                     context.statement = i + 1;
                     ++i;
                     continue;
@@ -335,15 +337,23 @@ namespace templide::server {
             } else if (type == "layout") {
                 for (const auto& [name, master] : symbols.masters) {
                     for (const auto& layout : master.cases) {
+                        // 기본값이 있는 매개변수는 생략할 수 있으므로 마지막으로 꼭 넣어야 하는 것까지만 위치로 채운다
                         std::string insert = name;
-                        if (!master.parameters.empty()) {
+                        std::size_t count = 0;
+                        for (std::size_t i = 0; i < master.parameters.size(); ++i) {
+                            if (master.parameters[i].required) {
+                                count = i + 1;
+                            }
+                        }
+                        const std::size_t required = count;
+                        if (count > 0) {
                             insert += "(";
-                            for (std::size_t i = 0; i < master.parameters.size(); ++i) {
-                                insert += (i > 0 ? ", " : "") + placeholder(symbols, {"", master.parameters[i]}, static_cast<int>(i + 1));
+                            for (std::size_t i = 0; i < count; ++i) {
+                                insert += (i > 0 ? ", " : "") + placeholder(symbols, master.parameters[i], static_cast<int>(i + 1));
                             }
                             insert += ")";
                         }
-                        add(completion, name + "." + layout, CLASS, "layout", insert + "." + layout, !master.parameters.empty());
+                        add(completion, name + "." + layout, CLASS, "layout", insert + "." + layout, required > 0);
                     }
                 }
             } else if (type == "link" || type == "action") {
@@ -376,6 +386,7 @@ namespace templide::server {
                 keyword("theme", "theme", "theme ${1:name} {\n\t$0\n}");
                 keyword("section", "구역", "section \"${1}\";");
                 keyword("#include", "파일 불러오기", "#include <${1:std/stddef}>");
+                keyword("#fmt", "포맷 설정 (tlide fmt)", "#fmt ${1:indent_size} ${2:4}");
                 keyword("asset", "그림, 미디어 묶음(.tasset) 불러오기", "asset \"${1:slides.tasset}\";");
                 keyword("image", "그림 파일에 이름 붙이기", "image ${1:name} = ${2:asset(\"${3}\")};");
                 keyword("video", "비디오 파일에 이름 붙이기", "video ${1:name} = ${2:asset(\"${3}\")};");
@@ -493,6 +504,36 @@ namespace templide::server {
                 const bool closed = end < text.size() && text[end] == '"';
                 completion.replace_to = end;
                 complete_relative(completion, statement.substr(quote + 1), context.statement + quote + 1, closed, document);
+            }
+            return completion;
+        }
+
+        // #fmt 옵션 값: 옵션 이름, 또는 이름 뒤의 값
+        if (prefix.rfind("#fmt", 0) == 0) {
+            const std::string rest = prefix.substr(4);
+            if (rest.empty()) {
+                return completion; // '#fmt' 바로 뒤에서는 공백을 먼저 쓴다
+            }
+            const auto first = rest.find_first_not_of(" \t");
+            const std::string head = first == std::string::npos ? std::string() : rest.substr(first); // 뒤쪽 공백은 남긴다 (이름 뒤의 공백이 값 입력의 시작이다)
+            const auto space = head.find_first_of(" \t");
+            if (space == std::string::npos) {
+                for (const auto& spec : format::option_specs()) {
+                    add(completion, spec.name, PROPERTY, spec.description, std::string(spec.name) + " ");
+                }
+            } else if (const auto* spec = format::find_option(head.substr(0, space))) {
+                for (const auto& value : format::option_values(*spec)) {
+                    add(completion, value, VALUE, value == spec->default_value ? "기본값" : "", value);
+                }
+                // 정수는 기본값과 범위를 알려 준다 (keep도 쓸 수 있는 옵션은 0부터 몇 개)
+                const std::string range = std::to_string(spec->min) + " ~ " + std::to_string(spec->max);
+                if (spec->kind == format::OptionKind::Integer) {
+                    add(completion, spec->default_value, VALUE, "기본값 (" + range + ")", spec->default_value);
+                } else if (spec->kind == format::OptionKind::KeepOrInteger) {
+                    for (const char* number : {"0", "1", "2"}) {
+                        add(completion, number, VALUE, "빈 줄 수 (" + range + ")", number);
+                    }
+                }
             }
             return completion;
         }

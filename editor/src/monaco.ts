@@ -27,7 +27,15 @@ monaco.languages.setMonarchTokensProvider('tlide', {
             // #include <std/stddef>의 경로는 "..."처럼 글로 칠한다. 닫히지 않은 <는 아래 규칙이 키워드만 칠한다
             [/(#include)(\s*)(<[^>\n]*>)/, ['keyword', '', 'string']],
             [/#include/, 'keyword'],
+            // #fmt 옵션 값; 옵션 이름은 그대로 칠하고(모르는 이름은 컴파일러가 경고한다), 값은 숫자, true/false, 그 밖의 이름으로 나눈다.
+            // 아직 다 쓰지 않은 줄(#fmt 옵션, #fmt)도 쓴 곳까지 칠한다
+            [/(#fmt)([ \t]+)([a-zA-Z_]\w*)([ \t]+)([a-zA-Z_]\w*|\d+)/, ['keyword', '', 'variable', '', { cases: { '~\\d+': 'number', '@keywords': 'keyword', '@default': 'type' } }]],
+            [/(#fmt)([ \t]+)([a-zA-Z_]\w*)/, ['keyword', '', 'variable']],
+            [/#fmt\b/, 'keyword'],
             [/@[a-zA-Z_]\w*/, 'variable.predefined'],
+            // list<list<text>>의 list는 타입이고, cell(1, 2) { }의 cell은 표 칸을 꾸미는 문장이다 (이름만 쓴 식별자는 그대로 둔다)
+            [/list(?=\s*<)/, 'type'],
+            [/cell(?=\s*\()/, 'keyword'],
             // image, video, audio, font는 타입 자리(image 이름 = ...;, var font 이름;, (image 이름))에서만 타입이다.
             // put image { }의 개체 이름, image("a.png"), font("Arial")의 함수 이름은 그대로 둔다
             [/(var)(\s+)(image|video|audio|font)\b/, ['keyword', '', 'type']],

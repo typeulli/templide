@@ -8,7 +8,7 @@ slide {
 $ templide action_without_call.tlide --check
 [exit] 1
 [stderr]
-action_without_call.tlide:4:37: error: run needs a function name and optional arguments, such as run("onClick", @slide.number)
+action_without_call.tlide:4:37: error[E2088]: run needs a function name and optional arguments, such as run("onClick", @slide.number)
 -- adjust_not_available.tlide --
 /* 조절점이 없는 도형의 adj1 */
 #include <std/stddef>
@@ -19,7 +19,7 @@ slide {
 $ templide adjust_not_available.tlide --check
 [exit] 1
 [stderr]
-adjust_not_available.tlide:4:74: error: Kind 'rect' has no adj1
+adjust_not_available.tlide:4:74: error[E2117]: Kind 'rect' has no adj1
 -- animate_bad_category.tlide --
 /* 종류가 enter, emphasis, exit, move, media가 아님 */
 object label { var text text; }
@@ -31,7 +31,7 @@ slide {
 $ templide animate_bad_category.tlide --check
 [exit] 1
 [stderr]
-animate_bad_category.tlide:5:15: error: An animation must be enter, emphasis, exit, move or media, but got 'leave'
+animate_bad_category.tlide:5:15: error[E2042]: An animation must be enter, emphasis, exit, move or media, but got 'leave'
 -- animate_bad_option.tlide --
 /* 그 효과에 없는 옵션 */
 object label { var text text; }
@@ -43,7 +43,7 @@ slide {
 $ templide animate_bad_option.tlide --check
 [exit] 1
 [stderr]
-animate_bad_option.tlide:5:25: error: Animation 'fly' has no option 'sideways' (down, up, right, left, up_left, up_right, down_right, down_left)
+animate_bad_option.tlide:5:25: error[E2049]: Animation 'fly' has no option 'sideways' (down, up, right, left, up_left, up_right, down_right, down_left)
 -- animate_duplicate_duration.tlide --
 /* 길이를 두 번 씀 */
 object label { var text text; }
@@ -55,7 +55,7 @@ slide {
 $ templide animate_duplicate_duration.tlide --check
 [exit] 1
 [stderr]
-animate_duplicate_duration.tlide:5:29: error: Duplicate animation duration
+animate_duplicate_duration.tlide:5:29: error[E1018]: Duplicate animation duration
 -- animate_in_template.tlide --
 /* animate는 slide에 직접 쓴 put, group에서만 */
 object label { var text text; }
@@ -67,7 +67,7 @@ slide { put t { } }
 $ templide animate_in_template.tlide --check
 [exit] 1
 [stderr]
-animate_in_template.tlide:4:29: error: 'animate' can only be used in a put or group written in a slide
+animate_in_template.tlide:4:29: error[E2025]: 'animate' can only be used in a put or group written in a slide
 -- animate_media_on_label.tlide --
 /* media 애니메이션은 video와 audio에만 */
 object label { var text text; }
@@ -79,7 +79,7 @@ slide {
 $ templide animate_media_on_label.tlide --check
 [exit] 1
 [stderr]
-animate_media_on_label.tlide:5:13: error: Media animations can only be used on a video or an audio, but 'a' is a label
+animate_media_on_label.tlide:5:13: error[E2111]: Media animations can only be used on a video or an audio, but 'a' is a label
 -- animate_order_zero.tlide --
 /* order는 1 이상 */
 object label { var text text; }
@@ -91,7 +91,7 @@ slide {
 $ templide animate_order_zero.tlide --check
 [exit] 1
 [stderr]
-animate_order_zero.tlide:5:32: error: 'order' must be a number of 1 or more without a unit
+animate_order_zero.tlide:5:32: error[E2109]: 'order' must be a number of 1 or more without a unit
 -- animate_unknown_effect.tlide --
 /* 모르는 애니메이션 효과 */
 object label { var text text; }
@@ -103,7 +103,7 @@ slide {
 $ templide animate_unknown_effect.tlide --check
 [exit] 1
 [stderr]
-animate_unknown_effect.tlide:5:21: error: Unknown enter animation: explode
+animate_unknown_effect.tlide:5:21: error[E2047]: Unknown enter animation: explode
 -- animate_unknown_target.tlide --
 /* animate 대상 이름이 slide에 없음 */
 object label { var text text; }
@@ -115,7 +115,7 @@ slide {
 $ templide animate_unknown_target.tlide --check
 [exit] 1
 [stderr]
-animate_unknown_target.tlide:5:13: error: No object named 'ghost' on this slide; give one a name with 'put ... as ghost'
+animate_unknown_target.tlide:5:13: error[E2110]: No object named 'ghost' on this slide; give one a name with 'put ... as ghost'
 -- asset_without_bundle.tlide --
 /* 묶음을 불러오지 않고 asset("이름") */
 #include <std/stddef>
@@ -126,7 +126,7 @@ slide {
 $ templide asset_without_bundle.tlide --check
 [exit] 1
 [stderr]
-asset_without_bundle.tlide:4:30: error: No asset bundle is loaded; add 'asset "file.tasset";' first
+asset_without_bundle.tlide:4:30: error[E2011]: No asset bundle is loaded; add 'asset "file.tasset";' first
 -- background_file_missing.tlide --
 /* 배경 그림 파일이 없음 (html) */
 slide {
@@ -137,7 +137,7 @@ target page { path = "a.html"; type = html; }
 $ templide background_file_missing.tlide --check
 [exit] 1
 [stderr]
-error: target page: slide 1, background: cannot open image file $DIR/nope.png
+error[E3003]: target page: slide 1, background: cannot open image file $DIR/nope.png
 -- bad_unit.tlide --
 /* 모르는 단위 */
 object box { var int x; var int y; var int width; var int height; }
@@ -148,7 +148,7 @@ slide {
 $ templide bad_unit.tlide --check
 [exit] 1
 [stderr]
-bad_unit.tlide:4:19: error: Unknown unit 'foo' (px, pt, in, cm, mm, %, deg, s, ms)
+bad_unit.tlide:4:19: error[E2069]: Unknown unit 'foo' (px, pt, in, cm, mm, %, deg, s, ms)
 -- builtin_name.tlide --
 /* 내장 이름으로 선언 */
 object text { var int x; }
@@ -157,7 +157,7 @@ slide { }
 $ templide builtin_name.tlide --check
 [exit] 1
 [stderr]
-builtin_name.tlide:2:1: error: 'text' is a built-in name
+builtin_name.tlide:2:1: error[E2003]: 'text' is a built-in name
 -- builtin_property_clash.tlide --
 /* object의 var가 모든 object에 붙는 속성과 겹침 */
 object thing { var int rotation; }
@@ -166,7 +166,7 @@ slide { }
 $ templide builtin_property_clash.tlide --check
 [exit] 1
 [stderr]
-builtin_property_clash.tlide:2:1: error: 'rotation' is a built-in property of every object
+builtin_property_clash.tlide:2:1: error[E2017]: 'rotation' is a built-in property of every object
 -- cell_duplicate_property.tlide --
 /* cell 블록에서 같은 속성을 두 번 쓸 수 없다 */
 #include <std/stddef>
@@ -181,7 +181,7 @@ slide {
 $ templide cell_duplicate_property.tlide --check
 [exit] 1
 [stderr]
-cell_duplicate_property.tlide:7:56: error: Duplicate property: fill
+cell_duplicate_property.tlide:7:56: error[E2030]: Duplicate property: fill
 -- cell_in_text_box.tlide --
 /* cell(...)은 put table 안에서만 쓴다 */
 #include <std/stddef>
@@ -192,7 +192,7 @@ slide {
 $ templide cell_in_text_box.tlide --check
 [exit] 1
 [stderr]
-cell_in_text_box.tlide:4:72: error: 'cell' can only be used in a put table
+cell_in_text_box.tlide:4:72: error[E2034]: 'cell' can only be used in a put table
 -- cell_property_type.tlide --
 /* cell 블록의 속성 타입 */
 #include <std/stddef>
@@ -207,7 +207,7 @@ slide {
 $ templide cell_property_type.tlide --check
 [exit] 1
 [stderr]
-cell_property_type.tlide:7:46: error: Expected color, gradient, pattern or image, but got string
+cell_property_type.tlide:7:46: error[E2068]: Expected color, gradient, pattern or image, but got string
 -- cell_unknown_property.tlide --
 /* cell 블록의 알 수 없는 속성 */
 #include <std/stddef>
@@ -222,7 +222,7 @@ slide {
 $ templide cell_unknown_property.tlide --check
 [exit] 1
 [stderr]
-cell_unknown_property.tlide:7:39: error: Unknown cell property: bogus
+cell_unknown_property.tlide:7:39: error[E2039]: Unknown cell property: bogus
 -- color_alpha_range.tlide --
 /* rgba 알파 범위 */
 object swatch { var color c; }
@@ -233,7 +233,7 @@ slide {
 $ templide color_alpha_range.tlide --check
 [exit] 1
 [stderr]
-color_alpha_range.tlide:4:36: error: Alpha must be a number from 0 to 1 without a unit
+color_alpha_range.tlide:4:36: error[E2150]: Alpha must be a number from 0 to 1 without a unit
 -- color_hex_digits.tlide --
 /* hex 색의 자리 수 */
 object swatch { var color c; }
@@ -244,7 +244,7 @@ slide {
 $ templide color_hex_digits.tlide --check
 [exit] 1
 [stderr]
-color_hex_digits.tlide:4:22: error: Hex color must have 3, 4, 6 or 8 digits
+color_hex_digits.tlide:4:22: error[E2073]: Hex color must have 3, 4, 6 or 8 digits
 -- color_in_text.tlide --
 /* 색은 text에 쓸 수 없다 */
 object label { var text text; }
@@ -255,7 +255,7 @@ slide {
 $ templide color_in_text.tlide --check
 [exit] 1
 [stderr]
-color_in_text.tlide:4:24: error: color cannot be used in text
+color_in_text.tlide:4:24: error[E2103]: color cannot be used in text
 -- color_rgb_range.tlide --
 /* rgb 성분 범위 */
 object swatch { var color c; }
@@ -266,7 +266,7 @@ slide {
 $ templide color_rgb_range.tlide --check
 [exit] 1
 [stderr]
-color_rgb_range.tlide:4:26: error: Color component must be a number from 0 to 255 without a unit
+color_rgb_range.tlide:4:26: error[E2148]: Color component must be a number from 0 to 255 without a unit
 -- color_space_arg_count.tlide --
 /* hsl 인자 수 */
 object swatch { var color c; }
@@ -277,7 +277,7 @@ slide {
 $ templide color_space_arg_count.tlide --check
 [exit] 1
 [stderr]
-color_space_arg_count.tlide:4:22: error: hsl needs three values and an optional alpha, such as hsl(160deg, 40%, 59%)
+color_space_arg_count.tlide:4:22: error[E2072]: hsl needs three values and an optional alpha, such as hsl(160deg, 40%, 59%)
 -- color_space_unit.tlide --
 /* oklch의 색상(hue)에 잘못된 단위 */
 object swatch { var color c; }
@@ -288,7 +288,7 @@ slide {
 $ templide color_space_unit.tlide --check
 [exit] 1
 [stderr]
-color_space_unit.tlide:4:38: error: A hue must be an angle without a unit or with deg, such as 160deg
+color_space_unit.tlide:4:38: error[E2149]: A hue must be an angle without a unit or with deg, such as 160deg
 -- condition_not_bool.tlide --
 /* if 조건이 bool이 아님 */
 object label { var text text; }
@@ -300,7 +300,7 @@ slide { }
 $ templide condition_not_bool.tlide --check
 [exit] 1
 [stderr]
-condition_not_bool.tlide:4:9: error: Condition must be a bool such as 'a == b', but got int
+condition_not_bool.tlide:4:9: error[E2024]: Condition must be a bool such as 'a == b', but got int
 -- connector_missing_object.tlide --
 /* connector가 없는 이름을 가리킴 */
 #include <std/stddef>
@@ -312,7 +312,7 @@ slide {
 $ templide connector_missing_object.tlide --check
 [exit] 1
 [stderr]
-connector_missing_object.tlide:5:36: error: No object named 'nowhere' on this slide
+connector_missing_object.tlide:5:36: error[E2119]: No object named 'nowhere' on this slide
 -- connector_to_line.tlide --
 /* connector는 선에 붙을 수 없음 */
 #include <std/stddef>
@@ -325,7 +325,7 @@ slide {
 $ templide connector_to_line.tlide --check
 [exit] 1
 [stderr]
-connector_to_line.tlide:6:36: error: Cannot connect to the line 'l'
+connector_to_line.tlide:6:36: error[E2120]: Cannot connect to the line 'l'
 -- connector_with_fill.tlide --
 /* connector에는 fill이 없음 */
 #include <std/stddef>
@@ -338,7 +338,7 @@ slide {
 $ templide connector_with_fill.tlide --check
 [exit] 1
 [stderr]
-connector_with_fill.tlide:6:39: error: A line has no fill
+connector_with_fill.tlide:6:39: error[E2157]: A line has no fill
 -- context_without_member.tlide --
 /* @slide만 쓰고 멤버가 없음 */
 object label { var text text; }
@@ -349,7 +349,7 @@ slide {
 $ templide context_without_member.tlide --check
 [exit] 1
 [stderr]
-context_without_member.tlide:4:27: error: '@slide' must be followed by a member such as '@slide.page'
+context_without_member.tlide:4:27: error[E2071]: '@slide' must be followed by a member such as '@slide.page'
 -- crop_everything.tlide --
 /* 자르고 남는 그림이 없음 */
 #include <std/stddef>
@@ -360,7 +360,7 @@ slide {
 $ templide crop_everything.tlide --check
 [exit] 1
 [stderr]
-crop_everything.tlide:4:106: error: Crop must leave part of the image
+crop_everything.tlide:4:106: error[E2115]: Crop must leave part of the image
 -- duplicate_definition.tlide --
 /* 같은 이름을 두 번 선언 */
 style bold { font-weight = bold; }
@@ -370,7 +370,7 @@ slide { }
 $ templide duplicate_definition.tlide --check
 [exit] 1
 [stderr]
-duplicate_definition.tlide:3:1: error: 'bold' is already defined
+duplicate_definition.tlide:3:1: error[E2004]: 'bold' is already defined
 -- duplicate_layout.tlide --
 /* master 안의 같은 case 이름 */
 master deck {
@@ -382,7 +382,7 @@ slide { }
 $ templide duplicate_layout.tlide --check
 [exit] 1
 [stderr]
-duplicate_layout.tlide:4:5: error: Duplicate layout 'a' in master 'deck'
+duplicate_layout.tlide:4:5: error[E2038]: Duplicate layout 'a' in master 'deck'
 -- duplicate_object_name.tlide --
 /* 한 slide에서 같은 이름의 put as */
 object label { var text text; }
@@ -394,7 +394,7 @@ slide {
 $ templide duplicate_object_name.tlide --check
 [exit] 1
 [stderr]
-duplicate_object_name.tlide:5:18: error: Duplicate object name 'a' on this slide
+duplicate_object_name.tlide:5:18: error[E2112]: Duplicate object name 'a' on this slide
 -- duplicate_property.tlide --
 /* 같은 속성을 두 번 쓴 put */
 object box { var int x; var int y; var int width; var int height; }
@@ -405,7 +405,7 @@ slide {
 $ templide duplicate_property.tlide --check
 [exit] 1
 [stderr]
-duplicate_property.tlide:4:22: error: Duplicate property: x
+duplicate_property.tlide:4:22: error[E2030]: Duplicate property: x
 -- duplicate_style_property.tlide --
 /* style 안의 같은 속성 두 번 */
 style odd { color = hex(F00); color = hex(0F0); }
@@ -414,7 +414,7 @@ slide { }
 $ templide duplicate_style_property.tlide --check
 [exit] 1
 [stderr]
-duplicate_style_property.tlide:2:31: error: Duplicate style property: color
+duplicate_style_property.tlide:2:31: error[E2020]: Duplicate style property: color
 -- duplicate_transition.tlide --
 /* 한 slide에 transition 두 번 */
 slide {
@@ -425,15 +425,15 @@ slide {
 $ templide duplicate_transition.tlide --check
 [exit] 1
 [stderr]
-duplicate_transition.tlide:4:5: error: Duplicate transition
+duplicate_transition.tlide:4:5: error[E2040]: Duplicate transition
 -- encoding_not_utf8.tlide (base64) --
 b2JqZWN0IGxhYmVsIHsgdmFyIHRleHQgdGV4dDsgfQpzbGlkZSB7CiAgICBwdXQgbGFiZWwgeyB0
 ZXh0ID0gIrChIjsgfQp9Cg==
 -- encoding_not_utf8.expected --
 $ templide encoding_not_utf8.tlide --check
-[exit] 1
+[exit] 2
 [stderr]
-encoding_not_utf8.tlide: error: encoding_not_utf8.tlide is not UTF-8 (the first byte that is not valid UTF-8 is on line 3); save it as UTF-8 (in the editor: Save with Encoding)
+encoding_not_utf8.tlide: error[E2002]: encoding_not_utf8.tlide is not UTF-8 (the first byte that is not valid UTF-8 is on line 3); save it as UTF-8 (in the editor: Save with Encoding)
 -- encoding_utf16_odd_bytes.tlide (base64) --
 //4vACoAIAB4x1TPKbUgANzC2NU6ACAAXNUArvysIAB0x6i6wMkArCAA4LQgADi7HMEgACoALwAK
 AG8AYgBqAGUAYwB0ACAAbABhAGIAZQBsACAAewAgAHYAYQByACAAdABlAHgAdAAgAHQAZQB4AHQA
@@ -441,16 +441,16 @@ OwAgAH0ACgBzAGwAaQBkAGUAIAB7AAoAIAAgACAAIABwAHUAdAAgAGwAYQBiAGUAbAAgAHsAIAB0
 AGUAeAB0ACAAPQAgACIAXNUAriAAPdgA3iAAZQBuAGQAIgA7ACAAfQAKAH0ACgAK
 -- encoding_utf16_odd_bytes.expected --
 $ templide encoding_utf16_odd_bytes.tlide --check
-[exit] 1
+[exit] 2
 [stderr]
-encoding_utf16_odd_bytes.tlide: error: encoding_utf16_odd_bytes.tlide is not valid UTF-16 (odd number of bytes); save it as UTF-8 (in the editor: Save with Encoding)
+encoding_utf16_odd_bytes.tlide: error[E2002]: encoding_utf16_odd_bytes.tlide is not valid UTF-16 (odd number of bytes); save it as UTF-8 (in the editor: Save with Encoding)
 -- encoding_utf16_unpaired_surrogate.tlide (base64) --
 //4A2GEA
 -- encoding_utf16_unpaired_surrogate.expected --
 $ templide encoding_utf16_unpaired_surrogate.tlide --check
-[exit] 1
+[exit] 2
 [stderr]
-encoding_utf16_unpaired_surrogate.tlide: error: encoding_utf16_unpaired_surrogate.tlide is not valid UTF-16 (unpaired surrogate); save it as UTF-8 (in the editor: Save with Encoding)
+encoding_utf16_unpaired_surrogate.tlide: error[E2002]: encoding_utf16_unpaired_surrogate.tlide is not valid UTF-16 (unpaired surrogate); save it as UTF-8 (in the editor: Save with Encoding)
 -- encoding_utf32.tlide (base64) --
 //4AAC8AAAAqAAAAIAAAAHjHAABUzwAAKbUAACAAAADcwgAA2NUAADoAAAAgAAAAXNUAAACuAAD8
 rAAAIAAAAHTHAACougAAwMkAAACsAAAgAAAA4LQAACAAAAA4uwAAHMEAACAAAAAqAAAALwAAAAoA
@@ -462,9 +462,9 @@ AABlAAAAeAAAAHQAAAAgAAAAPQAAACAAAAAiAAAAXNUAAACuAAAgAAAAAPYBACAAAABlAAAAbgAA
 AGQAAAAiAAAAOwAAACAAAAB9AAAACgAAAH0AAAAKAAAA
 -- encoding_utf32.expected --
 $ templide encoding_utf32.tlide --check
-[exit] 1
+[exit] 2
 [stderr]
-encoding_utf32.tlide: error: encoding_utf32.tlide is UTF-32, which the compiler cannot read; save it as UTF-8 (in the editor: Save with Encoding)
+encoding_utf32.tlide: error[E2002]: encoding_utf32.tlide is UTF-32, which the compiler cannot read; save it as UTF-8 (in the editor: Save with Encoding)
 -- font_as_string.tlide --
 /* font-family는 font("...")로 써야 한다 */
 style serif { font-family = "Georgia"; }
@@ -473,7 +473,7 @@ slide { }
 $ templide font_as_string.tlide --check
 [exit] 1
 [stderr]
-font_as_string.tlide:2:29: error: Write a font as font("..."), such as font("Arial")
+font_as_string.tlide:2:29: error[E2067]: Write a font as font("..."), such as font("Arial")
 -- for_range_not_int.tlide --
 /* 범위 for는 int만 */
 object label { var text text; }
@@ -485,7 +485,7 @@ slide { }
 $ templide for_range_not_int.tlide --check
 [exit] 1
 [stderr]
-for_range_not_int.tlide:4:10: error: A range can only be used with int, but got string
+for_range_not_int.tlide:4:10: error[E2023]: A range can only be used with int, but got string
 -- fstring_slide_number.tlide --
 /* @slide.number는 f-string 안에 쓸 수 없다 */
 object label { var text text; }
@@ -496,7 +496,7 @@ slide {
 $ templide fstring_slide_number.tlide --check
 [exit] 1
 [stderr]
-fstring_slide_number.tlide:4:31: error: This value is updated by PowerPoint, so it cannot be used in an f-string; put it directly in text
+fstring_slide_number.tlide:4:31: error[E2070]: This value is updated by PowerPoint, so it cannot be used in an f-string; put it directly in text
 -- html_bevel.tlide --
 /* html은 3D 입체(bevel)를 그리지 못한다 */
 #include <std/stddef>
@@ -508,7 +508,7 @@ target web { path = "a.html"; type = html; }
 $ templide html_bevel.tlide --check
 [exit] 1
 [stderr]
-error: target web: slide 1, shape: the html backend cannot draw 'bevel'; 3D bevels and extrusions only render in PowerPoint
+error[E3003]: target web: slide 1, shape: the html backend cannot draw 'bevel'; 3D bevels and extrusions only render in PowerPoint
 -- html_transition.tlide --
 /* html은 randomBars 전환을 그리지 못한다 */
 slide {
@@ -519,7 +519,7 @@ target web { path = "a.html"; type = html; }
 $ templide html_transition.tlide --check
 [exit] 1
 [stderr]
-error: target web: html_transition.tlide:3:16: the html backend does not support transition randomBars.vertical; it only renders in PowerPoint
+error[E3003]: target web: html_transition.tlide:3:16: the html backend does not support transition randomBars.vertical; it only renders in PowerPoint
 -- image_empty_path.tlide --
 /* image("")의 빈 경로 */
 slide {
@@ -529,7 +529,7 @@ slide {
 $ templide image_empty_path.tlide --check
 [exit] 1
 [stderr]
-image_empty_path.tlide:3:24: error: The path must not be empty
+image_empty_path.tlide:3:24: error[E2156]: The path must not be empty
 -- image_extension_html.tlide --
 /* html이 읽지 못하는 그림 확장자 */
 #include <std/stddef>
@@ -541,7 +541,7 @@ target page { path = "a.html"; type = html; }
 $ templide image_extension_html.tlide --check
 [exit] 1
 [stderr]
-error: target page: slide 1, image: unsupported image format '.webp' (png, jpg, gif, bmp)
+error[E3003]: target page: slide 1, image: unsupported image format '.webp' (png, jpg, gif, bmp)
 -- image_extension_pptx.tlide --
 /* pptx가 읽지 못하는 그림 확장자 */
 #include <std/stddef>
@@ -553,7 +553,7 @@ target deck { path = "a.pptx"; type = pptx; }
 $ templide image_extension_pptx.tlide --check
 [exit] 1
 [stderr]
-error: target deck: slide 1, image: unsupported image format '.tga' (png, jpg, gif, bmp)
+error[E3003]: target deck: slide 1, image: unsupported image format '.tga' (png, jpg, gif, bmp)
 -- image_file_missing.tlide --
 /* 그림 파일이 없음 */
 #include <std/stddef>
@@ -565,7 +565,7 @@ target deck { path = "a.pptx"; type = pptx; }
 $ templide image_file_missing.tlide --check
 [exit] 1
 [stderr]
-error: target deck: slide 1, image: cannot open image file $DIR/nope.png
+error[E3003]: target deck: slide 1, image: cannot open image file $DIR/nope.png
 -- image_path_property.tlide --
 /* 그림은 path가 아니라 data로 준다 */
 #include <std/stddef>
@@ -576,7 +576,7 @@ slide {
 $ templide image_path_property.tlide --check
 [exit] 1
 [stderr]
-image_path_property.tlide:4:17: error: 'image' has no property 'path'; give the file with data, such as data = file("picture.png")
+image_path_property.tlide:4:17: error[E2028]: 'image' has no property 'path'; give the file with data, such as data = file("picture.png")
 -- image_refers_to_itself.tlide --
 /* image 이름이 자기 자신을 가리킴 */
 image a = a;
@@ -585,7 +585,7 @@ slide { }
 $ templide image_refers_to_itself.tlide --check
 [exit] 1
 [stderr]
-image_refers_to_itself.tlide:2:7: error: 'a' refers to itself
+image_refers_to_itself.tlide:2:7: error[E2137]: 'a' refers to itself
 -- include_error_location/main.tlide --
 /* 오류는 그 오류가 있는 파일의 이름과 위치로 알린다. 파일은 읽은 순서(main이 먼저, 그다음 _inc), 그 안에서는 위치 순서로 나온다 */
 #include "_inc"
@@ -597,8 +597,8 @@ slide {
 $ templide main.tlide --check
 [exit] 1
 [stderr]
-main.tlide:5:5: error: Unknown template or object: nothing_here
-_inc.tlide:2:9: error: Unknown type: undefined_type
+main.tlide:5:5: error[E2027]: Unknown template or object: nothing_here
+_inc.tlide:2:9: error[E2014]: Unknown type: undefined_type
 -- include_error_location/_inc.tlide --
 object thing {
     var undefined_type x;
@@ -611,7 +611,7 @@ slide { }
 $ templide include_not_found.tlide --check
 [exit] 1
 [stderr]
-include_not_found.tlide:2:10: error: Cannot find file: nothing_here.tlide
+include_not_found.tlide:2:10: error[E2001]: Cannot find file: nothing_here.tlide
 -- include_package_not_found.tlide --
 /* #include <...>로 없는 패키지 */
 #include <std/nothing_here>
@@ -620,7 +620,7 @@ slide { }
 $ templide include_package_not_found.tlide --check
 [exit] 1
 [stderr]
-include_package_not_found.tlide:2:10: error: Cannot find package: $EXE_DIR/packages/std/nothing_here.tlide
+include_package_not_found.tlide:2:10: error[E2153]: Cannot find package: $EXE_DIR/packages/std/nothing_here.tlide
 -- layout_syntax.tlide --
 /* layout은 master.case로 써야 한다 */
 master deck { case a { } }
@@ -631,7 +631,7 @@ slide {
 $ templide layout_syntax.tlide --check
 [exit] 1
 [stderr]
-layout_syntax.tlide:4:14: error: Layout must be written as <master>.<layout> or <master>(<arguments>).<layout>
+layout_syntax.tlide:4:14: error[E2056]: Layout must be written as <master>.<layout> or <master>(<arguments>).<layout>
 -- link_and_action.tlide --
 /* link와 action은 함께 쓸 수 없다 */
 object tile { var text text; }
@@ -642,7 +642,7 @@ slide {
 $ templide link_and_action.tlide --check
 [exit] 1
 [stderr]
-link_and_action.tlide:4:28: error: Use either 'link' or 'action'; an object has one click action (write the link as action = ...)
+link_and_action.tlide:4:28: error[E2033]: Use either 'link' or 'action'; an object has one click action (write the link as action = ...)
 -- link_file_call.tlide --
 /* 링크에 file(...)은 쓸 수 없다 (action_file을 쓴다) */
 object tile { var text text; }
@@ -653,7 +653,7 @@ slide {
 $ templide link_file_call.tlide --check
 [exit] 1
 [stderr]
-link_file_call.tlide:4:35: error: To open a file when clicked, write action_file("..."); file(...) gives a picture, video or audio file
+link_file_call.tlide:4:35: error[E2083]: To open a file when clicked, write action_file("..."); file(...) gives a picture, video or audio file
 -- link_slide_missing.tlide --
 /* 없는 슬라이드로의 링크 */
 object tile { var text text; }
@@ -664,7 +664,7 @@ slide {
 $ templide link_slide_missing.tlide --check
 [exit] 1
 [stderr]
-link_slide_missing.tlide:4:41: error: There is no slide 5 to link to
+link_slide_missing.tlide:4:41: error[E2144]: There is no slide 5 to link to
 -- link_slide_not_whole.tlide --
 /* 슬라이드 번호는 정수 */
 object tile { var text text; }
@@ -675,7 +675,7 @@ slide {
 $ templide link_slide_not_whole.tlide --check
 [exit] 1
 [stderr]
-link_slide_not_whole.tlide:4:41: error: Expected int, but got float
+link_slide_not_whole.tlide:4:41: error[E2068]: Expected int, but got float
 -- list_assign_mismatch.tlide --
 /* list<int> 자리에 list<text> 값을 넘길 수 없다 */
 #include <std/stddef>
@@ -691,7 +691,7 @@ slide { }
 $ templide list_assign_mismatch.tlide --check
 [exit] 1
 [stderr]
-list_assign_mismatch.tlide:8:23: error: Expected list<int>, but got list<text>
+list_assign_mismatch.tlide:8:23: error[E2068]: Expected list<int>, but got list<text>
 -- list_item_type.tlide --
 /* list<float>의 항목은 숫자여야 한다 */
 #include <std/stddef>
@@ -706,7 +706,7 @@ slide {
 $ templide list_item_type.tlide --check
 [exit] 1
 [stderr]
-list_item_type.tlide:7:40: error: Expected float, but got string
+list_item_type.tlide:7:40: error[E2068]: Expected float, but got string
 -- list_not_a_list.tlide --
 /* list<list<text>> 자리에 목록이 아닌 값 */
 #include <std/stddef>
@@ -721,7 +721,7 @@ slide {
 $ templide list_not_a_list.tlide --check
 [exit] 1
 [stderr]
-list_not_a_list.tlide:7:17: error: Expected list<list<text>>, but got string
+list_not_a_list.tlide:7:17: error[E2068]: Expected list<list<text>>, but got string
 -- list_row_not_a_list.tlide --
 /* 행은 [ ... ] 목록이어야 한다 */
 #include <std/stddef>
@@ -736,8 +736,8 @@ slide {
 $ templide list_row_not_a_list.tlide --check
 [exit] 1
 [stderr]
-list_row_not_a_list.tlide:7:18: error: Expected list<text>, but got string
-list_row_not_a_list.tlide:7:23: error: Expected list<text>, but got string
+list_row_not_a_list.tlide:7:18: error[E2068]: Expected list<text>, but got string
+list_row_not_a_list.tlide:7:23: error[E2068]: Expected list<text>, but got string
 -- list_unknown_element_type.tlide --
 /* list<T>의 T를 모르면 그 타입 이름을 알린다 */
 #include <std/stddef>
@@ -749,7 +749,7 @@ slide { }
 $ templide list_unknown_element_type.tlide --check
 [exit] 1
 [stderr]
-list_unknown_element_type.tlide:4:9: error: Unknown type: nothing
+list_unknown_element_type.tlide:4:9: error[E2014]: Unknown type: nothing
 -- loop_too_many.tlide --
 /* 반복이 10000번을 넘음 */
 object label { var text text; }
@@ -761,10 +761,10 @@ slide { put t { } }
 $ templide loop_too_many.tlide --check
 [exit] 1
 [stderr]
-loop_too_many.tlide:4:5: error: Loop runs more than 10000 times
+loop_too_many.tlide:4:5: error[E2123]: Loop runs more than 10000 times
 -- master_arg_count.tlide --
 /* master 인자 수 */
-master deck(color c) { case a { } }
+master deck { var color c; case a { } }
 slide {
     layout = deck.a;
 }
@@ -772,7 +772,7 @@ slide {
 $ templide master_arg_count.tlide --check
 [exit] 1
 [stderr]
-master_arg_count.tlide:4:14: error: Master 'deck' needs 1 argument(s), but got 0
+master_arg_count.tlide:4:14: error[E2061]: Missing argument 'c' for master 'deck'
 -- master_slide_page.tlide --
 /* master 안에서는 @slide.page를 쓸 수 없다 */
 object label { var text text; }
@@ -784,7 +784,7 @@ slide { }
 $ templide master_slide_page.tlide --check
 [exit] 1
 [stderr]
-master_slide_page.tlide:4:36: error: '@slide' cannot be used in a master
+master_slide_page.tlide:4:36: error[E2093]: '@slide' cannot be used in a master
 -- master_theme_not_a_theme.tlide --
 /* master의 theme에 theme이 아닌 이름 */
 master deck {
@@ -796,7 +796,7 @@ slide { }
 $ templide master_theme_not_a_theme.tlide --check
 [exit] 1
 [stderr]
-master_theme_not_a_theme.tlide:3:13: error: Expected the name of a theme
+master_theme_not_a_theme.tlide:3:13: error[E2037]: Expected the name of a theme
 -- missing_required_property.tlide --
 /* 기본값이 없는 var를 안 쓴 put */
 object box { var int x; var int y; var int width; var int height; }
@@ -807,7 +807,7 @@ slide {
 $ templide missing_required_property.tlide --check
 [exit] 1
 [stderr]
-missing_required_property.tlide:4:5: error: Missing property 'height' for 'box'
+missing_required_property.tlide:4:5: error[E2031]: Missing property 'height' for 'box'
 -- multiply_units.tlide --
 /* 단위가 있는 두 수의 곱 */
 object box { var int x; var int y; var int width; var int height; }
@@ -818,7 +818,7 @@ slide {
 $ templide multiply_units.tlide --check
 [exit] 1
 [stderr]
-multiply_units.tlide:4:19: error: Cannot multiply two numbers that both have units
+multiply_units.tlide:4:19: error[E2147]: Cannot multiply two numbers that both have units
 -- negative_percent_size.tlide --
 /* %로 쓴 크기가 음수 (슬라이드 크기를 알아야 해서 백엔드가 알린다) */
 #include <std/stddef>
@@ -830,7 +830,7 @@ target deck { path = "a.pptx"; type = pptx; }
 $ templide negative_percent_size.tlide --check
 [exit] 1
 [stderr]
-error: target deck: slide 1, text_box: width and height must not be negative
+error[E3003]: target deck: slide 1, text_box: width and height must not be negative
 -- negative_size.tlide --
 /* 크기는 음수일 수 없다 */
 object box { var int x; var int y; var int width; var int height; }
@@ -841,7 +841,7 @@ slide {
 $ templide negative_size.tlide --check
 [exit] 1
 [stderr]
-negative_size.tlide:4:37: error: 'width' must be 0 or more
+negative_size.tlide:4:37: error[E2114]: 'width' must be 0 or more
 -- ok_check.tlide --
 /* 문제가 없는 문서의 --check는 target마다 ok를 찍고 파일을 쓰지 않는다 */
 #include <std/stddef>
@@ -868,7 +868,7 @@ slide {
 $ templide opacity_range.tlide --check
 [exit] 1
 [stderr]
-opacity_range.tlide:4:62: error: 'opacity' must be between 0 and 1
+opacity_range.tlide:4:62: error[E2114]: 'opacity' must be between 0 and 1
 -- parse_bad_hex_digit.tlide --
 /* hex(...)에 16진수가 아닌 글자 */
 object label { var text text; }
@@ -880,7 +880,7 @@ slide {
 $ templide parse_bad_hex_digit.tlide --check
 [exit] 1
 [stderr]
-parse_bad_hex_digit.tlide:5:26: error: Invalid hex color: GG0
+parse_bad_hex_digit.tlide:5:26: error[E1014]: Invalid hex color: GG0
 -- parse_else_without_if.tlide --
 /* if 없는 else */
 object label { var text text; }
@@ -891,7 +891,25 @@ template t {
 $ templide parse_else_without_if.tlide --check
 [exit] 1
 [stderr]
-parse_else_without_if.tlide:4:5: error: 'else' without preceding 'if'
+parse_else_without_if.tlide:4:5: error[E1002]: 'else' without preceding 'if'
+-- parse_fmt_equals.tlide --
+/* #fmt는 등호 없이 '이름 값'으로 쓴다 */
+#fmt indent_size = 4
+slide { }
+-- parse_fmt_equals.expected --
+$ templide parse_fmt_equals.tlide --check
+[exit] 1
+[stderr]
+parse_fmt_equals.tlide:2:18: error[E1027]: Expected a name or a number as the option value, but got '='
+-- parse_fmt_no_value.tlide --
+/* #fmt의 값은 같은 줄에 있어야 한다. 값을 빠뜨려도 다음 줄의 slide를 값으로 삼키지 않는다 */
+#fmt indent_size
+slide { }
+-- parse_fmt_no_value.expected --
+$ templide parse_fmt_no_value.tlide --check
+[exit] 1
+[stderr]
+parse_fmt_no_value.tlide:3:1: error[E1027]: Expected a name or a number as the option value, but got 'slide'
 -- parse_fstring_unterminated.tlide --
 /* 줄 끝까지 닫히지 않은 f-string */
 object label { var text text; }
@@ -902,8 +920,8 @@ slide {
 $ templide parse_fstring_unterminated.tlide --check
 [exit] 1
 [stderr]
-parse_fstring_unterminated.tlide:4:37: error: Unterminated f-string
-parse_fstring_unterminated.tlide:6:1: error: Unexpected end of file in block
+parse_fstring_unterminated.tlide:4:37: error[E1009]: Unterminated f-string
+parse_fstring_unterminated.tlide:6:1: error[E1015]: Unexpected end of file in block
 -- parse_list_without_kind.tlide --
 /* bullets 같은 종류 없이 쓴 목록 */
 object label { var text text; }
@@ -914,7 +932,7 @@ slide {
 $ templide parse_list_without_kind.tlide --check
 [exit] 1
 [stderr]
-parse_list_without_kind.tlide:4:24: error: A list must follow 'bullets', 'numbers' or 'dashes'
+parse_list_without_kind.tlide:4:24: error[E2101]: A list must follow 'bullets', 'numbers' or 'dashes'
 -- parse_minus_space.tlide --
 /* 음수 리터럴은 - 바로 뒤에 숫자가 붙어야 한다 */
 object box { var int x; var int y; var int width; var int height; }
@@ -925,7 +943,7 @@ slide {
 $ templide parse_minus_space.tlide --check
 [exit] 1
 [stderr]
-parse_minus_space.tlide:4:21: error: Expected a number right after '-'
+parse_minus_space.tlide:4:21: error[E1006]: Expected a number right after '-'
 -- parse_missing_semicolon.tlide --
 /* 문장 끝의 ; 빠짐 */
 object label { var text text; }
@@ -936,7 +954,7 @@ slide {
 $ templide parse_missing_semicolon.tlide --check
 [exit] 1
 [stderr]
-parse_missing_semicolon.tlide:4:30: error: Expected ';' after expression, but got '}'
+parse_missing_semicolon.tlide:4:30: error[E1001]: Expected ';' after expression, but got '}'
 -- parse_multiple_errors.tlide --
 /* 서로 다른 구문 오류는 복구해서 모두 알린다 */
 object label { var text text; }
@@ -953,8 +971,8 @@ slide {
 $ templide parse_multiple_errors.tlide --check
 [exit] 1
 [stderr]
-parse_multiple_errors.tlide:4:33: error: Expected ';' after expression, but got '}'
-parse_multiple_errors.tlide:7:24: error: Expected expression, but got ';'
+parse_multiple_errors.tlide:4:33: error[E1001]: Expected ';' after expression, but got '}'
+parse_multiple_errors.tlide:7:24: error[E1007]: Expected expression, but got ';'
 -- parse_non_ascii_identifier.tlide --
 /* 식별자는 영문이어야 한다 */
 object box { var text body; }
@@ -965,7 +983,7 @@ slide {
 $ templide parse_non_ascii_identifier.tlide --check
 [exit] 1
 [stderr]
-parse_non_ascii_identifier.tlide:4:9: error: Expected name after 'put', but got '상'
+parse_non_ascii_identifier.tlide:4:9: error[E1001]: Expected name after 'put', but got '상'
 -- parse_object_statement.tlide --
 /* object 안에는 var만 쓸 수 있다 */
 object box {
@@ -975,7 +993,7 @@ object box {
 $ templide parse_object_statement.tlide --check
 [exit] 1
 [stderr]
-parse_object_statement.tlide:3:5: error: Unexpected identifier: put
+parse_object_statement.tlide:3:5: error[E1003]: Unexpected identifier: put
 -- parse_rgb_arg_count.tlide --
 /* rgb()의 인자 수 */
 object swatch { var color c; }
@@ -986,7 +1004,7 @@ slide {
 $ templide parse_rgb_arg_count.tlide --check
 [exit] 1
 [stderr]
-parse_rgb_arg_count.tlide:4:22: error: rgb() expects 3 arguments, but got 2
+parse_rgb_arg_count.tlide:4:22: error[E1012]: rgb() expects 3 arguments, but got 2
 -- parse_unknown_directive.tlide --
 /* #include가 아닌 지시자 */
 #define x
@@ -995,7 +1013,7 @@ slide { }
 $ templide parse_unknown_directive.tlide --check
 [exit] 1
 [stderr]
-parse_unknown_directive.tlide:2:2: error: Unknown directive: #define
+parse_unknown_directive.tlide:2:2: error[E1026]: Unknown directive: #define
 -- parse_unknown_escape.tlide --
 /* 모르는 이스케이프 \q */
 object label { var text text; }
@@ -1006,7 +1024,7 @@ slide {
 $ templide parse_unknown_escape.tlide --check
 [exit] 1
 [stderr]
-parse_unknown_escape.tlide:4:24: error: Unknown escape '\q' in string (\n, \t, \", \\, \{, \})
+parse_unknown_escape.tlide:4:24: error[E1005]: Unknown escape '\q' in string (\n, \t, \", \\, \{, \})
 -- parse_unknown_statement.tlide --
 /* 파일 맨 위에서 모르는 문장 */
 object label { var text text; }
@@ -1016,7 +1034,7 @@ slide { }
 $ templide parse_unknown_statement.tlide --check
 [exit] 1
 [stderr]
-parse_unknown_statement.tlide:3:1: error: Unexpected identifier: foo
+parse_unknown_statement.tlide:3:1: error[E1003]: Unexpected identifier: foo
 -- parse_unterminated_brace.tlide --
 /* 닫히지 않은 중괄호: 파일 끝에서 블록이 끝나지 않았다 */
 object label { var text text; }
@@ -1026,7 +1044,7 @@ slide {
 $ templide parse_unterminated_brace.tlide --check
 [exit] 1
 [stderr]
-parse_unterminated_brace.tlide:5:1: error: Unexpected end of file in block
+parse_unterminated_brace.tlide:5:1: error[E1015]: Unexpected end of file in block
 -- parse_unterminated_comment.tlide --
 /* 닫히지 않은 /* 주석 */
 object label { var text text; }
@@ -1038,7 +1056,7 @@ slide {
 $ templide parse_unterminated_comment.tlide --check
 [exit] 1
 [stderr]
-parse_unterminated_comment.tlide:6:1: error: Unexpected token: unterminated comment
+parse_unterminated_comment.tlide:6:1: error[E1004]: Unexpected token: unterminated comment
 -- parse_unterminated_string.tlide --
 /* 닫히지 않은 문자열: 줄 끝까지 닫는 따옴표가 없다 */
 object label { var text text; }
@@ -1049,8 +1067,8 @@ slide {
 $ templide parse_unterminated_string.tlide --check
 [exit] 1
 [stderr]
-parse_unterminated_string.tlide:4:24: error: Expected expression, but got '"abc; }'
-parse_unterminated_string.tlide:6:1: error: Unexpected end of file in block
+parse_unterminated_string.tlide:4:24: error[E1007]: Expected expression, but got '"abc; }'
+parse_unterminated_string.tlide:6:1: error[E1015]: Unexpected end of file in block
 -- placeholder_on_slide.tlide --
 /* placeholder는 master의 case에만 */
 #include <std/stddef>
@@ -1061,7 +1079,7 @@ slide {
 $ templide placeholder_on_slide.tlide --check
 [exit] 1
 [stderr]
-placeholder_on_slide.tlide:4:5: error: A placeholder can only be put in a master case; a slide fills it with title, subtitle or body
+placeholder_on_slide.tlide:4:5: error[E2118]: A placeholder can only be put in a master case; a slide fills it with title, subtitle or body
 -- plain_list_in_text.tlide --
 /* [a, b]는 list<T> 자리에만 쓴다. 글 자리에는 bullets, numbers, dashes, paragraphs 뒤에만 쓸 수 있다 */
 #include <std/stddef>
@@ -1072,7 +1090,7 @@ slide {
 $ templide plain_list_in_text.tlide --check
 [exit] 1
 [stderr]
-plain_list_in_text.tlide:4:27: error: A list must follow 'bullets', 'numbers' or 'dashes'
+plain_list_in_text.tlide:4:27: error[E2101]: A list must follow 'bullets', 'numbers' or 'dashes'
 -- plain_list_inside_bullets.tlide --
 /* 목록 안의 바깥 목록 없는 [ ... ]도 같다. 안쪽 목록은 bullets [ ... ]로 쓴다 */
 #include <std/stddef>
@@ -1083,7 +1101,7 @@ slide {
 $ templide plain_list_inside_bullets.tlide --check
 [exit] 1
 [stderr]
-plain_list_inside_bullets.tlide:4:41: error: A list must follow 'bullets', 'numbers' or 'dashes'
+plain_list_inside_bullets.tlide:4:41: error[E2101]: A list must follow 'bullets', 'numbers' or 'dashes'
 -- png_bad_extension.tlide --
 /* png target의 path는 .png로 끝나야 한다 */
 #include <std/stddef>
@@ -1093,7 +1111,7 @@ target t { path = "a.jpg"; type = png; }
 $ templide png_bad_extension.tlide --check
 [exit] 1
 [stderr]
-error: target t: the path of a png target must end with .png, such as "slides.png" (slide n is written as slides-n.png)
+error[E3003]: target t: the path of a png target must end with .png, such as "slides.png" (slide n is written as slides-n.png)
 -- png_options_on_pptx.tlide --
 /* scale과 transparent는 png만 쓴다. 다른 target에 적으면 경고만 하고 무시한다 (종료 코드 0) */
 #include <std/stddef>
@@ -1105,8 +1123,8 @@ $ templide png_options_on_pptx.tlide --check
 [stdout]
 t: ok
 [stderr]
-png_options_on_pptx.tlide:4:50: warning: scale only applies to png targets; the pptx target 't' ignores it
-png_options_on_pptx.tlide:4:67: warning: transparent only applies to png targets; the pptx target 't' ignores it
+png_options_on_pptx.tlide:4:50: warning[W3004]: scale only applies to png targets; the pptx target 't' ignores it
+png_options_on_pptx.tlide:4:67: warning[W3005]: transparent only applies to png targets; the pptx target 't' ignores it
 -- png_run_action_warning.tlide --
 /* png는 JS 함수를 부르는 곳이 없는 정적 출력이라 run(...)을 무시하고 경고한다 */
 #include <std/stddef>
@@ -1118,7 +1136,7 @@ $ templide png_run_action_warning.tlide --check
 [stdout]
 t: ok
 [stderr]
-png_run_action_warning.tlide:3:83: warning: run("go") calls a JS function, which only works in html and web; the png target 't' ignores it
+png_run_action_warning.tlide:3:83: warning[W3001]: run("go") calls a JS function, which only works in html and web; the png target 't' ignores it
 -- png_scale_range.tlide --
 /* scale은 0.1 ~ 10이다 */
 #include <std/stddef>
@@ -1128,7 +1146,7 @@ target t { path = "a.png"; type = png; scale = 20; }
 $ templide png_scale_range.tlide --check
 [exit] 1
 [stderr]
-png_scale_range.tlide:4:48: error: 'scale' must be between 0.1 and 10
+png_scale_range.tlide:4:48: error[E2114]: 'scale' must be between 0.1 and 10
 -- png_transparent_type.tlide --
 /* transparent는 true나 false다 */
 #include <std/stddef>
@@ -1138,7 +1156,7 @@ target t { path = "a.png"; type = png; transparent = 1; }
 $ templide png_transparent_type.tlide --check
 [exit] 1
 [stderr]
-png_transparent_type.tlide:4:54: error: Expected bool, but got int
+png_transparent_type.tlide:4:54: error[E2068]: Expected bool, but got int
 -- pptx_ok_with_bevel.tlide --
 /* pptx는 bevel을 그릴 수 있어서 같은 문서가 통과한다 (html_bevel과 짝) */
 #include <std/stddef>
@@ -1159,8 +1177,8 @@ target deck { path = "a.pptx"; type = pptx; width = 10px; height = 10px; }
 $ templide pptx_slide_size_range.tlide --check
 [exit] 1
 [stderr]
-error: target deck: slide width must be between 1in and 56in
-error: target deck: slide height must be between 1in and 56in
+error[E3003]: target deck: slide width must be between 1in and 56in
+error[E3003]: target deck: slide height must be between 1in and 56in
 -- radius_wrong_kind.tlide --
 /* radius는 둥근 모서리 도형에만 */
 #include <std/stddef>
@@ -1171,7 +1189,7 @@ slide {
 $ templide radius_wrong_kind.tlide --check
 [exit] 1
 [stderr]
-radius_wrong_kind.tlide:4:76: error: 'radius' only applies to shapes, backdrops and images of kind roundRect, round1Rect, round2SameRect, round2DiagRect or snipRoundRect
+radius_wrong_kind.tlide:4:76: error[E2116]: 'radius' only applies to shapes, backdrops and images of kind roundRect, round1Rect, round2SameRect, round2DiagRect or snipRoundRect
 -- self_name_unnamed.tlide --
 /* 이름 없는 put에서 @self.name */
 object label { var text text; }
@@ -1182,7 +1200,7 @@ slide {
 $ templide self_name_unnamed.tlide --check
 [exit] 1
 [stderr]
-self_name_unnamed.tlide:4:24: error: '@self.name' needs a named object; write 'put ... as NAME'
+self_name_unnamed.tlide:4:24: error[E2139]: '@self.name' needs a named object; write 'put ... as NAME'
 -- self_outside_put.tlide --
 /* @self는 put의 속성 값 안에서만 */
 slide {
@@ -1192,7 +1210,7 @@ slide {
 $ templide self_outside_put.tlide --check
 [exit] 1
 [stderr]
-self_outside_put.tlide:3:16: error: '@self' can only be used in the properties of a put
+self_outside_put.tlide:3:16: error[E2138]: '@self' can only be used in the properties of a put
 -- shadow_detail_without_base.tlide --
 /* shadow_blur는 shadow가 있어야 한다 */
 object box { var int x; var int y; var int width; var int height; }
@@ -1203,7 +1221,7 @@ slide {
 $ templide shadow_detail_without_base.tlide --check
 [exit] 1
 [stderr]
-shadow_detail_without_base.tlide:4:52: error: 'shadow_blur' needs 'shadow'
+shadow_detail_without_base.tlide:4:52: error[E2032]: 'shadow_blur' needs 'shadow'
 -- style_arg_count.tlide --
 /* style 인자 수가 다름 */
 object label { var text text; }
@@ -1215,7 +1233,7 @@ slide {
 $ templide style_arg_count.tlide --check
 [exit] 1
 [stderr]
-style_arg_count.tlide:5:24: error: Style 'size' needs 1 argument(s), but got 0
+style_arg_count.tlide:5:24: error[E2105]: Style 'size' needs 1 argument(s), but got 0
 -- style_needs_arguments.tlide --
 /* 인자가 필요한 style을 이름만 씀 */
 object label { var text text; }
@@ -1227,7 +1245,7 @@ slide {
 $ templide style_needs_arguments.tlide --check
 [exit] 1
 [stderr]
-style_needs_arguments.tlide:5:24: error: Style 'size' needs 1 argument(s)
+style_needs_arguments.tlide:5:24: error[E2097]: Style 'size' needs 1 argument(s)
 -- style_used_as_value.tlide --
 /* style을 값 자리에 씀 */
 object box { var int x; var int y; var int width; var int height; }
@@ -1239,7 +1257,7 @@ slide {
 $ templide style_used_as_value.tlide --check
 [exit] 1
 [stderr]
-style_used_as_value.tlide:5:19: error: Style 'big' can only be used inside text
+style_used_as_value.tlide:5:19: error[E2076]: Style 'big' can only be used inside text
 -- styles_not_included.tlide --
 /* bold 같은 기본 style은 std/styles에 있어서, stddef만 불러서는 쓸 수 없다 */
 #include <std/stddef>
@@ -1250,7 +1268,7 @@ slide {
 $ templide styles_not_included.tlide --check
 [exit] 1
 [stderr]
-styles_not_included.tlide:4:27: error: Unknown style or variable: bold
+styles_not_included.tlide:4:27: error[E2098]: Unknown style or variable: bold
 -- table_cell_duplicate.tlide --
 /* 같은 칸에 cell 블록을 둘 쓸 수 없다 */
 #include <std/stddef>
@@ -1265,7 +1283,7 @@ slide {
 $ templide table_cell_duplicate.tlide --check
 [exit] 1
 [stderr]
-table_cell_duplicate.tlide:7:63: error: Duplicate cell(1, 1)
+table_cell_duplicate.tlide:7:63: error[E2131]: Duplicate cell(1, 1)
 -- table_cell_not_integer.tlide --
 /* cell의 행과 열은 단위 없는 정수다 */
 #include <std/stddef>
@@ -1280,7 +1298,7 @@ slide {
 $ templide table_cell_not_integer.tlide --check
 [exit] 1
 [stderr]
-table_cell_not_integer.tlide:7:36: error: Expected int, but got float
+table_cell_not_integer.tlide:7:36: error[E2068]: Expected int, but got float
 -- table_cell_outside.tlide --
 /* cell(행, 열)은 표 안이어야 한다 */
 #include <std/stddef>
@@ -1295,7 +1313,7 @@ slide {
 $ templide table_cell_outside.tlide --check
 [exit] 1
 [stderr]
-table_cell_outside.tlide:7:43: error: cell(3, 1) is outside the table, which has 2 rows and 2 columns
+table_cell_outside.tlide:7:43: error[E2130]: cell(3, 1) is outside the table, which has 2 rows and 2 columns
 -- table_cells_missing.tlide --
 /* cells는 꼭 넣어야 한다 */
 #include <std/stddef>
@@ -1309,7 +1327,7 @@ slide {
 $ templide table_cells_missing.tlide --check
 [exit] 1
 [stderr]
-table_cells_missing.tlide:5:5: error: Missing property 'cells' for 'table'
+table_cells_missing.tlide:5:5: error[E2031]: Missing property 'cells' for 'table'
 -- table_col_widths_count.tlide --
 /* col_widths의 개수는 열의 수와 같아야 한다 */
 #include <std/stddef>
@@ -1324,7 +1342,7 @@ slide {
 $ templide table_col_widths_count.tlide --check
 [exit] 1
 [stderr]
-table_col_widths_count.tlide:7:44: error: 'col_widths' has 1 values, but the table has 2 columns
+table_col_widths_count.tlide:7:44: error[E2126]: 'col_widths' has 1 values, but the table has 2 columns
 -- table_covered_block.tlide --
 /* 병합에 가려지는 칸에는 cell 블록을 쓸 수 없다 */
 #include <std/stddef>
@@ -1339,7 +1357,7 @@ slide {
 $ templide table_covered_block.tlide --check
 [exit] 1
 [stderr]
-table_covered_block.tlide:7:59: error: cell(1, 2) is covered by the merged cell at cell(1, 1), so it cannot have its own cell block
+table_covered_block.tlide:7:59: error[E2134]: cell(1, 2) is covered by the merged cell at cell(1, 1), so it cannot have its own cell block
 -- table_covered_text.tlide --
 /* 병합에 가려지는 칸의 글은 비어 있어야 한다 */
 #include <std/stddef>
@@ -1354,7 +1372,7 @@ slide {
 $ templide table_covered_text.tlide --check
 [exit] 1
 [stderr]
-table_covered_text.tlide:7:17: error: The cell in row 1, column 2 is covered by the merged cell at cell(1, 1), so its text must be empty ("")
+table_covered_text.tlide:7:17: error[E2135]: The cell in row 1, column 2 is covered by the merged cell at cell(1, 1), so its text must be empty ("")
 -- table_empty_row.tlide --
 /* 표에는 열이 하나 이상 있어야 한다 */
 #include <std/stddef>
@@ -1369,7 +1387,7 @@ slide {
 $ templide table_empty_row.tlide --check
 [exit] 1
 [stderr]
-table_empty_row.tlide:7:17: error: A table needs at least one row and one column
+table_empty_row.tlide:7:17: error[E2125]: A table needs at least one row and one column
 -- table_forbidden_rotation.tlide --
 /* 표는 돌릴 수 없다 */
 #include <std/stddef>
@@ -1384,7 +1402,7 @@ slide {
 $ templide table_forbidden_rotation.tlide --check
 [exit] 1
 [stderr]
-table_forbidden_rotation.tlide:7:26: error: A table has no 'rotation'
+table_forbidden_rotation.tlide:7:26: error[E2161]: A table has no 'rotation'
 -- table_forbidden_shadow.tlide --
 /* 표에는 그림자를 쓸 수 없다 */
 #include <std/stddef>
@@ -1399,7 +1417,7 @@ slide {
 $ templide table_forbidden_shadow.tlide --check
 [exit] 1
 [stderr]
-table_forbidden_shadow.tlide:7:26: error: A table has no 'shadow'
+table_forbidden_shadow.tlide:7:26: error[E2161]: A table has no 'shadow'
 -- table_header_rows_range.tlide --
 /* header_rows는 행의 수를 넘을 수 없다 */
 #include <std/stddef>
@@ -1414,7 +1432,7 @@ slide {
 $ templide table_header_rows_range.tlide --check
 [exit] 1
 [stderr]
-table_header_rows_range.tlide:7:47: error: 'header_rows' is 5, but the table has only 2 rows
+table_header_rows_range.tlide:7:47: error[E2128]: 'header_rows' is 5, but the table has only 2 rows
 -- table_merge_outside.tlide --
 /* 병합한 칸은 표 밖으로 나갈 수 없다 */
 #include <std/stddef>
@@ -1429,7 +1447,7 @@ slide {
 $ templide table_merge_outside.tlide --check
 [exit] 1
 [stderr]
-table_merge_outside.tlide:7:31: error: The merged cell at cell(1, 2) reaches outside the table, which has 1 rows and 2 columns
+table_merge_outside.tlide:7:31: error[E2132]: The merged cell at cell(1, 2) reaches outside the table, which has 1 rows and 2 columns
 -- table_merge_overlap.tlide --
 /* 병합한 칸끼리 겹칠 수 없다 */
 #include <std/stddef>
@@ -1444,7 +1462,7 @@ slide {
 $ templide table_merge_overlap.tlide --check
 [exit] 1
 [stderr]
-table_merge_overlap.tlide:7:91: error: The merged cell at cell(1, 2) overlaps the merged cell at cell(1, 1)
+table_merge_overlap.tlide:7:91: error[E2133]: The merged cell at cell(1, 2) overlaps the merged cell at cell(1, 1)
 -- table_no_rows.tlide --
 /* 표에는 행이 하나 이상 있어야 한다 */
 #include <std/stddef>
@@ -1459,7 +1477,7 @@ slide {
 $ templide table_no_rows.tlide --check
 [exit] 1
 [stderr]
-table_no_rows.tlide:7:17: error: A table needs at least one row and one column
+table_no_rows.tlide:7:17: error[E2125]: A table needs at least one row and one column
 -- table_ragged_rows.tlide --
 /* 모든 행의 칸 수가 같아야 한다 */
 #include <std/stddef>
@@ -1474,7 +1492,7 @@ slide {
 $ templide table_ragged_rows.tlide --check
 [exit] 1
 [stderr]
-table_ragged_rows.tlide:7:17: error: Row 2 of 'cells' has 1 cells, but row 1 has 2
+table_ragged_rows.tlide:7:17: error[E2124]: Row 2 of 'cells' has 1 cells, but row 1 has 2
 -- table_row_heights_zero.tlide --
 /* 열 너비와 행 높이는 0보다 커야 한다 */
 #include <std/stddef>
@@ -1489,7 +1507,7 @@ slide {
 $ templide table_row_heights_zero.tlide --check
 [exit] 1
 [stderr]
-table_row_heights_zero.tlide:7:47: error: A value of 'row_heights' must be more than 0
+table_row_heights_zero.tlide:7:47: error[E2127]: A value of 'row_heights' must be more than 0
 -- table_span_zero.tlide --
 /* col_span, row_span은 1 이상이다 */
 #include <std/stddef>
@@ -1504,7 +1522,7 @@ slide {
 $ templide table_span_zero.tlide --check
 [exit] 1
 [stderr]
-table_span_zero.tlide:7:55: error: 'col_span' must be a whole number between 1 and 1000
+table_span_zero.tlide:7:55: error[E2114]: 'col_span' must be a whole number between 1 and 1000
 -- target_duplicate_property.tlide --
 /* target의 같은 속성 두 번 */
 target t { path = "a.pptx"; path = "b.pptx"; type = pptx; }
@@ -1512,7 +1530,7 @@ target t { path = "a.pptx"; path = "b.pptx"; type = pptx; }
 $ templide target_duplicate_property.tlide --check
 [exit] 1
 [stderr]
-target_duplicate_property.tlide:2:29: error: Duplicate property: path
+target_duplicate_property.tlide:2:29: error[E2030]: Duplicate property: path
 -- target_has_master.tlide --
 /* target에는 master 속성이 없다 */
 master deck { case a { } }
@@ -1521,7 +1539,7 @@ target t { path = "a.pptx"; type = pptx; master = deck; }
 $ templide target_has_master.tlide --check
 [exit] 1
 [stderr]
-target_has_master.tlide:3:42: error: A target has no master; the master comes from each slide's layout
+target_has_master.tlide:3:42: error[E2063]: A target has no master; the master comes from each slide's layout
 -- target_missing_path.tlide --
 /* target에 path가 없음 */
 target t { type = pptx; }
@@ -1529,7 +1547,7 @@ target t { type = pptx; }
 $ templide target_missing_path.tlide --check
 [exit] 1
 [stderr]
-target_missing_path.tlide:2:1: error: Missing property 'path' for target 't'
+target_missing_path.tlide:2:1: error[E2065]: Missing property 'path' for target 't'
 -- target_missing_type.tlide --
 /* target에 type이 없음 */
 target t { path = "a.pptx"; }
@@ -1537,7 +1555,7 @@ target t { path = "a.pptx"; }
 $ templide target_missing_type.tlide --check
 [exit] 1
 [stderr]
-target_missing_type.tlide:2:1: error: Missing property 'type' for target 't'
+target_missing_type.tlide:2:1: error[E2065]: Missing property 'type' for target 't'
 -- target_unknown_property.tlide --
 /* target에 없는 속성 */
 target t { path = "a.pptx"; type = pptx; colour = hex(F00); }
@@ -1545,7 +1563,7 @@ target t { path = "a.pptx"; type = pptx; colour = hex(F00); }
 $ templide target_unknown_property.tlide --check
 [exit] 1
 [stderr]
-target_unknown_property.tlide:2:42: error: Unknown target property: colour
+target_unknown_property.tlide:2:42: error[E2064]: Unknown target property: colour
 -- target_unknown_type.tlide --
 /* target type에 없는 값 */
 target t { path = "a.key"; type = keynote; }
@@ -1553,7 +1571,7 @@ target t { path = "a.key"; type = keynote; }
 $ templide target_unknown_type.tlide --check
 [exit] 1
 [stderr]
-target_unknown_type.tlide:2:35: error: 'keynote' is not a value of 'target_type'
+target_unknown_type.tlide:2:35: error[E2085]: 'keynote' is not a value of 'target_type'
 -- target_width_without_height.tlide --
 /* width만 쓴 target */
 target t { path = "a.pptx"; type = pptx; width = 1280px; }
@@ -1561,7 +1579,7 @@ target t { path = "a.pptx"; type = pptx; width = 1280px; }
 $ templide target_width_without_height.tlide --check
 [exit] 1
 [stderr]
-target_width_without_height.tlide:2:1: error: Target 't' must set both width and height
+target_width_without_height.tlide:2:1: error[E2066]: Target 't' must set both width and height
 -- template_recursion.tlide --
 /* 자기 자신을 put하는 template */
 template loop { put loop { } }
@@ -1570,7 +1588,7 @@ slide { put loop { } }
 $ templide template_recursion.tlide --check
 [exit] 1
 [stderr]
-template_recursion.tlide:2:17: error: Template expansion is too deep; check for a template that puts itself
+template_recursion.tlide:2:17: error[E2136]: Template expansion is too deep; check for a template that puts itself
 -- template_var_outside_top.tlide --
 /* 변수 선언은 template 맨 위에서만 */
 object label { var text text; }
@@ -1584,7 +1602,7 @@ slide { }
 $ templide template_var_outside_top.tlide --check
 [exit] 1
 [stderr]
-template_var_outside_top.tlide:5:9: error: Variables must be declared at the top level of a template
+template_var_outside_top.tlide:5:9: error[E2021]: Variables must be declared at the top level of a template
 -- theme_unknown_property.tlide --
 /* theme에 없는 속성 */
 theme t { accent9 = hex(F00); }
@@ -1593,7 +1611,8 @@ slide { }
 $ templide theme_unknown_property.tlide --check
 [exit] 1
 [stderr]
-theme_unknown_property.tlide:2:11: error: Unknown theme property: accent9
+theme_unknown_property.tlide:2:11: error[E2039]: Unknown theme property: accent9
+  help: did you mean 'accent1'?
 -- title_without_layout.tlide --
 /* layout 없이 title을 채움 */
 slide {
@@ -1603,7 +1622,7 @@ slide {
 $ templide title_without_layout.tlide --check
 [exit] 1
 [stderr]
-title_without_layout.tlide:3:5: error: 'title' needs a layout with a title placeholder
+title_without_layout.tlide:3:5: error[E2106]: 'title' needs a layout with a title placeholder
 -- title_without_placeholder.tlide --
 /* layout에 title 개체 틀이 없음 */
 #include <std/stddef>
@@ -1616,7 +1635,7 @@ slide {
 $ templide title_without_placeholder.tlide --check
 [exit] 1
 [stderr]
-title_without_placeholder.tlide:6:5: error: Layout 'blank' has no title placeholder
+title_without_placeholder.tlide:6:5: error[E2107]: Layout 'blank' has no title placeholder
 -- top_level_if.tlide --
 /* 파일 맨 위의 if는 아직 쓸 수 없다 */
 if (1 == 1) { }
@@ -1625,7 +1644,7 @@ slide { }
 $ templide top_level_if.tlide --check
 [exit] 1
 [stderr]
-top_level_if.tlide:2:1: error: 'if' is not supported at the top level yet
+top_level_if.tlide:2:1: error[E2005]: 'if' is not supported at the top level yet
 -- transition_bad_option.tlide --
 /* 그 효과에 없는 옵션 */
 slide {
@@ -1635,7 +1654,7 @@ slide {
 $ templide transition_bad_option.tlide --check
 [exit] 1
 [stderr]
-transition_bad_option.tlide:3:21: error: Transition 'wipe' has no option 'diagonal' (left, up, right, down)
+transition_bad_option.tlide:3:21: error[E2054]: Transition 'wipe' has no option 'diagonal' (left, up, right, down)
 -- transition_unknown.tlide --
 /* 모르는 전환 효과 */
 slide {
@@ -1645,7 +1664,7 @@ slide {
 $ templide transition_unknown.tlide --check
 [exit] 1
 [stderr]
-transition_unknown.tlide:3:16: error: Unknown transition: teleport
+transition_unknown.tlide:3:16: error[E2052]: Unknown transition: teleport
 -- unit_not_allowed.tlide --
 /* 속성이 받지 않는 단위 (각도에 px) */
 object box { var int x; var int y; var int width; var int height; }
@@ -1656,7 +1675,7 @@ slide {
 $ templide unit_not_allowed.tlide --check
 [exit] 1
 [stderr]
-unit_not_allowed.tlide:4:63: error: 'rotation' must be an angle without a unit or with deg
+unit_not_allowed.tlide:4:63: error[E2113]: 'rotation' must be an angle without a unit or with deg
 -- unknown_enum_member.tlide --
 /* enum에 없는 값 */
 enum align { left, right }
@@ -1668,7 +1687,7 @@ slide {
 $ templide unknown_enum_member.tlide --check
 [exit] 1
 [stderr]
-unknown_enum_member.tlide:5:24: error: 'middle' is not a value of 'align'
+unknown_enum_member.tlide:5:24: error[E2085]: 'middle' is not a value of 'align'
 -- unknown_function.tlide --
 /* 없는 함수 호출 */
 object box { var int x; var int y; var int width; var int height; }
@@ -1679,7 +1698,7 @@ slide {
 $ templide unknown_function.tlide --check
 [exit] 1
 [stderr]
-unknown_function.tlide:4:19: error: Unknown function: double
+unknown_function.tlide:4:19: error[E2077]: Unknown function: double
 -- unknown_layout.tlide --
 /* master에 없는 case */
 master deck { case a { } }
@@ -1690,7 +1709,7 @@ slide {
 $ templide unknown_layout.tlide --check
 [exit] 1
 [stderr]
-unknown_layout.tlide:4:19: error: Master 'deck' has no layout 'b'
+unknown_layout.tlide:4:19: error[E2062]: Master 'deck' has no layout 'b'
 -- unknown_master.tlide --
 /* 없는 master */
 slide {
@@ -1700,7 +1719,7 @@ slide {
 $ templide unknown_master.tlide --check
 [exit] 1
 [stderr]
-unknown_master.tlide:3:14: error: Unknown master: nothing
+unknown_master.tlide:3:14: error[E2057]: Unknown master: nothing
 -- unknown_name.tlide --
 /* 없는 이름을 값으로 쓴 경우 */
 object box { var int x; var int y; var int width; var int height; }
@@ -1711,7 +1730,7 @@ slide {
 $ templide unknown_name.tlide --check
 [exit] 1
 [stderr]
-unknown_name.tlide:4:19: error: Unknown name: nowhere
+unknown_name.tlide:4:19: error[E2086]: Unknown name: nowhere
 -- unknown_object.tlide --
 /* 없는 template이나 object를 put */
 slide {
@@ -1721,7 +1740,7 @@ slide {
 $ templide unknown_object.tlide --check
 [exit] 1
 [stderr]
-unknown_object.tlide:3:5: error: Unknown template or object: nothing_here
+unknown_object.tlide:3:5: error[E2027]: Unknown template or object: nothing_here
 -- unknown_property.tlide --
 /* object에 없는 속성 */
 object box { var int x; var int y; var int width; var int height; }
@@ -1732,7 +1751,7 @@ slide {
 $ templide unknown_property.tlide --check
 [exit] 1
 [stderr]
-unknown_property.tlide:4:52: error: 'box' has no property 'depth_of_field'
+unknown_property.tlide:4:52: error[E2029]: 'box' has no property 'depth_of_field'
 -- unknown_slide_property.tlide --
 /* slide에 없는 속성 */
 slide {
@@ -1742,7 +1761,7 @@ slide {
 $ templide unknown_slide_property.tlide --check
 [exit] 1
 [stderr]
-unknown_slide_property.tlide:3:5: error: Unknown slide property: colour
+unknown_slide_property.tlide:3:5: error[E2039]: Unknown slide property: colour
 -- unknown_style.tlide --
 /* 없는 style */
 object label { var text text; }
@@ -1753,7 +1772,7 @@ slide {
 $ templide unknown_style.tlide --check
 [exit] 1
 [stderr]
-unknown_style.tlide:4:24: error: Unknown style or variable: fancy
+unknown_style.tlide:4:24: error[E2098]: Unknown style or variable: fancy
 -- unknown_style_property.tlide --
 /* style에 없는 속성 */
 style odd { glow-color = hex(F00); }
@@ -1762,7 +1781,7 @@ slide { }
 $ templide unknown_style_property.tlide --check
 [exit] 1
 [stderr]
-unknown_style_property.tlide:2:13: error: Unknown style property: glow-color
+unknown_style_property.tlide:2:13: error[E2019]: Unknown style property: glow-color
 -- unknown_type.tlide --
 /* 없는 타입의 var */
 object box { var thing x; }
@@ -1771,7 +1790,7 @@ slide { }
 $ templide unknown_type.tlide --check
 [exit] 1
 [stderr]
-unknown_type.tlide:2:18: error: Unknown type: thing
+unknown_type.tlide:2:18: error[E2014]: Unknown type: thing
 -- warning_gamut.tlide --
 /* sRGB 밖의 색은 경고하고 종료 코드는 0이다 */
 #include <std/stddef>
@@ -1785,7 +1804,7 @@ $ templide warning_gamut.tlide --check
 [stdout]
 deck: ok
 [stderr]
-warning_gamut.tlide:4:76: warning: This oklch color is outside the sRGB range that pptx and html can show; using the nearest color hex(00C248)
+warning_gamut.tlide:4:76: warning[W2001]: This oklch color is outside the sRGB range that pptx and html can show; using the nearest color hex(00C248)
 -- warning_run_in_pptx.tlide --
 /* run(...)은 pptx에서 무시되므로 경고하고 종료 코드는 0이다 */
 #include <std/stddef>
@@ -1799,7 +1818,7 @@ $ templide warning_run_in_pptx.tlide --check
 [stdout]
 deck: ok
 [stderr]
-warning_run_in_pptx.tlide:4:80: warning: run("onClick") calls a JS function, which only works in html and web; the pptx target 'deck' ignores it
+warning_run_in_pptx.tlide:4:80: warning[W3001]: run("onClick") calls a JS function, which only works in html and web; the pptx target 'deck' ignores it
 -- warning_script_in_pptx.tlide --
 /* script는 html과 web만 읽으므로 pptx에서는 경고 */
 slide { }
@@ -1810,7 +1829,7 @@ $ templide warning_script_in_pptx.tlide --check
 [stdout]
 deck: ok
 [stderr]
-warning_script_in_pptx.tlide:3:54: warning: script is only loaded by html and web targets; the pptx target 'deck' ignores it
+warning_script_in_pptx.tlide:3:54: warning[W3003]: script is only loaded by html and web targets; the pptx target 'deck' ignores it
 -- wrong_type_fill.tlide --
 /* fill 자리에 수 */
 object box { var int x; var int y; var int width; var int height; }
@@ -1821,7 +1840,7 @@ slide {
 $ templide wrong_type_fill.tlide --check
 [exit] 1
 [stderr]
-wrong_type_fill.tlide:4:59: error: Expected color, gradient, pattern or image, but got int
+wrong_type_fill.tlide:4:59: error[E2068]: Expected color, gradient, pattern or image, but got int
 -- wrong_type_float_for_int.tlide --
 /* int 자리에 소수 */
 object box { var int x; var int y; var int width; var int height; }
@@ -1832,7 +1851,7 @@ slide {
 $ templide wrong_type_float_for_int.tlide --check
 [exit] 1
 [stderr]
-wrong_type_float_for_int.tlide:4:19: error: Expected int, but got float
+wrong_type_float_for_int.tlide:4:19: error[E2068]: Expected int, but got float
 -- wrong_type_int.tlide --
 /* int 자리에 문자열 */
 object box { var int x; var int y; var int width; var int height; }
@@ -1843,7 +1862,7 @@ slide {
 $ templide wrong_type_int.tlide --check
 [exit] 1
 [stderr]
-wrong_type_int.tlide:4:19: error: Expected int, but got string
+wrong_type_int.tlide:4:19: error[E2068]: Expected int, but got string
 -- 한글_오류/오류.tlide --
 /* 한글 파일 이름과 한글 글자가 든 줄의 오류 위치 */
 object box { var text body; }
@@ -1854,4 +1873,223 @@ slide {
 $ templide 오류.tlide --check
 [exit] 1
 [stderr]
-오류.tlide:4:59: error: 'box' has no property 'mistake'
+오류.tlide:4:59: error[E2029]: 'box' has no property 'mistake'
+-- master_default_unknown_name.tlide --
+/* 이름으로 넘긴 인자가 master에 없다 */
+master deck { var color c = hex(F00); case a { } }
+slide { layout = deck(d = hex(00F)).a; }
+-- master_default_unknown_name.expected --
+$ templide master_default_unknown_name.tlide --check
+[exit] 1
+[stderr]
+master_default_unknown_name.tlide:3:23: error[E2059]: Master 'deck' has no parameter 'd'
+-- master_default_twice.tlide --
+/* 위치로 넘긴 인자를 이름으로 또 넘겼다 */
+master deck { var color c = hex(F00); case a { } }
+slide { layout = deck(hex(00F), c = hex(0F0)).a; }
+-- master_default_twice.expected --
+$ templide master_default_twice.tlide --check
+[exit] 1
+[stderr]
+master_default_twice.tlide:3:33: error[E2060]: Argument 'c' is given more than once
+-- master_default_positional_after_named.tlide --
+/* 이름으로 넘긴 인자 뒤에 위치로 넘길 수 없다 */
+master deck { var color c = hex(F00); var int n = 1; case a { } }
+slide { layout = deck(c = hex(00F), 2).a; }
+-- master_default_positional_after_named.expected --
+$ templide master_default_positional_after_named.tlide --check
+[exit] 1
+[stderr]
+master_default_positional_after_named.tlide:3:37: error[E1011]: A positional argument cannot follow a named argument
+-- master_default_too_many.tlide --
+/* 매개변수보다 많이 넘겼다 */
+master deck { var color c = hex(F00); case a { } }
+slide { layout = deck(hex(00F), hex(0F0)).a; }
+-- master_default_too_many.expected --
+$ templide master_default_too_many.tlide --check
+[exit] 1
+[stderr]
+master_default_too_many.tlide:3:18: error[E2058]: Master 'deck' takes at most 1 argument(s), but got 2
+-- master_default_missing_middle.tlide --
+/* 기본값이 없는 매개변수는 생략할 수 없다 (이름으로 넘겨도 빠진 것은 알린다) */
+master deck { var color c = hex(F00); var int n; case a { } }
+slide { layout = deck(c = hex(00F)).a; }
+-- master_default_missing_middle.expected --
+$ templide master_default_missing_middle.tlide --check
+[exit] 1
+[stderr]
+master_default_missing_middle.tlide:3:18: error[E2061]: Missing argument 'n' for master 'deck'
+-- master_default_not_constant.tlide --
+/* 기본값은 상수여야 한다 */
+master deck { var int a = 1; var int b = a; case x { } }
+slide { layout = deck.x; }
+-- master_default_not_constant.expected --
+$ templide master_default_not_constant.tlide --check
+[exit] 1
+[stderr]
+master_default_not_constant.tlide:2:42: error[E2086]: Unknown name: a
+-- named_argument_elsewhere.tlide --
+/* 이름으로 넘기는 인자는 layout의 master 호출에서만 쓴다 */
+object label { var text text; }
+style tint(color c) { color = c; }
+slide { put label { text = tint(c = hex(F00)) "x"; } }
+-- named_argument_elsewhere.expected --
+$ templide named_argument_elsewhere.tlide --check
+[exit] 1
+[stderr]
+named_argument_elsewhere.tlide:4:28: error[E2105]: Style 'tint' needs 1 argument(s), but got 0
+named_argument_elsewhere.tlide:4:33: error[E2055]: Named arguments can only be used when choosing a layout, such as layout = brand(ink = hex(F00)).title
+-- chart_categories_mismatch.tlide --
+/* 계열의 값 수가 categories와 다름 */
+#include <std/stddef>
+slide {
+    put chart { kind = column; categories = ["a", "b", "c"]; values = [[1, 2]]; x = 0; y = 0; width = 100; height = 100; }
+}
+-- chart_categories_mismatch.expected --
+$ templide chart_categories_mismatch.tlide --check
+[exit] 1
+[stderr]
+chart_categories_mismatch.tlide:4:71: error[E2164]: Series 1 of 'values' has 2 values, but 'categories' has 3
+-- chart_empty_values.tlide --
+/* 계열이 없음 */
+#include <std/stddef>
+slide {
+    put chart { kind = line; values = []; x = 0; y = 0; width = 100; height = 100; }
+}
+-- chart_empty_values.expected --
+$ templide chart_empty_values.tlide --check
+[exit] 1
+[stderr]
+chart_empty_values.tlide:4:39: error[E2163]: A chart needs at least one series in 'values'
+-- chart_names_count.tlide --
+/* 이름 수가 계열 수와 다름 */
+#include <std/stddef>
+slide {
+    put chart { kind = line; names = ["a"]; values = [[1], [2]]; x = 0; y = 0; width = 100; height = 100; }
+}
+-- chart_names_count.expected --
+$ templide chart_names_count.tlide --check
+[exit] 1
+[stderr]
+chart_names_count.tlide:4:38: error[E2167]: 'names' has 1 names, but 'values' has 2 series
+-- chart_pie_negative.tlide --
+/* 원은 음수를 그릴 수 없다. 계열이 여럿이면 첫 계열만 그린다는 경고도 있다 */
+#include <std/stddef>
+slide {
+    put chart { kind = pie; values = [[1, -2], [3, 4]]; x = 0; y = 0; width = 100; height = 100; }
+}
+-- chart_pie_negative.expected --
+$ templide chart_pie_negative.tlide --check
+[exit] 1
+[stderr]
+chart_pie_negative.tlide:4:38: error[E2169]: A pie chart cannot show negative values
+chart_pie_negative.tlide:4:38: warning[W2005]: A pie chart shows only the first of 2 series
+-- chart_range_order.tlide --
+/* range는 비우거나 [최소, 최대] */
+#include <std/stddef>
+slide {
+    put chart { kind = column; values = [[1, 2]]; range = [5, 1]; x = 0; y = 0; width = 100; height = 100; }
+}
+-- chart_range_order.expected --
+$ templide chart_range_order.tlide --check
+[exit] 1
+[stderr]
+chart_range_order.tlide:4:59: error[E2168]: 'range' must be empty or two numbers, [minimum, maximum], with the minimum below the maximum
+-- chart_scatter_xs.tlide --
+/* 산점도의 xs: 없거나, 계열 수나 점의 수가 다름 */
+#include <std/stddef>
+slide {
+    put chart { kind = scatter; values = [[1, 2]]; x = 0; y = 0; width = 100; height = 100; }
+    put chart { kind = scatter; values = [[1, 2], [3, 4]]; xs = [[1, 2]]; x = 0; y = 0; width = 100; height = 100; }
+    put chart { kind = scatter; values = [[1, 2]]; xs = [[1, 2, 3]]; x = 0; y = 0; width = 100; height = 100; }
+}
+-- chart_scatter_xs.expected --
+$ templide chart_scatter_xs.tlide --check
+[exit] 1
+[stderr]
+chart_scatter_xs.tlide:4:5: error[E2171]: A scatter chart needs 'xs' with one list of x values per series
+chart_scatter_xs.tlide:5:65: error[E2165]: 'xs' has 1 series, but 'values' has 2
+chart_scatter_xs.tlide:6:57: error[E2166]: Series 1 of 'xs' has 3 values, but the same series of 'values' has 2
+-- chart_unit_value.tlide --
+/* 값은 단위 없는 숫자 */
+#include <std/stddef>
+slide {
+    put chart { kind = column; values = [[1, 2px]]; x = 0; y = 0; width = 100; height = 100; }
+}
+-- chart_unit_value.expected --
+$ templide chart_unit_value.tlide --check
+[exit] 1
+[stderr]
+chart_unit_value.tlide:4:41: error[E2170]: Chart values must be numbers without a unit
+-- chart_xs_ignored.tlide --
+/* xs는 산점도에서만 쓰므로 경고 */
+#include <std/stddef>
+slide {
+    put chart { kind = column; values = [[1, 2]]; xs = [[1, 2]]; x = 0; y = 0; width = 100; height = 100; }
+}
+target out { path = "out.pptx"; type = pptx; }
+-- chart_xs_ignored.expected --
+$ templide chart_xs_ignored.tlide --check
+[exit] 0
+[stdout]
+out: ok
+[stderr]
+chart_xs_ignored.tlide:4:56: warning[W2006]: 'xs' is only used by scatter charts
+-- math_syntax_errors.tlide --
+/* LaTeX 문법 오류는 target과 상관없이 오류다 */
+#include <std/stddef>
+slide {
+    put math { latex = "\\frac{a}{b"; x = 0; y = 0; width = 100; height = 100; }
+    put math { latex = "x^2^3"; x = 0; y = 0; width = 100; height = 100; }
+    put math { latex = "\\left( x"; x = 0; y = 0; width = 100; height = 100; }
+    put math { latex = "\\begin{pmatrix} a \\end{bmatrix}"; x = 0; y = 0; width = 100; height = 100; }
+    put math { latex = "a }"; x = 0; y = 0; width = 100; height = 100; }
+    put math { latex = "\\frac{1}"; x = 0; y = 0; width = 100; height = 100; }
+}
+-- math_syntax_errors.expected --
+$ templide math_syntax_errors.tlide --check
+[exit] 1
+[stderr]
+math_syntax_errors.tlide:4:24: error[E2172]: The LaTeX has a syntax error: Missing '}'
+math_syntax_errors.tlide:5:24: error[E2172]: The LaTeX has a syntax error: Double superscript
+math_syntax_errors.tlide:6:24: error[E2172]: The LaTeX has a syntax error: Missing \right
+math_syntax_errors.tlide:7:24: error[E2172]: The LaTeX has a syntax error: \begin{pmatrix} is closed by \end{bmatrix}
+math_syntax_errors.tlide:8:24: error[E2172]: The LaTeX has a syntax error: Unexpected '}'
+math_syntax_errors.tlide:9:24: error[E2172]: The LaTeX has a syntax error: Missing argument for \frac
+-- math_empty.tlide --
+/* 빈 LaTeX */
+#include <std/stddef>
+slide {
+    put math { latex = "  "; x = 0; y = 0; width = 100; height = 100; }
+}
+-- math_empty.expected --
+$ templide math_empty.tlide --check
+[exit] 1
+[stderr]
+math_empty.tlide:4:24: error[E2174]: The LaTeX is empty
+-- math_unsupported_pptx.tlide --
+/* PowerPoint 수식으로 쓸 수 없는 명령은 pptx를 만드는 문서에서만 오류다 */
+#include <std/stddef>
+slide {
+    put math { latex = "a \\xrightarrow{f} b"; x = 0; y = 0; width = 100; height = 100; }
+    put math { latex = "\\begin{aligned} a &= b \\end{aligned}"; x = 0; y = 0; width = 100; height = 100; }
+}
+target out { path = "out.pptx"; type = pptx; }
+-- math_unsupported_pptx.expected --
+$ templide math_unsupported_pptx.tlide --check
+[exit] 1
+[stderr]
+math_unsupported_pptx.tlide:4:24: error[E2173]: The LaTeX '\xrightarrow' cannot be written as a PowerPoint equation; remove it, or remove pptx from the targets
+math_unsupported_pptx.tlide:5:24: error[E2173]: The LaTeX '\begin{aligned}' cannot be written as a PowerPoint equation; remove it, or remove pptx from the targets
+-- math_unsupported_html.tlide --
+/* pptx가 없으면 KaTeX가 읽을 수 있는 명령은 그대로 쓴다 */
+#include <std/stddef>
+slide {
+    put math { latex = "a \\xrightarrow{f} b"; x = 0; y = 0; width = 100; height = 100; }
+}
+target page { path = "page.html"; type = html; }
+-- math_unsupported_html.expected --
+$ templide math_unsupported_html.tlide --check
+[exit] 0
+[stdout]
+page: ok

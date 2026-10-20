@@ -4933,3 +4933,3045 @@ target out { path = "transitions.pptx"; type = pptx; }
   <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
   <p:transition advTm="1500"/>
 </p:sld>
+-- charts_kinds.tlide --
+/* 차트 여섯 종류. html은 SVG로 그릴 데이터(t: cht)를 덱에 넣고, pptx는 PowerPoint의 차트 파트와 데이터 통합 문서를 만든다 */
+#include <std/stddef>
+
+slide {
+    put chart { kind = column; categories = ["가", "나"]; names = ["A", "B"]; values = [[1, 2], [3, 4]]; x = 0px; y = 0px; width = 400px; height = 300px; title = "막대"; x_title = "범주"; y_title = "값"; data_labels = true; }
+    put chart { kind = bar; categories = ["가", "나"]; values = [[1, 2], [3, 4]]; stacked = true; legend = right; x = 400px; y = 0px; width = 400px; height = 300px; colors = [hex(2E86AB)]; }
+    put chart { kind = line; categories = ["월", "화", "수"]; values = [[1, 3, 2]]; smooth = true; markers = false; x = 0px; y = 300px; width = 400px; height = 300px; range = [0, 4]; }
+    put chart { kind = area; categories = ["월", "화", "수"]; names = ["a", "b"]; values = [[1, 3, 2], [2, 1, 3]]; stacked = true; legend = none; gridlines = false; x = 400px; y = 300px; width = 400px; height = 300px; }
+    put chart { kind = pie; categories = ["가", "나", "다"]; values = [[50, 30, 20]]; data_labels = true; legend = left; x = 800px; y = 0px; width = 400px; height = 300px; }
+    put chart { kind = scatter; names = ["점"]; values = [[1, 4, 2]]; xs = [[1, 2, 3]]; x = 800px; y = 300px; width = 400px; height = 300px; legend = bottom; }
+}
+
+target deck { path = "deck.pptx"; type = pptx; }
+-- charts_kinds.xml --
+=== ppt/slides/slide1.xml ===
+<p:sld
+    xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+    xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cSld>
+    <p:spTree>
+      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+      <p:grpSpPr>
+        <a:xfrm>
+          <a:off x="0" y="0"/>
+          <a:ext cx="0" cy="0"/>
+          <a:chOff x="0" y="0"/>
+          <a:chExt cx="0" cy="0"/>
+        </a:xfrm>
+      </p:grpSpPr>
+      <p:graphicFrame>
+        <p:nvGraphicFramePr>
+          <p:cNvPr id="2" name="Chart 1"/>
+          <p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr>
+          <p:nvPr/>
+        </p:nvGraphicFramePr>
+        <p:xfrm><a:off x="0" y="0"/><a:ext cx="3810000" cy="2857500"/></p:xfrm>
+        <a:graphic>
+          <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">
+            <c:chart
+                xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
+                xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+                r:id="rId2"/>
+          </a:graphicData>
+        </a:graphic>
+      </p:graphicFrame>
+      <p:graphicFrame>
+        <p:nvGraphicFramePr>
+          <p:cNvPr id="3" name="Chart 2"/>
+          <p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr>
+          <p:nvPr/>
+        </p:nvGraphicFramePr>
+        <p:xfrm><a:off x="3810000" y="0"/><a:ext cx="3810000" cy="2857500"/></p:xfrm>
+        <a:graphic>
+          <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">
+            <c:chart
+                xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
+                xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+                r:id="rId3"/>
+          </a:graphicData>
+        </a:graphic>
+      </p:graphicFrame>
+      <p:graphicFrame>
+        <p:nvGraphicFramePr>
+          <p:cNvPr id="4" name="Chart 3"/>
+          <p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr>
+          <p:nvPr/>
+        </p:nvGraphicFramePr>
+        <p:xfrm><a:off x="0" y="2857500"/><a:ext cx="3810000" cy="2857500"/></p:xfrm>
+        <a:graphic>
+          <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">
+            <c:chart
+                xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
+                xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+                r:id="rId4"/>
+          </a:graphicData>
+        </a:graphic>
+      </p:graphicFrame>
+      <p:graphicFrame>
+        <p:nvGraphicFramePr>
+          <p:cNvPr id="5" name="Chart 4"/>
+          <p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr>
+          <p:nvPr/>
+        </p:nvGraphicFramePr>
+        <p:xfrm><a:off x="3810000" y="2857500"/><a:ext cx="3810000" cy="2857500"/></p:xfrm>
+        <a:graphic>
+          <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">
+            <c:chart
+                xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
+                xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+                r:id="rId5"/>
+          </a:graphicData>
+        </a:graphic>
+      </p:graphicFrame>
+      <p:graphicFrame>
+        <p:nvGraphicFramePr>
+          <p:cNvPr id="6" name="Chart 5"/>
+          <p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr>
+          <p:nvPr/>
+        </p:nvGraphicFramePr>
+        <p:xfrm><a:off x="7620000" y="0"/><a:ext cx="3810000" cy="2857500"/></p:xfrm>
+        <a:graphic>
+          <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">
+            <c:chart
+                xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
+                xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+                r:id="rId6"/>
+          </a:graphicData>
+        </a:graphic>
+      </p:graphicFrame>
+      <p:graphicFrame>
+        <p:nvGraphicFramePr>
+          <p:cNvPr id="7" name="Chart 6"/>
+          <p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr>
+          <p:nvPr/>
+        </p:nvGraphicFramePr>
+        <p:xfrm><a:off x="7620000" y="2857500"/><a:ext cx="3810000" cy="2857500"/></p:xfrm>
+        <a:graphic>
+          <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">
+            <c:chart
+                xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
+                xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+                r:id="rId7"/>
+          </a:graphicData>
+        </a:graphic>
+      </p:graphicFrame>
+    </p:spTree>
+  </p:cSld>
+  <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
+</p:sld>
+
+=== ppt/slides/_rels/slide1.xml.rels ===
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship
+      Id="rId1"
+      Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout"
+      Target="../slideLayouts/slideLayout1.xml"/>
+  <Relationship
+      Id="rId2"
+      Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart"
+      Target="../charts/chart1.xml"/>
+  <Relationship
+      Id="rId3"
+      Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart"
+      Target="../charts/chart2.xml"/>
+  <Relationship
+      Id="rId4"
+      Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart"
+      Target="../charts/chart3.xml"/>
+  <Relationship
+      Id="rId5"
+      Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart"
+      Target="../charts/chart4.xml"/>
+  <Relationship
+      Id="rId6"
+      Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart"
+      Target="../charts/chart5.xml"/>
+  <Relationship
+      Id="rId7"
+      Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart"
+      Target="../charts/chart6.xml"/>
+</Relationships>
+
+=== ppt/charts/chart1.xml ===
+<c:chartSpace
+    xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
+    xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+    xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <c:roundedCorners val="0"/>
+  <c:chart>
+    <c:title>
+      <c:tx>
+        <c:rich>
+          <a:bodyPr/>
+          <a:lstStyle/>
+          <a:p>
+            <a:pPr>
+              <a:defRPr sz="1365" b="1">
+                <a:solidFill><a:srgbClr val="404040"/></a:solidFill>
+              </a:defRPr>
+            </a:pPr>
+            <a:r>
+              <a:rPr lang="en-US" sz="1365" b="1">
+                <a:solidFill><a:srgbClr val="404040"/></a:solidFill>
+              </a:rPr>
+              <a:t>막대</a:t>
+            </a:r>
+          </a:p>
+        </c:rich>
+      </c:tx>
+      <c:overlay val="0"/>
+    </c:title>
+    <c:autoTitleDeleted val="0"/>
+    <c:plotArea>
+      <c:layout/>
+      <c:barChart>
+        <c:barDir val="col"/>
+        <c:grouping val="clustered"/>
+        <c:varyColors val="0"/>
+        <c:ser>
+          <c:idx val="0"/>
+          <c:order val="0"/>
+          <c:tx>
+            <c:strRef>
+              <c:f>Sheet1!$B$1</c:f>
+              <c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>A</c:v></c:pt></c:strCache>
+            </c:strRef>
+          </c:tx>
+          <c:spPr><a:solidFill><a:schemeClr val="accent1"/></a:solidFill></c:spPr>
+          <c:invertIfNegative val="0"/>
+          <c:dLbls>
+            <c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>
+            <c:txPr>
+              <a:bodyPr/>
+              <a:lstStyle/>
+              <a:p>
+                <a:pPr>
+                  <a:defRPr sz="1050" b="0">
+                    <a:solidFill><a:srgbClr val="404040"/></a:solidFill>
+                  </a:defRPr>
+                </a:pPr>
+                <a:endParaRPr lang="en-US"/>
+              </a:p>
+            </c:txPr>
+            <c:showLegendKey val="0"/>
+            <c:showVal val="1"/>
+            <c:showCatName val="0"/>
+            <c:showSerName val="0"/>
+            <c:showPercent val="0"/>
+            <c:showBubbleSize val="0"/>
+          </c:dLbls>
+          <c:cat>
+            <c:strRef>
+              <c:f>Sheet1!$A$2:$A$3</c:f>
+              <c:strCache>
+                <c:ptCount val="2"/>
+                <c:pt idx="0"><c:v>가</c:v></c:pt>
+                <c:pt idx="1"><c:v>나</c:v></c:pt>
+              </c:strCache>
+            </c:strRef>
+          </c:cat>
+          <c:val>
+            <c:numRef>
+              <c:f>Sheet1!$B$2:$B$3</c:f>
+              <c:numCache>
+                <c:formatCode>General</c:formatCode>
+                <c:ptCount val="2"/>
+                <c:pt idx="0"><c:v>1</c:v></c:pt>
+                <c:pt idx="1"><c:v>2</c:v></c:pt>
+              </c:numCache>
+            </c:numRef>
+          </c:val>
+        </c:ser>
+        <c:ser>
+          <c:idx val="1"/>
+          <c:order val="1"/>
+          <c:tx>
+            <c:strRef>
+              <c:f>Sheet1!$C$1</c:f>
+              <c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>B</c:v></c:pt></c:strCache>
+            </c:strRef>
+          </c:tx>
+          <c:spPr><a:solidFill><a:schemeClr val="accent2"/></a:solidFill></c:spPr>
+          <c:invertIfNegative val="0"/>
+          <c:dLbls>
+            <c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>
+            <c:txPr>
+              <a:bodyPr/>
+              <a:lstStyle/>
+              <a:p>
+                <a:pPr>
+                  <a:defRPr sz="1050" b="0">
+                    <a:solidFill><a:srgbClr val="404040"/></a:solidFill>
+                  </a:defRPr>
+                </a:pPr>
+                <a:endParaRPr lang="en-US"/>
+              </a:p>
+            </c:txPr>
+            <c:showLegendKey val="0"/>
+            <c:showVal val="1"/>
+            <c:showCatName val="0"/>
+            <c:showSerName val="0"/>
+            <c:showPercent val="0"/>
+            <c:showBubbleSize val="0"/>
+          </c:dLbls>
+          <c:cat>
+            <c:strRef>
+              <c:f>Sheet1!$A$2:$A$3</c:f>
+              <c:strCache>
+                <c:ptCount val="2"/>
+                <c:pt idx="0"><c:v>가</c:v></c:pt>
+                <c:pt idx="1"><c:v>나</c:v></c:pt>
+              </c:strCache>
+            </c:strRef>
+          </c:cat>
+          <c:val>
+            <c:numRef>
+              <c:f>Sheet1!$C$2:$C$3</c:f>
+              <c:numCache>
+                <c:formatCode>General</c:formatCode>
+                <c:ptCount val="2"/>
+                <c:pt idx="0"><c:v>3</c:v></c:pt>
+                <c:pt idx="1"><c:v>4</c:v></c:pt>
+              </c:numCache>
+            </c:numRef>
+          </c:val>
+        </c:ser>
+        <c:gapWidth val="150"/>
+        <c:axId val="111"/>
+        <c:axId val="222"/>
+      </c:barChart>
+      <c:catAx>
+        <c:axId val="111"/>
+        <c:scaling><c:orientation val="minMax"/></c:scaling>
+        <c:delete val="0"/>
+        <c:axPos val="b"/>
+        <c:title>
+          <c:tx>
+            <c:rich>
+              <a:bodyPr/>
+              <a:lstStyle/>
+              <a:p>
+                <a:pPr>
+                  <a:defRPr sz="1050" b="0">
+                    <a:solidFill><a:srgbClr val="404040"/></a:solidFill>
+                  </a:defRPr>
+                </a:pPr>
+                <a:r>
+                  <a:rPr lang="en-US" sz="1050" b="0">
+                    <a:solidFill><a:srgbClr val="404040"/></a:solidFill>
+                  </a:rPr>
+                  <a:t>범주</a:t>
+                </a:r>
+              </a:p>
+            </c:rich>
+          </c:tx>
+          <c:overlay val="0"/>
+        </c:title>
+        <c:numFmt formatCode="General" sourceLinked="1"/>
+        <c:majorTickMark val="none"/>
+        <c:minorTickMark val="none"/>
+        <c:tickLblPos val="low"/>
+        <c:spPr><a:ln w="9525"><a:solidFill><a:srgbClr val="7F7F7F"/></a:solidFill></a:ln></c:spPr>
+        <c:crossAx val="222"/>
+        <c:crosses val="autoZero"/>
+        <c:auto val="1"/>
+        <c:lblAlgn val="ctr"/>
+        <c:lblOffset val="100"/>
+        <c:noMultiLvlLbl val="0"/>
+      </c:catAx>
+      <c:valAx>
+        <c:axId val="222"/>
+        <c:scaling><c:orientation val="minMax"/></c:scaling>
+        <c:delete val="0"/>
+        <c:axPos val="l"/>
+        <c:majorGridlines>
+          <c:spPr>
+            <a:ln w="9525"><a:solidFill><a:srgbClr val="D9D9D9"/></a:solidFill></a:ln>
+          </c:spPr>
+        </c:majorGridlines>
+        <c:title>
+          <c:tx>
+            <c:rich>
+              <a:bodyPr rot="-5400000" vert="horz"/>
+              <a:lstStyle/>
+              <a:p>
+                <a:pPr>
+                  <a:defRPr sz="1050" b="0">
+                    <a:solidFill><a:srgbClr val="404040"/></a:solidFill>
+                  </a:defRPr>
+                </a:pPr>
+                <a:r>
+                  <a:rPr lang="en-US" sz="1050" b="0">
+                    <a:solidFill><a:srgbClr val="404040"/></a:solidFill>
+                  </a:rPr>
+                  <a:t>값</a:t>
+                </a:r>
+              </a:p>
+            </c:rich>
+          </c:tx>
+          <c:overlay val="0"/>
+        </c:title>
+        <c:numFmt formatCode="General" sourceLinked="1"/>
+        <c:majorTickMark val="none"/>
+        <c:minorTickMark val="none"/>
+        <c:tickLblPos val="nextTo"/>
+        <c:spPr><a:ln w="9525"><a:solidFill><a:srgbClr val="7F7F7F"/></a:solidFill></a:ln></c:spPr>
+        <c:crossAx val="111"/>
+        <c:crosses val="autoZero"/>
+        <c:crossBetween val="between"/>
+      </c:valAx>
+    </c:plotArea>
+    <c:legend>
+      <c:legendPos val="b"/>
+      <c:overlay val="0"/>
+      <c:txPr>
+        <a:bodyPr/>
+        <a:lstStyle/>
+        <a:p>
+          <a:pPr>
+            <a:defRPr sz="1050" b="0">
+              <a:solidFill><a:srgbClr val="404040"/></a:solidFill>
+            </a:defRPr>
+          </a:pPr>
+          <a:endParaRPr lang="en-US"/>
+        </a:p>
+      </c:txPr>
+    </c:legend>
+    <c:plotVisOnly val="1"/>
+    <c:dispBlanksAs val="gap"/>
+  </c:chart>
+  <c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>
+  <c:txPr>
+    <a:bodyPr/>
+    <a:lstStyle/>
+    <a:p>
+      <a:pPr>
+        <a:defRPr sz="1050" b="0"><a:solidFill><a:srgbClr val="404040"/></a:solidFill></a:defRPr>
+      </a:pPr>
+      <a:endParaRPr lang="en-US"/>
+    </a:p>
+  </c:txPr>
+  <c:externalData r:id="rId1"><c:autoUpdate val="0"/></c:externalData>
+</c:chartSpace>
+
+=== ppt/charts/chart2.xml ===
+<c:chartSpace
+    xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
+    xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+    xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <c:roundedCorners val="0"/>
+  <c:chart>
+    <c:autoTitleDeleted val="1"/>
+    <c:plotArea>
+      <c:layout/>
+      <c:barChart>
+        <c:barDir val="bar"/>
+        <c:grouping val="stacked"/>
+        <c:varyColors val="0"/>
+        <c:ser>
+          <c:idx val="0"/>
+          <c:order val="0"/>
+          <c:tx>
+            <c:strRef>
+              <c:f>Sheet1!$B$1</c:f>
+              <c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>Series 1</c:v></c:pt></c:strCache>
+            </c:strRef>
+          </c:tx>
+          <c:spPr><a:solidFill><a:srgbClr val="2E86AB"/></a:solidFill></c:spPr>
+          <c:invertIfNegative val="0"/>
+          <c:cat>
+            <c:strRef>
+              <c:f>Sheet1!$A$2:$A$3</c:f>
+              <c:strCache>
+                <c:ptCount val="2"/>
+                <c:pt idx="0"><c:v>가</c:v></c:pt>
+                <c:pt idx="1"><c:v>나</c:v></c:pt>
+              </c:strCache>
+            </c:strRef>
+          </c:cat>
+          <c:val>
+            <c:numRef>
+              <c:f>Sheet1!$B$2:$B$3</c:f>
+              <c:numCache>
+                <c:formatCode>General</c:formatCode>
+                <c:ptCount val="2"/>
+                <c:pt idx="0"><c:v>1</c:v></c:pt>
+                <c:pt idx="1"><c:v>2</c:v></c:pt>
+              </c:numCache>
+            </c:numRef>
+          </c:val>
+        </c:ser>
+        <c:ser>
+          <c:idx val="1"/>
+          <c:order val="1"/>
+          <c:tx>
+            <c:strRef>
+              <c:f>Sheet1!$C$1</c:f>
+              <c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>Series 2</c:v></c:pt></c:strCache>
+            </c:strRef>
+          </c:tx>
+          <c:spPr><a:solidFill><a:srgbClr val="2E86AB"/></a:solidFill></c:spPr>
+          <c:invertIfNegative val="0"/>
+          <c:cat>
+            <c:strRef>
+              <c:f>Sheet1!$A$2:$A$3</c:f>
+              <c:strCache>
+                <c:ptCount val="2"/>
+                <c:pt idx="0"><c:v>가</c:v></c:pt>
+                <c:pt idx="1"><c:v>나</c:v></c:pt>
+              </c:strCache>
+            </c:strRef>
+          </c:cat>
+          <c:val>
+            <c:numRef>
+              <c:f>Sheet1!$C$2:$C$3</c:f>
+              <c:numCache>
+                <c:formatCode>General</c:formatCode>
+                <c:ptCount val="2"/>
+                <c:pt idx="0"><c:v>3</c:v></c:pt>
+                <c:pt idx="1"><c:v>4</c:v></c:pt>
+              </c:numCache>
+            </c:numRef>
+          </c:val>
+        </c:ser>
+        <c:gapWidth val="150"/>
+        <c:overlap val="100"/>
+        <c:axId val="111"/>
+        <c:axId val="222"/>
+      </c:barChart>
+      <c:catAx>
+        <c:axId val="111"/>
+        <c:scaling><c:orientation val="minMax"/></c:scaling>
+        <c:delete val="0"/>
+        <c:axPos val="l"/>
+        <c:numFmt formatCode="General" sourceLinked="1"/>
+        <c:majorTickMark val="none"/>
+        <c:minorTickMark val="none"/>
+        <c:tickLblPos val="low"/>
+        <c:spPr><a:ln w="9525"><a:solidFill><a:srgbClr val="7F7F7F"/></a:solidFill></a:ln></c:spPr>
+        <c:crossAx val="222"/>
+        <c:crosses val="autoZero"/>
+        <c:auto val="1"/>
+        <c:lblAlgn val="ctr"/>
+        <c:lblOffset val="100"/>
+        <c:noMultiLvlLbl val="0"/>
+      </c:catAx>
+      <c:valAx>
+        <c:axId val="222"/>
+        <c:scaling><c:orientation val="minMax"/></c:scaling>
+        <c:delete val="0"/>
+        <c:axPos val="b"/>
+        <c:majorGridlines>
+          <c:spPr>
+            <a:ln w="9525"><a:solidFill><a:srgbClr val="D9D9D9"/></a:solidFill></a:ln>
+          </c:spPr>
+        </c:majorGridlines>
+        <c:numFmt formatCode="General" sourceLinked="1"/>
+        <c:majorTickMark val="none"/>
+        <c:minorTickMark val="none"/>
+        <c:tickLblPos val="nextTo"/>
+        <c:spPr><a:ln w="9525"><a:solidFill><a:srgbClr val="7F7F7F"/></a:solidFill></a:ln></c:spPr>
+        <c:crossAx val="111"/>
+        <c:crosses val="autoZero"/>
+        <c:crossBetween val="between"/>
+      </c:valAx>
+    </c:plotArea>
+    <c:legend>
+      <c:legendPos val="r"/>
+      <c:overlay val="0"/>
+      <c:txPr>
+        <a:bodyPr/>
+        <a:lstStyle/>
+        <a:p>
+          <a:pPr>
+            <a:defRPr sz="1050" b="0">
+              <a:solidFill><a:srgbClr val="404040"/></a:solidFill>
+            </a:defRPr>
+          </a:pPr>
+          <a:endParaRPr lang="en-US"/>
+        </a:p>
+      </c:txPr>
+    </c:legend>
+    <c:plotVisOnly val="1"/>
+    <c:dispBlanksAs val="gap"/>
+  </c:chart>
+  <c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>
+  <c:txPr>
+    <a:bodyPr/>
+    <a:lstStyle/>
+    <a:p>
+      <a:pPr>
+        <a:defRPr sz="1050" b="0"><a:solidFill><a:srgbClr val="404040"/></a:solidFill></a:defRPr>
+      </a:pPr>
+      <a:endParaRPr lang="en-US"/>
+    </a:p>
+  </c:txPr>
+  <c:externalData r:id="rId1"><c:autoUpdate val="0"/></c:externalData>
+</c:chartSpace>
+
+=== ppt/charts/chart3.xml ===
+<c:chartSpace
+    xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
+    xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+    xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <c:roundedCorners val="0"/>
+  <c:chart>
+    <c:autoTitleDeleted val="1"/>
+    <c:plotArea>
+      <c:layout/>
+      <c:lineChart>
+        <c:grouping val="standard"/>
+        <c:varyColors val="0"/>
+        <c:ser>
+          <c:idx val="0"/>
+          <c:order val="0"/>
+          <c:tx>
+            <c:strRef>
+              <c:f>Sheet1!$B$1</c:f>
+              <c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>Series 1</c:v></c:pt></c:strCache>
+            </c:strRef>
+          </c:tx>
+          <c:spPr>
+            <a:ln w="28575" cap="rnd">
+              <a:solidFill><a:schemeClr val="accent1"/></a:solidFill>
+              <a:round/>
+            </a:ln>
+          </c:spPr>
+          <c:marker><c:symbol val="none"/></c:marker>
+          <c:cat>
+            <c:strRef>
+              <c:f>Sheet1!$A$2:$A$4</c:f>
+              <c:strCache>
+                <c:ptCount val="3"/>
+                <c:pt idx="0"><c:v>월</c:v></c:pt>
+                <c:pt idx="1"><c:v>화</c:v></c:pt>
+                <c:pt idx="2"><c:v>수</c:v></c:pt>
+              </c:strCache>
+            </c:strRef>
+          </c:cat>
+          <c:val>
+            <c:numRef>
+              <c:f>Sheet1!$B$2:$B$4</c:f>
+              <c:numCache>
+                <c:formatCode>General</c:formatCode>
+                <c:ptCount val="3"/>
+                <c:pt idx="0"><c:v>1</c:v></c:pt>
+                <c:pt idx="1"><c:v>3</c:v></c:pt>
+                <c:pt idx="2"><c:v>2</c:v></c:pt>
+              </c:numCache>
+            </c:numRef>
+          </c:val>
+          <c:smooth val="1"/>
+        </c:ser>
+        <c:marker val="1"/>
+        <c:axId val="111"/>
+        <c:axId val="222"/>
+      </c:lineChart>
+      <c:catAx>
+        <c:axId val="111"/>
+        <c:scaling><c:orientation val="minMax"/></c:scaling>
+        <c:delete val="0"/>
+        <c:axPos val="b"/>
+        <c:numFmt formatCode="General" sourceLinked="1"/>
+        <c:majorTickMark val="none"/>
+        <c:minorTickMark val="none"/>
+        <c:tickLblPos val="low"/>
+        <c:spPr><a:ln w="9525"><a:solidFill><a:srgbClr val="7F7F7F"/></a:solidFill></a:ln></c:spPr>
+        <c:crossAx val="222"/>
+        <c:crosses val="autoZero"/>
+        <c:auto val="1"/>
+        <c:lblAlgn val="ctr"/>
+        <c:lblOffset val="100"/>
+        <c:noMultiLvlLbl val="0"/>
+      </c:catAx>
+      <c:valAx>
+        <c:axId val="222"/>
+        <c:scaling><c:orientation val="minMax"/><c:max val="4"/><c:min val="0"/></c:scaling>
+        <c:delete val="0"/>
+        <c:axPos val="l"/>
+        <c:majorGridlines>
+          <c:spPr>
+            <a:ln w="9525"><a:solidFill><a:srgbClr val="D9D9D9"/></a:solidFill></a:ln>
+          </c:spPr>
+        </c:majorGridlines>
+        <c:numFmt formatCode="General" sourceLinked="1"/>
+        <c:majorTickMark val="none"/>
+        <c:minorTickMark val="none"/>
+        <c:tickLblPos val="nextTo"/>
+        <c:spPr><a:ln w="9525"><a:solidFill><a:srgbClr val="7F7F7F"/></a:solidFill></a:ln></c:spPr>
+        <c:crossAx val="111"/>
+        <c:crosses val="autoZero"/>
+        <c:crossBetween val="between"/>
+      </c:valAx>
+    </c:plotArea>
+    <c:legend>
+      <c:legendPos val="b"/>
+      <c:overlay val="0"/>
+      <c:txPr>
+        <a:bodyPr/>
+        <a:lstStyle/>
+        <a:p>
+          <a:pPr>
+            <a:defRPr sz="1050" b="0">
+              <a:solidFill><a:srgbClr val="404040"/></a:solidFill>
+            </a:defRPr>
+          </a:pPr>
+          <a:endParaRPr lang="en-US"/>
+        </a:p>
+      </c:txPr>
+    </c:legend>
+    <c:plotVisOnly val="1"/>
+    <c:dispBlanksAs val="gap"/>
+  </c:chart>
+  <c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>
+  <c:txPr>
+    <a:bodyPr/>
+    <a:lstStyle/>
+    <a:p>
+      <a:pPr>
+        <a:defRPr sz="1050" b="0"><a:solidFill><a:srgbClr val="404040"/></a:solidFill></a:defRPr>
+      </a:pPr>
+      <a:endParaRPr lang="en-US"/>
+    </a:p>
+  </c:txPr>
+  <c:externalData r:id="rId1"><c:autoUpdate val="0"/></c:externalData>
+</c:chartSpace>
+
+=== ppt/charts/chart4.xml ===
+<c:chartSpace
+    xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
+    xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+    xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <c:roundedCorners val="0"/>
+  <c:chart>
+    <c:autoTitleDeleted val="1"/>
+    <c:plotArea>
+      <c:layout/>
+      <c:areaChart>
+        <c:grouping val="stacked"/>
+        <c:varyColors val="0"/>
+        <c:ser>
+          <c:idx val="0"/>
+          <c:order val="0"/>
+          <c:tx>
+            <c:strRef>
+              <c:f>Sheet1!$B$1</c:f>
+              <c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>a</c:v></c:pt></c:strCache>
+            </c:strRef>
+          </c:tx>
+          <c:spPr><a:solidFill><a:schemeClr val="accent1"/></a:solidFill></c:spPr>
+          <c:cat>
+            <c:strRef>
+              <c:f>Sheet1!$A$2:$A$4</c:f>
+              <c:strCache>
+                <c:ptCount val="3"/>
+                <c:pt idx="0"><c:v>월</c:v></c:pt>
+                <c:pt idx="1"><c:v>화</c:v></c:pt>
+                <c:pt idx="2"><c:v>수</c:v></c:pt>
+              </c:strCache>
+            </c:strRef>
+          </c:cat>
+          <c:val>
+            <c:numRef>
+              <c:f>Sheet1!$B$2:$B$4</c:f>
+              <c:numCache>
+                <c:formatCode>General</c:formatCode>
+                <c:ptCount val="3"/>
+                <c:pt idx="0"><c:v>1</c:v></c:pt>
+                <c:pt idx="1"><c:v>3</c:v></c:pt>
+                <c:pt idx="2"><c:v>2</c:v></c:pt>
+              </c:numCache>
+            </c:numRef>
+          </c:val>
+        </c:ser>
+        <c:ser>
+          <c:idx val="1"/>
+          <c:order val="1"/>
+          <c:tx>
+            <c:strRef>
+              <c:f>Sheet1!$C$1</c:f>
+              <c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>b</c:v></c:pt></c:strCache>
+            </c:strRef>
+          </c:tx>
+          <c:spPr><a:solidFill><a:schemeClr val="accent2"/></a:solidFill></c:spPr>
+          <c:cat>
+            <c:strRef>
+              <c:f>Sheet1!$A$2:$A$4</c:f>
+              <c:strCache>
+                <c:ptCount val="3"/>
+                <c:pt idx="0"><c:v>월</c:v></c:pt>
+                <c:pt idx="1"><c:v>화</c:v></c:pt>
+                <c:pt idx="2"><c:v>수</c:v></c:pt>
+              </c:strCache>
+            </c:strRef>
+          </c:cat>
+          <c:val>
+            <c:numRef>
+              <c:f>Sheet1!$C$2:$C$4</c:f>
+              <c:numCache>
+                <c:formatCode>General</c:formatCode>
+                <c:ptCount val="3"/>
+                <c:pt idx="0"><c:v>2</c:v></c:pt>
+                <c:pt idx="1"><c:v>1</c:v></c:pt>
+                <c:pt idx="2"><c:v>3</c:v></c:pt>
+              </c:numCache>
+            </c:numRef>
+          </c:val>
+        </c:ser>
+        <c:axId val="111"/>
+        <c:axId val="222"/>
+      </c:areaChart>
+      <c:catAx>
+        <c:axId val="111"/>
+        <c:scaling><c:orientation val="minMax"/></c:scaling>
+        <c:delete val="0"/>
+        <c:axPos val="b"/>
+        <c:numFmt formatCode="General" sourceLinked="1"/>
+        <c:majorTickMark val="none"/>
+        <c:minorTickMark val="none"/>
+        <c:tickLblPos val="low"/>
+        <c:spPr><a:ln w="9525"><a:solidFill><a:srgbClr val="7F7F7F"/></a:solidFill></a:ln></c:spPr>
+        <c:crossAx val="222"/>
+        <c:crosses val="autoZero"/>
+        <c:auto val="1"/>
+        <c:lblAlgn val="ctr"/>
+        <c:lblOffset val="100"/>
+        <c:noMultiLvlLbl val="0"/>
+      </c:catAx>
+      <c:valAx>
+        <c:axId val="222"/>
+        <c:scaling><c:orientation val="minMax"/></c:scaling>
+        <c:delete val="0"/>
+        <c:axPos val="l"/>
+        <c:numFmt formatCode="General" sourceLinked="1"/>
+        <c:majorTickMark val="none"/>
+        <c:minorTickMark val="none"/>
+        <c:tickLblPos val="nextTo"/>
+        <c:spPr><a:ln w="9525"><a:solidFill><a:srgbClr val="7F7F7F"/></a:solidFill></a:ln></c:spPr>
+        <c:crossAx val="111"/>
+        <c:crosses val="autoZero"/>
+        <c:crossBetween val="midCat"/>
+      </c:valAx>
+    </c:plotArea>
+    <c:plotVisOnly val="1"/>
+    <c:dispBlanksAs val="gap"/>
+  </c:chart>
+  <c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>
+  <c:txPr>
+    <a:bodyPr/>
+    <a:lstStyle/>
+    <a:p>
+      <a:pPr>
+        <a:defRPr sz="1050" b="0"><a:solidFill><a:srgbClr val="404040"/></a:solidFill></a:defRPr>
+      </a:pPr>
+      <a:endParaRPr lang="en-US"/>
+    </a:p>
+  </c:txPr>
+  <c:externalData r:id="rId1"><c:autoUpdate val="0"/></c:externalData>
+</c:chartSpace>
+
+=== ppt/charts/chart5.xml ===
+<c:chartSpace
+    xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
+    xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+    xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <c:roundedCorners val="0"/>
+  <c:chart>
+    <c:autoTitleDeleted val="1"/>
+    <c:plotArea>
+      <c:layout/>
+      <c:pieChart>
+        <c:varyColors val="1"/>
+        <c:ser>
+          <c:idx val="0"/>
+          <c:order val="0"/>
+          <c:tx>
+            <c:strRef>
+              <c:f>Sheet1!$B$1</c:f>
+              <c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>Series 1</c:v></c:pt></c:strCache>
+            </c:strRef>
+          </c:tx>
+          <c:dPt>
+            <c:idx val="0"/>
+            <c:bubble3D val="0"/>
+            <c:spPr>
+              <a:solidFill><a:schemeClr val="accent1"/></a:solidFill>
+              <a:ln w="12700"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:ln>
+            </c:spPr>
+          </c:dPt>
+          <c:dPt>
+            <c:idx val="1"/>
+            <c:bubble3D val="0"/>
+            <c:spPr>
+              <a:solidFill><a:schemeClr val="accent2"/></a:solidFill>
+              <a:ln w="12700"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:ln>
+            </c:spPr>
+          </c:dPt>
+          <c:dPt>
+            <c:idx val="2"/>
+            <c:bubble3D val="0"/>
+            <c:spPr>
+              <a:solidFill><a:schemeClr val="accent3"/></a:solidFill>
+              <a:ln w="12700"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:ln>
+            </c:spPr>
+          </c:dPt>
+          <c:dLbls>
+            <c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>
+            <c:txPr>
+              <a:bodyPr/>
+              <a:lstStyle/>
+              <a:p>
+                <a:pPr>
+                  <a:defRPr sz="1050" b="0">
+                    <a:solidFill><a:srgbClr val="404040"/></a:solidFill>
+                  </a:defRPr>
+                </a:pPr>
+                <a:endParaRPr lang="en-US"/>
+              </a:p>
+            </c:txPr>
+            <c:showLegendKey val="0"/>
+            <c:showVal val="1"/>
+            <c:showCatName val="0"/>
+            <c:showSerName val="0"/>
+            <c:showPercent val="0"/>
+            <c:showBubbleSize val="0"/>
+          </c:dLbls>
+          <c:cat>
+            <c:strRef>
+              <c:f>Sheet1!$A$2:$A$4</c:f>
+              <c:strCache>
+                <c:ptCount val="3"/>
+                <c:pt idx="0"><c:v>가</c:v></c:pt>
+                <c:pt idx="1"><c:v>나</c:v></c:pt>
+                <c:pt idx="2"><c:v>다</c:v></c:pt>
+              </c:strCache>
+            </c:strRef>
+          </c:cat>
+          <c:val>
+            <c:numRef>
+              <c:f>Sheet1!$B$2:$B$4</c:f>
+              <c:numCache>
+                <c:formatCode>General</c:formatCode>
+                <c:ptCount val="3"/>
+                <c:pt idx="0"><c:v>50</c:v></c:pt>
+                <c:pt idx="1"><c:v>30</c:v></c:pt>
+                <c:pt idx="2"><c:v>20</c:v></c:pt>
+              </c:numCache>
+            </c:numRef>
+          </c:val>
+        </c:ser>
+        <c:firstSliceAng val="0"/>
+      </c:pieChart>
+    </c:plotArea>
+    <c:legend>
+      <c:legendPos val="l"/>
+      <c:overlay val="0"/>
+      <c:txPr>
+        <a:bodyPr/>
+        <a:lstStyle/>
+        <a:p>
+          <a:pPr>
+            <a:defRPr sz="1050" b="0">
+              <a:solidFill><a:srgbClr val="404040"/></a:solidFill>
+            </a:defRPr>
+          </a:pPr>
+          <a:endParaRPr lang="en-US"/>
+        </a:p>
+      </c:txPr>
+    </c:legend>
+    <c:plotVisOnly val="1"/>
+    <c:dispBlanksAs val="gap"/>
+  </c:chart>
+  <c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>
+  <c:txPr>
+    <a:bodyPr/>
+    <a:lstStyle/>
+    <a:p>
+      <a:pPr>
+        <a:defRPr sz="1050" b="0"><a:solidFill><a:srgbClr val="404040"/></a:solidFill></a:defRPr>
+      </a:pPr>
+      <a:endParaRPr lang="en-US"/>
+    </a:p>
+  </c:txPr>
+  <c:externalData r:id="rId1"><c:autoUpdate val="0"/></c:externalData>
+</c:chartSpace>
+
+=== ppt/charts/chart6.xml ===
+<c:chartSpace
+    xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
+    xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+    xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <c:roundedCorners val="0"/>
+  <c:chart>
+    <c:autoTitleDeleted val="1"/>
+    <c:plotArea>
+      <c:layout/>
+      <c:scatterChart>
+        <c:scatterStyle val="lineMarker"/>
+        <c:varyColors val="0"/>
+        <c:ser>
+          <c:idx val="0"/>
+          <c:order val="0"/>
+          <c:tx>
+            <c:strRef>
+              <c:f>Sheet1!$B$1</c:f>
+              <c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>점</c:v></c:pt></c:strCache>
+            </c:strRef>
+          </c:tx>
+          <c:spPr><a:ln w="19050"><a:noFill/></a:ln></c:spPr>
+          <c:marker>
+            <c:symbol val="circle"/>
+            <c:size val="7"/>
+            <c:spPr>
+              <a:solidFill><a:schemeClr val="accent1"/></a:solidFill>
+              <a:ln w="9525"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:ln>
+            </c:spPr>
+          </c:marker>
+          <c:xVal>
+            <c:numRef>
+              <c:f>Sheet1!$A$2:$A$4</c:f>
+              <c:numCache>
+                <c:formatCode>General</c:formatCode>
+                <c:ptCount val="3"/>
+                <c:pt idx="0"><c:v>1</c:v></c:pt>
+                <c:pt idx="1"><c:v>2</c:v></c:pt>
+                <c:pt idx="2"><c:v>3</c:v></c:pt>
+              </c:numCache>
+            </c:numRef>
+          </c:xVal>
+          <c:yVal>
+            <c:numRef>
+              <c:f>Sheet1!$B$2:$B$4</c:f>
+              <c:numCache>
+                <c:formatCode>General</c:formatCode>
+                <c:ptCount val="3"/>
+                <c:pt idx="0"><c:v>1</c:v></c:pt>
+                <c:pt idx="1"><c:v>4</c:v></c:pt>
+                <c:pt idx="2"><c:v>2</c:v></c:pt>
+              </c:numCache>
+            </c:numRef>
+          </c:yVal>
+          <c:smooth val="0"/>
+        </c:ser>
+        <c:axId val="111"/>
+        <c:axId val="222"/>
+      </c:scatterChart>
+      <c:valAx>
+        <c:axId val="111"/>
+        <c:scaling><c:orientation val="minMax"/></c:scaling>
+        <c:delete val="0"/>
+        <c:axPos val="b"/>
+        <c:majorGridlines>
+          <c:spPr>
+            <a:ln w="9525"><a:solidFill><a:srgbClr val="D9D9D9"/></a:solidFill></a:ln>
+          </c:spPr>
+        </c:majorGridlines>
+        <c:numFmt formatCode="General" sourceLinked="1"/>
+        <c:majorTickMark val="none"/>
+        <c:minorTickMark val="none"/>
+        <c:tickLblPos val="nextTo"/>
+        <c:spPr><a:ln w="9525"><a:solidFill><a:srgbClr val="7F7F7F"/></a:solidFill></a:ln></c:spPr>
+        <c:crossAx val="222"/>
+        <c:crosses val="autoZero"/>
+        <c:crossBetween val="midCat"/>
+      </c:valAx>
+      <c:valAx>
+        <c:axId val="222"/>
+        <c:scaling><c:orientation val="minMax"/></c:scaling>
+        <c:delete val="0"/>
+        <c:axPos val="l"/>
+        <c:majorGridlines>
+          <c:spPr>
+            <a:ln w="9525"><a:solidFill><a:srgbClr val="D9D9D9"/></a:solidFill></a:ln>
+          </c:spPr>
+        </c:majorGridlines>
+        <c:numFmt formatCode="General" sourceLinked="1"/>
+        <c:majorTickMark val="none"/>
+        <c:minorTickMark val="none"/>
+        <c:tickLblPos val="nextTo"/>
+        <c:spPr><a:ln w="9525"><a:solidFill><a:srgbClr val="7F7F7F"/></a:solidFill></a:ln></c:spPr>
+        <c:crossAx val="111"/>
+        <c:crosses val="autoZero"/>
+        <c:crossBetween val="midCat"/>
+      </c:valAx>
+    </c:plotArea>
+    <c:legend>
+      <c:legendPos val="b"/>
+      <c:overlay val="0"/>
+      <c:txPr>
+        <a:bodyPr/>
+        <a:lstStyle/>
+        <a:p>
+          <a:pPr>
+            <a:defRPr sz="1050" b="0">
+              <a:solidFill><a:srgbClr val="404040"/></a:solidFill>
+            </a:defRPr>
+          </a:pPr>
+          <a:endParaRPr lang="en-US"/>
+        </a:p>
+      </c:txPr>
+    </c:legend>
+    <c:plotVisOnly val="1"/>
+    <c:dispBlanksAs val="gap"/>
+  </c:chart>
+  <c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>
+  <c:txPr>
+    <a:bodyPr/>
+    <a:lstStyle/>
+    <a:p>
+      <a:pPr>
+        <a:defRPr sz="1050" b="0"><a:solidFill><a:srgbClr val="404040"/></a:solidFill></a:defRPr>
+      </a:pPr>
+      <a:endParaRPr lang="en-US"/>
+    </a:p>
+  </c:txPr>
+  <c:externalData r:id="rId1"><c:autoUpdate val="0"/></c:externalData>
+</c:chartSpace>
+
+=== ppt/charts/_rels/chart1.xml.rels ===
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship
+      Id="rId1"
+      Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/package"
+      Target="../embeddings/Microsoft_Excel_Sheet1.xlsx"/>
+</Relationships>
+
+=== ppt/charts/_rels/chart2.xml.rels ===
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship
+      Id="rId1"
+      Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/package"
+      Target="../embeddings/Microsoft_Excel_Sheet2.xlsx"/>
+</Relationships>
+
+=== ppt/charts/_rels/chart3.xml.rels ===
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship
+      Id="rId1"
+      Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/package"
+      Target="../embeddings/Microsoft_Excel_Sheet3.xlsx"/>
+</Relationships>
+
+=== ppt/charts/_rels/chart4.xml.rels ===
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship
+      Id="rId1"
+      Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/package"
+      Target="../embeddings/Microsoft_Excel_Sheet4.xlsx"/>
+</Relationships>
+
+=== ppt/charts/_rels/chart5.xml.rels ===
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship
+      Id="rId1"
+      Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/package"
+      Target="../embeddings/Microsoft_Excel_Sheet5.xlsx"/>
+</Relationships>
+
+=== ppt/charts/_rels/chart6.xml.rels ===
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship
+      Id="rId1"
+      Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/package"
+      Target="../embeddings/Microsoft_Excel_Sheet6.xlsx"/>
+</Relationships>
+-- charts_kinds.parts --
+# 차트 파트와 슬라이드가 차트를 가리키는 곳. 통합 문서는 zip이라 비교하지 않는다
+ppt/slides/slide*.xml
+ppt/slides/_rels/*.rels
+ppt/charts/chart*.xml
+ppt/charts/_rels/*.rels
+-- math_equations.tlide --
+/* 수식은 PowerPoint 수식(OMML)으로 바뀌어 글상자 하나에 들어간다 (mc:AlternateContent: 수식을 모르는 프로그램에는 LaTeX 원문을 보인다) */
+#include <std/stddef>
+
+slide {
+    put math { latex = "E = mc^2"; x = 0px; y = 0px; width = 600px; height = 80px; font_size = 40px; }
+    put math { latex = "\\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}"; x = 0px; y = 100px; width = 600px; height = 120px; align = left; anchor = top; text_color = hex(2E86AB); }
+    put math { latex = "\\sum_{i=1}^{n} i^2 \\leq \\int_0^1 f(x)\\,dx"; x = 0px; y = 240px; width = 600px; height = 100px; }
+    put math { latex = "\\lim_{x \\to 0} \\frac{\\sin x}{x} = 1"; x = 0px; y = 360px; width = 600px; height = 100px; align = right; anchor = bottom; }
+    put math { latex = "\\left( \\frac{a}{b} \\right)^{n} \\geq \\alpha \\cdot \\vec{v}"; x = 0px; y = 480px; width = 600px; height = 100px; }
+    put math { latex = "A = \\begin{pmatrix} 1 & 2 \\\\ 3 & 4 \\end{pmatrix}, \\mathbb{R}^3, \\text{속도}"; x = 0px; y = 600px; width = 600px; height = 100px; }
+}
+
+target deck { path = "deck.pptx"; type = pptx; }
+-- math_equations.xml --
+=== ppt/slides/slide1.xml ===
+<p:sld
+    xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+    xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cSld>
+    <p:spTree>
+      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+      <p:grpSpPr>
+        <a:xfrm>
+          <a:off x="0" y="0"/>
+          <a:ext cx="0" cy="0"/>
+          <a:chOff x="0" y="0"/>
+          <a:chExt cx="0" cy="0"/>
+        </a:xfrm>
+      </p:grpSpPr>
+      <mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+        <mc:Choice xmlns:a14="http://schemas.microsoft.com/office/drawing/2010/main" Requires="a14">
+          <p:sp>
+            <p:nvSpPr><p:cNvPr id="2" name="Math 1"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+            <p:spPr>
+              <a:xfrm><a:off x="0" y="0"/><a:ext cx="5715000" cy="762000"/></a:xfrm>
+              <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+              <a:noFill/>
+            </p:spPr>
+            <p:txBody>
+              <a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" rtlCol="0" anchor="ctr">
+                <a:noAutofit/>
+              </a:bodyPr>
+              <a:lstStyle/>
+              <a:p>
+                <a:pPr algn="ctr"/>
+                <a14:m>
+                  <m:oMathPara xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">
+                    <m:oMathParaPr><m:jc m:val="centerGroup"/></m:oMathParaPr>
+                    <m:oMath>
+                      <m:r>
+                        <a:rPr lang="en-US" sz="3000" i="1">
+                          <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                          <a:latin
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:ea
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:cs
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                        </a:rPr>
+                        <m:t>E</m:t>
+                      </m:r>
+                      <m:r>
+                        <m:rPr><m:sty m:val="p"/></m:rPr>
+                        <a:rPr lang="en-US" sz="3000">
+                          <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                          <a:latin
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:ea
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:cs
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                        </a:rPr>
+                        <m:t>=</m:t>
+                      </m:r>
+                      <m:r>
+                        <a:rPr lang="en-US" sz="3000" i="1">
+                          <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                          <a:latin
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:ea
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:cs
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                        </a:rPr>
+                        <m:t>m</m:t>
+                      </m:r>
+                      <m:sSup>
+                        <m:sSupPr>
+                          <m:ctrlPr>
+                            <a:rPr lang="en-US" sz="3000" i="1">
+                              <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                          </m:ctrlPr>
+                        </m:sSupPr>
+                        <m:e>
+                          <m:r>
+                            <a:rPr lang="en-US" sz="3000" i="1">
+                              <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:ea
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:cs
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                            <m:t>c</m:t>
+                          </m:r>
+                        </m:e>
+                        <m:sup>
+                          <m:r>
+                            <m:rPr><m:sty m:val="p"/></m:rPr>
+                            <a:rPr lang="en-US" sz="3000">
+                              <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:ea
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:cs
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                            <m:t>2</m:t>
+                          </m:r>
+                        </m:sup>
+                      </m:sSup>
+                    </m:oMath>
+                  </m:oMathPara>
+                </a14:m>
+                <a:endParaRPr lang="en-US" sz="3000"/>
+              </a:p>
+            </p:txBody>
+          </p:sp>
+        </mc:Choice>
+        <mc:Fallback>
+          <p:sp>
+            <p:nvSpPr><p:cNvPr id="2" name="Math 1"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+            <p:spPr>
+              <a:xfrm><a:off x="0" y="0"/><a:ext cx="5715000" cy="762000"/></a:xfrm>
+              <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+              <a:noFill/>
+            </p:spPr>
+            <p:txBody>
+              <a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" rtlCol="0" anchor="ctr">
+                <a:noAutofit/>
+              </a:bodyPr>
+              <a:lstStyle/>
+              <a:p>
+                <a:pPr algn="ctr"/>
+                <a:r>
+                  <a:rPr lang="en-US" sz="3000">
+                    <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                  </a:rPr>
+                  <a:t>E = mc^2</a:t>
+                </a:r>
+              </a:p>
+            </p:txBody>
+          </p:sp>
+        </mc:Fallback>
+      </mc:AlternateContent>
+      <mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+        <mc:Choice xmlns:a14="http://schemas.microsoft.com/office/drawing/2010/main" Requires="a14">
+          <p:sp>
+            <p:nvSpPr><p:cNvPr id="3" name="Math 2"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+            <p:spPr>
+              <a:xfrm><a:off x="0" y="952500"/><a:ext cx="5715000" cy="1143000"/></a:xfrm>
+              <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+              <a:noFill/>
+            </p:spPr>
+            <p:txBody>
+              <a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" rtlCol="0" anchor="t">
+                <a:noAutofit/>
+              </a:bodyPr>
+              <a:lstStyle/>
+              <a:p>
+                <a:pPr algn="l"/>
+                <a14:m>
+                  <m:oMathPara xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">
+                    <m:oMathParaPr><m:jc m:val="left"/></m:oMathParaPr>
+                    <m:oMath>
+                      <m:f>
+                        <m:fPr>
+                          <m:ctrlPr>
+                            <a:rPr lang="en-US" sz="2400" i="1">
+                              <a:solidFill><a:srgbClr val="2E86AB"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                          </m:ctrlPr>
+                        </m:fPr>
+                        <m:num>
+                          <m:r>
+                            <m:rPr><m:sty m:val="p"/></m:rPr>
+                            <a:rPr lang="en-US" sz="2400">
+                              <a:solidFill><a:srgbClr val="2E86AB"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:ea
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:cs
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                            <m:t>-</m:t>
+                          </m:r>
+                          <m:r>
+                            <a:rPr lang="en-US" sz="2400" i="1">
+                              <a:solidFill><a:srgbClr val="2E86AB"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:ea
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:cs
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                            <m:t>b</m:t>
+                          </m:r>
+                          <m:r>
+                            <m:rPr><m:sty m:val="p"/></m:rPr>
+                            <a:rPr lang="en-US" sz="2400">
+                              <a:solidFill><a:srgbClr val="2E86AB"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:ea
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:cs
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                            <m:t>±</m:t>
+                          </m:r>
+                          <m:rad>
+                            <m:radPr>
+                              <m:degHide m:val="1"/>
+                              <m:ctrlPr>
+                                <a:rPr lang="en-US" sz="2400" i="1">
+                                  <a:solidFill><a:srgbClr val="2E86AB"/></a:solidFill>
+                                  <a:latin
+                                      typeface="Cambria Math"
+                                      panose="02040503050406030204"
+                                      pitchFamily="18"
+                                      charset="0"/>
+                                </a:rPr>
+                              </m:ctrlPr>
+                            </m:radPr>
+                            <m:deg/>
+                            <m:e>
+                              <m:sSup>
+                                <m:sSupPr>
+                                  <m:ctrlPr>
+                                    <a:rPr lang="en-US" sz="2400" i="1">
+                                      <a:solidFill><a:srgbClr val="2E86AB"/></a:solidFill>
+                                      <a:latin
+                                          typeface="Cambria Math"
+                                          panose="02040503050406030204"
+                                          pitchFamily="18"
+                                          charset="0"/>
+                                    </a:rPr>
+                                  </m:ctrlPr>
+                                </m:sSupPr>
+                                <m:e>
+                                  <m:r>
+                                    <a:rPr lang="en-US" sz="2400" i="1">
+                                      <a:solidFill><a:srgbClr val="2E86AB"/></a:solidFill>
+                                      <a:latin
+                                          typeface="Cambria Math"
+                                          panose="02040503050406030204"
+                                          pitchFamily="18"
+                                          charset="0"/>
+                                      <a:ea
+                                          typeface="Cambria Math"
+                                          panose="02040503050406030204"
+                                          pitchFamily="18"
+                                          charset="0"/>
+                                      <a:cs
+                                          typeface="Cambria Math"
+                                          panose="02040503050406030204"
+                                          pitchFamily="18"
+                                          charset="0"/>
+                                    </a:rPr>
+                                    <m:t>b</m:t>
+                                  </m:r>
+                                </m:e>
+                                <m:sup>
+                                  <m:r>
+                                    <m:rPr><m:sty m:val="p"/></m:rPr>
+                                    <a:rPr lang="en-US" sz="2400">
+                                      <a:solidFill><a:srgbClr val="2E86AB"/></a:solidFill>
+                                      <a:latin
+                                          typeface="Cambria Math"
+                                          panose="02040503050406030204"
+                                          pitchFamily="18"
+                                          charset="0"/>
+                                      <a:ea
+                                          typeface="Cambria Math"
+                                          panose="02040503050406030204"
+                                          pitchFamily="18"
+                                          charset="0"/>
+                                      <a:cs
+                                          typeface="Cambria Math"
+                                          panose="02040503050406030204"
+                                          pitchFamily="18"
+                                          charset="0"/>
+                                    </a:rPr>
+                                    <m:t>2</m:t>
+                                  </m:r>
+                                </m:sup>
+                              </m:sSup>
+                              <m:r>
+                                <m:rPr><m:sty m:val="p"/></m:rPr>
+                                <a:rPr lang="en-US" sz="2400">
+                                  <a:solidFill><a:srgbClr val="2E86AB"/></a:solidFill>
+                                  <a:latin
+                                      typeface="Cambria Math"
+                                      panose="02040503050406030204"
+                                      pitchFamily="18"
+                                      charset="0"/>
+                                  <a:ea
+                                      typeface="Cambria Math"
+                                      panose="02040503050406030204"
+                                      pitchFamily="18"
+                                      charset="0"/>
+                                  <a:cs
+                                      typeface="Cambria Math"
+                                      panose="02040503050406030204"
+                                      pitchFamily="18"
+                                      charset="0"/>
+                                </a:rPr>
+                                <m:t>-</m:t>
+                              </m:r>
+                              <m:r>
+                                <m:rPr><m:sty m:val="p"/></m:rPr>
+                                <a:rPr lang="en-US" sz="2400">
+                                  <a:solidFill><a:srgbClr val="2E86AB"/></a:solidFill>
+                                  <a:latin
+                                      typeface="Cambria Math"
+                                      panose="02040503050406030204"
+                                      pitchFamily="18"
+                                      charset="0"/>
+                                  <a:ea
+                                      typeface="Cambria Math"
+                                      panose="02040503050406030204"
+                                      pitchFamily="18"
+                                      charset="0"/>
+                                  <a:cs
+                                      typeface="Cambria Math"
+                                      panose="02040503050406030204"
+                                      pitchFamily="18"
+                                      charset="0"/>
+                                </a:rPr>
+                                <m:t>4</m:t>
+                              </m:r>
+                              <m:r>
+                                <a:rPr lang="en-US" sz="2400" i="1">
+                                  <a:solidFill><a:srgbClr val="2E86AB"/></a:solidFill>
+                                  <a:latin
+                                      typeface="Cambria Math"
+                                      panose="02040503050406030204"
+                                      pitchFamily="18"
+                                      charset="0"/>
+                                  <a:ea
+                                      typeface="Cambria Math"
+                                      panose="02040503050406030204"
+                                      pitchFamily="18"
+                                      charset="0"/>
+                                  <a:cs
+                                      typeface="Cambria Math"
+                                      panose="02040503050406030204"
+                                      pitchFamily="18"
+                                      charset="0"/>
+                                </a:rPr>
+                                <m:t>ac</m:t>
+                              </m:r>
+                            </m:e>
+                          </m:rad>
+                        </m:num>
+                        <m:den>
+                          <m:r>
+                            <m:rPr><m:sty m:val="p"/></m:rPr>
+                            <a:rPr lang="en-US" sz="2400">
+                              <a:solidFill><a:srgbClr val="2E86AB"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:ea
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:cs
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                            <m:t>2</m:t>
+                          </m:r>
+                          <m:r>
+                            <a:rPr lang="en-US" sz="2400" i="1">
+                              <a:solidFill><a:srgbClr val="2E86AB"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:ea
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:cs
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                            <m:t>a</m:t>
+                          </m:r>
+                        </m:den>
+                      </m:f>
+                    </m:oMath>
+                  </m:oMathPara>
+                </a14:m>
+                <a:endParaRPr lang="en-US" sz="2400"/>
+              </a:p>
+            </p:txBody>
+          </p:sp>
+        </mc:Choice>
+        <mc:Fallback>
+          <p:sp>
+            <p:nvSpPr><p:cNvPr id="3" name="Math 2"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+            <p:spPr>
+              <a:xfrm><a:off x="0" y="952500"/><a:ext cx="5715000" cy="1143000"/></a:xfrm>
+              <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+              <a:noFill/>
+            </p:spPr>
+            <p:txBody>
+              <a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" rtlCol="0" anchor="t">
+                <a:noAutofit/>
+              </a:bodyPr>
+              <a:lstStyle/>
+              <a:p>
+                <a:pPr algn="l"/>
+                <a:r>
+                  <a:rPr lang="en-US" sz="2400">
+                    <a:solidFill><a:srgbClr val="2E86AB"/></a:solidFill>
+                  </a:rPr>
+                  <a:t>\frac{-b \pm \sqrt{b^2 - 4ac}}{2a}</a:t>
+                </a:r>
+              </a:p>
+            </p:txBody>
+          </p:sp>
+        </mc:Fallback>
+      </mc:AlternateContent>
+      <mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+        <mc:Choice xmlns:a14="http://schemas.microsoft.com/office/drawing/2010/main" Requires="a14">
+          <p:sp>
+            <p:nvSpPr><p:cNvPr id="4" name="Math 3"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+            <p:spPr>
+              <a:xfrm><a:off x="0" y="2286000"/><a:ext cx="5715000" cy="952500"/></a:xfrm>
+              <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+              <a:noFill/>
+            </p:spPr>
+            <p:txBody>
+              <a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" rtlCol="0" anchor="ctr">
+                <a:noAutofit/>
+              </a:bodyPr>
+              <a:lstStyle/>
+              <a:p>
+                <a:pPr algn="ctr"/>
+                <a14:m>
+                  <m:oMathPara xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">
+                    <m:oMathParaPr><m:jc m:val="centerGroup"/></m:oMathParaPr>
+                    <m:oMath>
+                      <m:nary>
+                        <m:naryPr>
+                          <m:chr m:val="∑"/>
+                          <m:limLoc m:val="undOvr"/>
+                          <m:ctrlPr>
+                            <a:rPr lang="en-US" sz="2400" i="1">
+                              <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                          </m:ctrlPr>
+                        </m:naryPr>
+                        <m:sub>
+                          <m:r>
+                            <a:rPr lang="en-US" sz="2400" i="1">
+                              <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:ea
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:cs
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                            <m:t>i</m:t>
+                          </m:r>
+                          <m:r>
+                            <m:rPr><m:sty m:val="p"/></m:rPr>
+                            <a:rPr lang="en-US" sz="2400">
+                              <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:ea
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:cs
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                            <m:t>=</m:t>
+                          </m:r>
+                          <m:r>
+                            <m:rPr><m:sty m:val="p"/></m:rPr>
+                            <a:rPr lang="en-US" sz="2400">
+                              <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:ea
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:cs
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                            <m:t>1</m:t>
+                          </m:r>
+                        </m:sub>
+                        <m:sup>
+                          <m:r>
+                            <a:rPr lang="en-US" sz="2400" i="1">
+                              <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:ea
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:cs
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                            <m:t>n</m:t>
+                          </m:r>
+                        </m:sup>
+                        <m:e>
+                          <m:sSup>
+                            <m:sSupPr>
+                              <m:ctrlPr>
+                                <a:rPr lang="en-US" sz="2400" i="1">
+                                  <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                                  <a:latin
+                                      typeface="Cambria Math"
+                                      panose="02040503050406030204"
+                                      pitchFamily="18"
+                                      charset="0"/>
+                                </a:rPr>
+                              </m:ctrlPr>
+                            </m:sSupPr>
+                            <m:e>
+                              <m:r>
+                                <a:rPr lang="en-US" sz="2400" i="1">
+                                  <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                                  <a:latin
+                                      typeface="Cambria Math"
+                                      panose="02040503050406030204"
+                                      pitchFamily="18"
+                                      charset="0"/>
+                                  <a:ea
+                                      typeface="Cambria Math"
+                                      panose="02040503050406030204"
+                                      pitchFamily="18"
+                                      charset="0"/>
+                                  <a:cs
+                                      typeface="Cambria Math"
+                                      panose="02040503050406030204"
+                                      pitchFamily="18"
+                                      charset="0"/>
+                                </a:rPr>
+                                <m:t>i</m:t>
+                              </m:r>
+                            </m:e>
+                            <m:sup>
+                              <m:r>
+                                <m:rPr><m:sty m:val="p"/></m:rPr>
+                                <a:rPr lang="en-US" sz="2400">
+                                  <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                                  <a:latin
+                                      typeface="Cambria Math"
+                                      panose="02040503050406030204"
+                                      pitchFamily="18"
+                                      charset="0"/>
+                                  <a:ea
+                                      typeface="Cambria Math"
+                                      panose="02040503050406030204"
+                                      pitchFamily="18"
+                                      charset="0"/>
+                                  <a:cs
+                                      typeface="Cambria Math"
+                                      panose="02040503050406030204"
+                                      pitchFamily="18"
+                                      charset="0"/>
+                                </a:rPr>
+                                <m:t>2</m:t>
+                              </m:r>
+                            </m:sup>
+                          </m:sSup>
+                        </m:e>
+                      </m:nary>
+                      <m:r>
+                        <m:rPr><m:sty m:val="p"/></m:rPr>
+                        <a:rPr lang="en-US" sz="2400">
+                          <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                          <a:latin
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:ea
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:cs
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                        </a:rPr>
+                        <m:t>≤</m:t>
+                      </m:r>
+                      <m:nary>
+                        <m:naryPr>
+                          <m:chr m:val="∫"/>
+                          <m:limLoc m:val="subSup"/>
+                          <m:ctrlPr>
+                            <a:rPr lang="en-US" sz="2400" i="1">
+                              <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                          </m:ctrlPr>
+                        </m:naryPr>
+                        <m:sub>
+                          <m:r>
+                            <m:rPr><m:sty m:val="p"/></m:rPr>
+                            <a:rPr lang="en-US" sz="2400">
+                              <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:ea
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:cs
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                            <m:t>0</m:t>
+                          </m:r>
+                        </m:sub>
+                        <m:sup>
+                          <m:r>
+                            <m:rPr><m:sty m:val="p"/></m:rPr>
+                            <a:rPr lang="en-US" sz="2400">
+                              <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:ea
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:cs
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                            <m:t>1</m:t>
+                          </m:r>
+                        </m:sup>
+                        <m:e>
+                          <m:r>
+                            <a:rPr lang="en-US" sz="2400" i="1">
+                              <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:ea
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:cs
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                            <m:t>f</m:t>
+                          </m:r>
+                        </m:e>
+                      </m:nary>
+                      <m:r>
+                        <m:rPr><m:sty m:val="p"/></m:rPr>
+                        <a:rPr lang="en-US" sz="2400">
+                          <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                          <a:latin
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:ea
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:cs
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                        </a:rPr>
+                        <m:t>(</m:t>
+                      </m:r>
+                      <m:r>
+                        <a:rPr lang="en-US" sz="2400" i="1">
+                          <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                          <a:latin
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:ea
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:cs
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                        </a:rPr>
+                        <m:t>x</m:t>
+                      </m:r>
+                      <m:r>
+                        <m:rPr><m:sty m:val="p"/></m:rPr>
+                        <a:rPr lang="en-US" sz="2400">
+                          <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                          <a:latin
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:ea
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:cs
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                        </a:rPr>
+                        <m:t>)</m:t>
+                      </m:r>
+                      <m:r>
+                        <m:rPr><m:nor/></m:rPr>
+                        <a:rPr lang="en-US" sz="2400">
+                          <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                        </a:rPr>
+                        <m:t> </m:t>
+                      </m:r>
+                      <m:r>
+                        <a:rPr lang="en-US" sz="2400" i="1">
+                          <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                          <a:latin
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:ea
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:cs
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                        </a:rPr>
+                        <m:t>dx</m:t>
+                      </m:r>
+                    </m:oMath>
+                  </m:oMathPara>
+                </a14:m>
+                <a:endParaRPr lang="en-US" sz="2400"/>
+              </a:p>
+            </p:txBody>
+          </p:sp>
+        </mc:Choice>
+        <mc:Fallback>
+          <p:sp>
+            <p:nvSpPr><p:cNvPr id="4" name="Math 3"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+            <p:spPr>
+              <a:xfrm><a:off x="0" y="2286000"/><a:ext cx="5715000" cy="952500"/></a:xfrm>
+              <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+              <a:noFill/>
+            </p:spPr>
+            <p:txBody>
+              <a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" rtlCol="0" anchor="ctr">
+                <a:noAutofit/>
+              </a:bodyPr>
+              <a:lstStyle/>
+              <a:p>
+                <a:pPr algn="ctr"/>
+                <a:r>
+                  <a:rPr lang="en-US" sz="2400">
+                    <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                  </a:rPr>
+                  <a:t>\sum_{i=1}^{n} i^2 \leq \int_0^1 f(x)\,dx</a:t>
+                </a:r>
+              </a:p>
+            </p:txBody>
+          </p:sp>
+        </mc:Fallback>
+      </mc:AlternateContent>
+      <mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+        <mc:Choice xmlns:a14="http://schemas.microsoft.com/office/drawing/2010/main" Requires="a14">
+          <p:sp>
+            <p:nvSpPr><p:cNvPr id="5" name="Math 4"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+            <p:spPr>
+              <a:xfrm><a:off x="0" y="3429000"/><a:ext cx="5715000" cy="952500"/></a:xfrm>
+              <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+              <a:noFill/>
+            </p:spPr>
+            <p:txBody>
+              <a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" rtlCol="0" anchor="b">
+                <a:noAutofit/>
+              </a:bodyPr>
+              <a:lstStyle/>
+              <a:p>
+                <a:pPr algn="r"/>
+                <a14:m>
+                  <m:oMathPara xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">
+                    <m:oMathParaPr><m:jc m:val="right"/></m:oMathParaPr>
+                    <m:oMath>
+                      <m:limLow>
+                        <m:limLowPr>
+                          <m:ctrlPr>
+                            <a:rPr lang="en-US" sz="2400" i="1">
+                              <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                          </m:ctrlPr>
+                        </m:limLowPr>
+                        <m:e>
+                          <m:r>
+                            <m:rPr><m:sty m:val="p"/></m:rPr>
+                            <a:rPr lang="en-US" sz="2400">
+                              <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:ea
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:cs
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                            <m:t>lim</m:t>
+                          </m:r>
+                        </m:e>
+                        <m:lim>
+                          <m:r>
+                            <a:rPr lang="en-US" sz="2400" i="1">
+                              <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:ea
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:cs
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                            <m:t>x</m:t>
+                          </m:r>
+                          <m:r>
+                            <m:rPr><m:sty m:val="p"/></m:rPr>
+                            <a:rPr lang="en-US" sz="2400">
+                              <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:ea
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:cs
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                            <m:t>→</m:t>
+                          </m:r>
+                          <m:r>
+                            <m:rPr><m:sty m:val="p"/></m:rPr>
+                            <a:rPr lang="en-US" sz="2400">
+                              <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:ea
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:cs
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                            <m:t>0</m:t>
+                          </m:r>
+                        </m:lim>
+                      </m:limLow>
+                      <m:f>
+                        <m:fPr>
+                          <m:ctrlPr>
+                            <a:rPr lang="en-US" sz="2400" i="1">
+                              <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                          </m:ctrlPr>
+                        </m:fPr>
+                        <m:num>
+                          <m:func>
+                            <m:funcPr>
+                              <m:ctrlPr>
+                                <a:rPr lang="en-US" sz="2400" i="1">
+                                  <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                                  <a:latin
+                                      typeface="Cambria Math"
+                                      panose="02040503050406030204"
+                                      pitchFamily="18"
+                                      charset="0"/>
+                                </a:rPr>
+                              </m:ctrlPr>
+                            </m:funcPr>
+                            <m:fName>
+                              <m:r>
+                                <m:rPr><m:sty m:val="p"/></m:rPr>
+                                <a:rPr lang="en-US" sz="2400">
+                                  <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                                  <a:latin
+                                      typeface="Cambria Math"
+                                      panose="02040503050406030204"
+                                      pitchFamily="18"
+                                      charset="0"/>
+                                  <a:ea
+                                      typeface="Cambria Math"
+                                      panose="02040503050406030204"
+                                      pitchFamily="18"
+                                      charset="0"/>
+                                  <a:cs
+                                      typeface="Cambria Math"
+                                      panose="02040503050406030204"
+                                      pitchFamily="18"
+                                      charset="0"/>
+                                </a:rPr>
+                                <m:t>sin</m:t>
+                              </m:r>
+                            </m:fName>
+                            <m:e>
+                              <m:r>
+                                <a:rPr lang="en-US" sz="2400" i="1">
+                                  <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                                  <a:latin
+                                      typeface="Cambria Math"
+                                      panose="02040503050406030204"
+                                      pitchFamily="18"
+                                      charset="0"/>
+                                  <a:ea
+                                      typeface="Cambria Math"
+                                      panose="02040503050406030204"
+                                      pitchFamily="18"
+                                      charset="0"/>
+                                  <a:cs
+                                      typeface="Cambria Math"
+                                      panose="02040503050406030204"
+                                      pitchFamily="18"
+                                      charset="0"/>
+                                </a:rPr>
+                                <m:t>x</m:t>
+                              </m:r>
+                            </m:e>
+                          </m:func>
+                        </m:num>
+                        <m:den>
+                          <m:r>
+                            <a:rPr lang="en-US" sz="2400" i="1">
+                              <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:ea
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:cs
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                            <m:t>x</m:t>
+                          </m:r>
+                        </m:den>
+                      </m:f>
+                      <m:r>
+                        <m:rPr><m:sty m:val="p"/></m:rPr>
+                        <a:rPr lang="en-US" sz="2400">
+                          <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                          <a:latin
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:ea
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:cs
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                        </a:rPr>
+                        <m:t>=</m:t>
+                      </m:r>
+                      <m:r>
+                        <m:rPr><m:sty m:val="p"/></m:rPr>
+                        <a:rPr lang="en-US" sz="2400">
+                          <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                          <a:latin
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:ea
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:cs
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                        </a:rPr>
+                        <m:t>1</m:t>
+                      </m:r>
+                    </m:oMath>
+                  </m:oMathPara>
+                </a14:m>
+                <a:endParaRPr lang="en-US" sz="2400"/>
+              </a:p>
+            </p:txBody>
+          </p:sp>
+        </mc:Choice>
+        <mc:Fallback>
+          <p:sp>
+            <p:nvSpPr><p:cNvPr id="5" name="Math 4"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+            <p:spPr>
+              <a:xfrm><a:off x="0" y="3429000"/><a:ext cx="5715000" cy="952500"/></a:xfrm>
+              <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+              <a:noFill/>
+            </p:spPr>
+            <p:txBody>
+              <a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" rtlCol="0" anchor="b">
+                <a:noAutofit/>
+              </a:bodyPr>
+              <a:lstStyle/>
+              <a:p>
+                <a:pPr algn="r"/>
+                <a:r>
+                  <a:rPr lang="en-US" sz="2400">
+                    <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                  </a:rPr>
+                  <a:t>\lim_{x \to 0} \frac{\sin x}{x} = 1</a:t>
+                </a:r>
+              </a:p>
+            </p:txBody>
+          </p:sp>
+        </mc:Fallback>
+      </mc:AlternateContent>
+      <mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+        <mc:Choice xmlns:a14="http://schemas.microsoft.com/office/drawing/2010/main" Requires="a14">
+          <p:sp>
+            <p:nvSpPr><p:cNvPr id="6" name="Math 5"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+            <p:spPr>
+              <a:xfrm><a:off x="0" y="4572000"/><a:ext cx="5715000" cy="952500"/></a:xfrm>
+              <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+              <a:noFill/>
+            </p:spPr>
+            <p:txBody>
+              <a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" rtlCol="0" anchor="ctr">
+                <a:noAutofit/>
+              </a:bodyPr>
+              <a:lstStyle/>
+              <a:p>
+                <a:pPr algn="ctr"/>
+                <a14:m>
+                  <m:oMathPara xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">
+                    <m:oMathParaPr><m:jc m:val="centerGroup"/></m:oMathParaPr>
+                    <m:oMath>
+                      <m:sSup>
+                        <m:sSupPr>
+                          <m:ctrlPr>
+                            <a:rPr lang="en-US" sz="2400" i="1">
+                              <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                          </m:ctrlPr>
+                        </m:sSupPr>
+                        <m:e>
+                          <m:d>
+                            <m:dPr>
+                              <m:begChr m:val="("/>
+                              <m:endChr m:val=")"/>
+                              <m:ctrlPr>
+                                <a:rPr lang="en-US" sz="2400" i="1">
+                                  <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                                  <a:latin
+                                      typeface="Cambria Math"
+                                      panose="02040503050406030204"
+                                      pitchFamily="18"
+                                      charset="0"/>
+                                </a:rPr>
+                              </m:ctrlPr>
+                            </m:dPr>
+                            <m:e>
+                              <m:f>
+                                <m:fPr>
+                                  <m:ctrlPr>
+                                    <a:rPr lang="en-US" sz="2400" i="1">
+                                      <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                                      <a:latin
+                                          typeface="Cambria Math"
+                                          panose="02040503050406030204"
+                                          pitchFamily="18"
+                                          charset="0"/>
+                                    </a:rPr>
+                                  </m:ctrlPr>
+                                </m:fPr>
+                                <m:num>
+                                  <m:r>
+                                    <a:rPr lang="en-US" sz="2400" i="1">
+                                      <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                                      <a:latin
+                                          typeface="Cambria Math"
+                                          panose="02040503050406030204"
+                                          pitchFamily="18"
+                                          charset="0"/>
+                                      <a:ea
+                                          typeface="Cambria Math"
+                                          panose="02040503050406030204"
+                                          pitchFamily="18"
+                                          charset="0"/>
+                                      <a:cs
+                                          typeface="Cambria Math"
+                                          panose="02040503050406030204"
+                                          pitchFamily="18"
+                                          charset="0"/>
+                                    </a:rPr>
+                                    <m:t>a</m:t>
+                                  </m:r>
+                                </m:num>
+                                <m:den>
+                                  <m:r>
+                                    <a:rPr lang="en-US" sz="2400" i="1">
+                                      <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                                      <a:latin
+                                          typeface="Cambria Math"
+                                          panose="02040503050406030204"
+                                          pitchFamily="18"
+                                          charset="0"/>
+                                      <a:ea
+                                          typeface="Cambria Math"
+                                          panose="02040503050406030204"
+                                          pitchFamily="18"
+                                          charset="0"/>
+                                      <a:cs
+                                          typeface="Cambria Math"
+                                          panose="02040503050406030204"
+                                          pitchFamily="18"
+                                          charset="0"/>
+                                    </a:rPr>
+                                    <m:t>b</m:t>
+                                  </m:r>
+                                </m:den>
+                              </m:f>
+                            </m:e>
+                          </m:d>
+                        </m:e>
+                        <m:sup>
+                          <m:r>
+                            <a:rPr lang="en-US" sz="2400" i="1">
+                              <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:ea
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:cs
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                            <m:t>n</m:t>
+                          </m:r>
+                        </m:sup>
+                      </m:sSup>
+                      <m:r>
+                        <m:rPr><m:sty m:val="p"/></m:rPr>
+                        <a:rPr lang="en-US" sz="2400">
+                          <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                          <a:latin
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:ea
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:cs
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                        </a:rPr>
+                        <m:t>≥</m:t>
+                      </m:r>
+                      <m:r>
+                        <a:rPr lang="en-US" sz="2400" i="1">
+                          <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                          <a:latin
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:ea
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:cs
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                        </a:rPr>
+                        <m:t>α</m:t>
+                      </m:r>
+                      <m:r>
+                        <m:rPr><m:sty m:val="p"/></m:rPr>
+                        <a:rPr lang="en-US" sz="2400">
+                          <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                          <a:latin
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:ea
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:cs
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                        </a:rPr>
+                        <m:t>⋅</m:t>
+                      </m:r>
+                      <m:acc>
+                        <m:accPr>
+                          <m:chr m:val="⃗"/>
+                          <m:ctrlPr>
+                            <a:rPr lang="en-US" sz="2400" i="1">
+                              <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                          </m:ctrlPr>
+                        </m:accPr>
+                        <m:e>
+                          <m:r>
+                            <a:rPr lang="en-US" sz="2400" i="1">
+                              <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:ea
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:cs
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                            <m:t>v</m:t>
+                          </m:r>
+                        </m:e>
+                      </m:acc>
+                    </m:oMath>
+                  </m:oMathPara>
+                </a14:m>
+                <a:endParaRPr lang="en-US" sz="2400"/>
+              </a:p>
+            </p:txBody>
+          </p:sp>
+        </mc:Choice>
+        <mc:Fallback>
+          <p:sp>
+            <p:nvSpPr><p:cNvPr id="6" name="Math 5"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+            <p:spPr>
+              <a:xfrm><a:off x="0" y="4572000"/><a:ext cx="5715000" cy="952500"/></a:xfrm>
+              <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+              <a:noFill/>
+            </p:spPr>
+            <p:txBody>
+              <a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" rtlCol="0" anchor="ctr">
+                <a:noAutofit/>
+              </a:bodyPr>
+              <a:lstStyle/>
+              <a:p>
+                <a:pPr algn="ctr"/>
+                <a:r>
+                  <a:rPr lang="en-US" sz="2400">
+                    <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                  </a:rPr>
+                  <a:t>\left( \frac{a}{b} \right)^{n} \geq \alpha \cdot \vec{v}</a:t>
+                </a:r>
+              </a:p>
+            </p:txBody>
+          </p:sp>
+        </mc:Fallback>
+      </mc:AlternateContent>
+      <mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+        <mc:Choice xmlns:a14="http://schemas.microsoft.com/office/drawing/2010/main" Requires="a14">
+          <p:sp>
+            <p:nvSpPr><p:cNvPr id="7" name="Math 6"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+            <p:spPr>
+              <a:xfrm><a:off x="0" y="5715000"/><a:ext cx="5715000" cy="952500"/></a:xfrm>
+              <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+              <a:noFill/>
+            </p:spPr>
+            <p:txBody>
+              <a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" rtlCol="0" anchor="ctr">
+                <a:noAutofit/>
+              </a:bodyPr>
+              <a:lstStyle/>
+              <a:p>
+                <a:pPr algn="ctr"/>
+                <a14:m>
+                  <m:oMathPara xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">
+                    <m:oMathParaPr><m:jc m:val="centerGroup"/></m:oMathParaPr>
+                    <m:oMath>
+                      <m:r>
+                        <a:rPr lang="en-US" sz="2400" i="1">
+                          <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                          <a:latin
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:ea
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:cs
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                        </a:rPr>
+                        <m:t>A</m:t>
+                      </m:r>
+                      <m:r>
+                        <m:rPr><m:sty m:val="p"/></m:rPr>
+                        <a:rPr lang="en-US" sz="2400">
+                          <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                          <a:latin
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:ea
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:cs
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                        </a:rPr>
+                        <m:t>=</m:t>
+                      </m:r>
+                      <m:d>
+                        <m:dPr>
+                          <m:begChr m:val="("/>
+                          <m:endChr m:val=")"/>
+                          <m:ctrlPr>
+                            <a:rPr lang="en-US" sz="2400" i="1">
+                              <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                          </m:ctrlPr>
+                        </m:dPr>
+                        <m:e>
+                          <m:m>
+                            <m:mPr>
+                              <m:mcs>
+                                <m:mc>
+                                  <m:mcPr><m:count m:val="2"/><m:mcJc m:val="center"/></m:mcPr>
+                                </m:mc>
+                              </m:mcs>
+                              <m:ctrlPr>
+                                <a:rPr lang="en-US" sz="2400" i="1">
+                                  <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                                  <a:latin
+                                      typeface="Cambria Math"
+                                      panose="02040503050406030204"
+                                      pitchFamily="18"
+                                      charset="0"/>
+                                </a:rPr>
+                              </m:ctrlPr>
+                            </m:mPr>
+                            <m:mr>
+                              <m:e>
+                                <m:r>
+                                  <m:rPr><m:sty m:val="p"/></m:rPr>
+                                  <a:rPr lang="en-US" sz="2400">
+                                    <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                                    <a:latin
+                                        typeface="Cambria Math"
+                                        panose="02040503050406030204"
+                                        pitchFamily="18"
+                                        charset="0"/>
+                                    <a:ea
+                                        typeface="Cambria Math"
+                                        panose="02040503050406030204"
+                                        pitchFamily="18"
+                                        charset="0"/>
+                                    <a:cs
+                                        typeface="Cambria Math"
+                                        panose="02040503050406030204"
+                                        pitchFamily="18"
+                                        charset="0"/>
+                                  </a:rPr>
+                                  <m:t>1</m:t>
+                                </m:r>
+                              </m:e>
+                              <m:e>
+                                <m:r>
+                                  <m:rPr><m:sty m:val="p"/></m:rPr>
+                                  <a:rPr lang="en-US" sz="2400">
+                                    <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                                    <a:latin
+                                        typeface="Cambria Math"
+                                        panose="02040503050406030204"
+                                        pitchFamily="18"
+                                        charset="0"/>
+                                    <a:ea
+                                        typeface="Cambria Math"
+                                        panose="02040503050406030204"
+                                        pitchFamily="18"
+                                        charset="0"/>
+                                    <a:cs
+                                        typeface="Cambria Math"
+                                        panose="02040503050406030204"
+                                        pitchFamily="18"
+                                        charset="0"/>
+                                  </a:rPr>
+                                  <m:t>2</m:t>
+                                </m:r>
+                              </m:e>
+                            </m:mr>
+                            <m:mr>
+                              <m:e>
+                                <m:r>
+                                  <m:rPr><m:sty m:val="p"/></m:rPr>
+                                  <a:rPr lang="en-US" sz="2400">
+                                    <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                                    <a:latin
+                                        typeface="Cambria Math"
+                                        panose="02040503050406030204"
+                                        pitchFamily="18"
+                                        charset="0"/>
+                                    <a:ea
+                                        typeface="Cambria Math"
+                                        panose="02040503050406030204"
+                                        pitchFamily="18"
+                                        charset="0"/>
+                                    <a:cs
+                                        typeface="Cambria Math"
+                                        panose="02040503050406030204"
+                                        pitchFamily="18"
+                                        charset="0"/>
+                                  </a:rPr>
+                                  <m:t>3</m:t>
+                                </m:r>
+                              </m:e>
+                              <m:e>
+                                <m:r>
+                                  <m:rPr><m:sty m:val="p"/></m:rPr>
+                                  <a:rPr lang="en-US" sz="2400">
+                                    <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                                    <a:latin
+                                        typeface="Cambria Math"
+                                        panose="02040503050406030204"
+                                        pitchFamily="18"
+                                        charset="0"/>
+                                    <a:ea
+                                        typeface="Cambria Math"
+                                        panose="02040503050406030204"
+                                        pitchFamily="18"
+                                        charset="0"/>
+                                    <a:cs
+                                        typeface="Cambria Math"
+                                        panose="02040503050406030204"
+                                        pitchFamily="18"
+                                        charset="0"/>
+                                  </a:rPr>
+                                  <m:t>4</m:t>
+                                </m:r>
+                              </m:e>
+                            </m:mr>
+                          </m:m>
+                        </m:e>
+                      </m:d>
+                      <m:r>
+                        <m:rPr><m:sty m:val="p"/></m:rPr>
+                        <a:rPr lang="en-US" sz="2400">
+                          <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                          <a:latin
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:ea
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:cs
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                        </a:rPr>
+                        <m:t>,</m:t>
+                      </m:r>
+                      <m:sSup>
+                        <m:sSupPr>
+                          <m:ctrlPr>
+                            <a:rPr lang="en-US" sz="2400" i="1">
+                              <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                          </m:ctrlPr>
+                        </m:sSupPr>
+                        <m:e>
+                          <m:r>
+                            <m:rPr><m:scr m:val="double-struck"/></m:rPr>
+                            <a:rPr lang="en-US" sz="2400">
+                              <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:ea
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:cs
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                            <m:t>R</m:t>
+                          </m:r>
+                        </m:e>
+                        <m:sup>
+                          <m:r>
+                            <m:rPr><m:sty m:val="p"/></m:rPr>
+                            <a:rPr lang="en-US" sz="2400">
+                              <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                              <a:latin
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:ea
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                              <a:cs
+                                  typeface="Cambria Math"
+                                  panose="02040503050406030204"
+                                  pitchFamily="18"
+                                  charset="0"/>
+                            </a:rPr>
+                            <m:t>3</m:t>
+                          </m:r>
+                        </m:sup>
+                      </m:sSup>
+                      <m:r>
+                        <m:rPr><m:sty m:val="p"/></m:rPr>
+                        <a:rPr lang="en-US" sz="2400">
+                          <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                          <a:latin
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:ea
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                          <a:cs
+                              typeface="Cambria Math"
+                              panose="02040503050406030204"
+                              pitchFamily="18"
+                              charset="0"/>
+                        </a:rPr>
+                        <m:t>,</m:t>
+                      </m:r>
+                      <m:r>
+                        <m:rPr><m:nor/></m:rPr>
+                        <a:rPr lang="en-US" sz="2400">
+                          <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                        </a:rPr>
+                        <m:t>속도</m:t>
+                      </m:r>
+                    </m:oMath>
+                  </m:oMathPara>
+                </a14:m>
+                <a:endParaRPr lang="en-US" sz="2400"/>
+              </a:p>
+            </p:txBody>
+          </p:sp>
+        </mc:Choice>
+        <mc:Fallback>
+          <p:sp>
+            <p:nvSpPr><p:cNvPr id="7" name="Math 6"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+            <p:spPr>
+              <a:xfrm><a:off x="0" y="5715000"/><a:ext cx="5715000" cy="952500"/></a:xfrm>
+              <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+              <a:noFill/>
+            </p:spPr>
+            <p:txBody>
+              <a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" rtlCol="0" anchor="ctr">
+                <a:noAutofit/>
+              </a:bodyPr>
+              <a:lstStyle/>
+              <a:p>
+                <a:pPr algn="ctr"/>
+                <a:r>
+                  <a:rPr lang="en-US" sz="2400">
+                    <a:solidFill><a:srgbClr val="000000"/></a:solidFill>
+                  </a:rPr>
+                  <a:t>A = \begin{pmatrix} 1 &amp; 2 \\ 3 &amp; 4 \end{pmatrix}, \mathbb{R}^3, \text{속도}</a:t>
+                </a:r>
+              </a:p>
+            </p:txBody>
+          </p:sp>
+        </mc:Fallback>
+      </mc:AlternateContent>
+    </p:spTree>
+  </p:cSld>
+  <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
+</p:sld>
+-- math_equations.parts --
+ppt/slides/slide*.xml

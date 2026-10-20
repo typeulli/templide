@@ -1,6 +1,10 @@
-// 편집기 설정. 파일에 저장하는 일은 Rust(src-tauri/src/settings.rs)가 하고, 여기서는 설정의 모양과 기본값을 정한다.
-// 설정 창에서 바꾸면 열려 있는 모든 창이 "settings-changed"로 받아 같은 값을 쓴다.
-// 컴파일러 경로는 여기에 두지 않는다. 컴파일러를 띄우는 Rust(compiler_use)가 따로 저장한다
+/**
+ * 편집기 설정의 모양과 기본값을 정의한다.
+ * 실제 파일 저장은 Rust 쪽 설정 모듈이 담당하고, 이 모듈은 화면에서
+ * 설정을 읽고 바꾸는 데 필요한 상태만 관리한다.
+ */
+// 설정 창에서 바꾼 값은 열려 있는 모든 창에 settings-changed 이벤트로 전달한다.
+// 컴파일러 경로는 컴파일러 프로세스를 관리하는 Rust 모듈이 따로 저장한다.
 import { useSyncExternalStore } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';

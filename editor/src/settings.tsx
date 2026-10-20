@@ -1,34 +1,39 @@
-// 설정 창. 로고를 누르면 열린다. 바꾼 값은 곧바로 적용하고 저장한다 (settings.ts).
-// 컴파일러 경로는 Rust(compiler_use)가 컴파일러를 다시 띄우고 저장한다
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+/**
+ * 설정 창을 구성한다.
+ * 로고를 누르면 창이 열리고, 변경한 값은 즉시 적용한 뒤 저장한다.
+ */
+// 컴파일러 경로는 Rust의 compiler_use가 프로세스를 다시 시작하고 저장한다.
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
+import { emit, listen } from '@tauri-apps/api/event';
 import { getVersion } from '@tauri-apps/api/app';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { ask, open as openDialog } from '@tauri-apps/plugin-dialog';
-import { Bot, CircleAlert, CircleCheck, Code, Cpu, FolderOpen, Globe, Info, Keyboard, LoaderCircle, Presentation, RotateCcw, type LucideIcon } from 'lucide-react';
+import { Bot, CircleAlert, CircleCheck, Code, Cpu, FolderOpen, Globe, Info, Keyboard, LoaderCircle, Presentation, RotateCcw, TriangleAlert, WandSparkles, type LucideIcon } from 'lucide-react';
 import logo from '../../assets/icon/templide.svg';
 import license from '../../LICENSE?raw';
 import { agents } from './Agents';
 import { languages, t, useLang, type LanguageSetting } from './i18n';
 import { encodingHint, encodingLabel, encodingNames } from './encodings';
+import { effectiveFmtValue, fmtGroups, fmtLabels, type FmtChange, type FmtState } from './fmtSettings';
+import type { FmtOption } from './lsp';
 import { editorLimits, initSettings, resetSettings, updateSettings, useSettings } from './settings';
 import { ShortcutSettings } from './ShortcutSettings';
 import './styles.css';
 import './settings.css';
 
-type Page = 'general' | 'editor' | 'compiler' | 'agent' | 'show' | 'shortcuts' | 'about';
+type Page = 'general' | 'editor' | 'format' | 'compiler' | 'agent' | 'show' | 'shortcuts' | 'about';
 
 const isWindows = navigator.userAgent.includes('Windows');
 
 // stack이면 설명 아래에 입력칸을 넓게 둔다 (경로)
-function Row({ title, hint, stack, children }: { title: string; hint?: string; stack?: boolean; children: ReactNode }) {
+function Row({ title, hint, stack, code, children }: { title: string; hint?: string; stack?: boolean; code?: string; children: ReactNode }) {
     return (
         <div className={'setting-row' + (stack ? ' stack' : '')}>
             <div className="setting-text">
-                <div className="setting-title">{title}</div>
+                <div className="setting-title">{title}{code && <span className="setting-code">{code}</span>}</div>
                 {hint && <div className="setting-hint">{hint}</div>}
             </div>
             <div className="setting-control">{children}</div>
@@ -129,6 +134,116 @@ function explainCompilerError(error: unknown): string {
     return text;
 }
 
+// 포맷. 편집기 창에서 보이는 탭의 문서에 적힌 #fmt를 보여 주고, 바꾸면 그 문서에 #fmt 줄을 적는다 (편집기 창과는 이벤트로 주고받는다. Shell.tsx)
+function FormatPage() {
+    const [state, setState] = useState<FmtState | null>(null); // null이면 아직 편집기 창의 답이 없다
+    const shown = useRef('');
+    useEffect(() => {
+        let stopped = false;
+        const off = listen<FmtState>('fmt-state', (event) => {
+            const text = JSON.stringify(event.payload);
+            if (!stopped && text !== shown.current) {
+                shown.current = text;
+                setState(event.payload);
+            }
+        });
+        // 편집기에서 탭을 바꾸거나 코드를 고친 것도 따라가도록 잠깐마다 다시 묻는다
+        const query = () => {
+            emit('fmt-query').catch(() => {});
+        };
+        query();
+        const timer = window.setInterval(query, 1000);
+        window.addEventListener('focus', query);
+        return () => {
+            stopped = true;
+            window.clearInterval(timer);
+            window.removeEventListener('focus', query);
+            off.then((stop) => stop());
+        };
+    }, []);
+
+    // 곧바로 화면에 보이고(편집기 창의 답을 기다리지 않는다), 편집기 창에는 문서에 적어 달라고 부탁한다
+    const change = (next: FmtChange) => {
+        emit('fmt-change', next).catch((error) => console.error('fmt-change', error));
+        setState((current) => {
+            if (!current || 'defaults' in next) {
+                return current;
+            }
+            const written = { ...current.written };
+            if (next.value === null) {
+                delete written[next.name];
+            } else {
+                written[next.name] = next.value;
+            }
+            return { ...current, written, count: Math.max(current.count, 1) };
+        });
+    };
+
+    if (state === null) {
+        return <p className="setting-hint">{t('편집기 창에서 문서의 설정을 받는 중입니다...')}</p>;
+    }
+    if (state.document === null) {
+        return <div className="settings-empty">{t('열려 있는 .tlide 문서가 없습니다. 문서를 열면 그 문서의 #fmt 포맷 설정을 여기서 고칠 수 있습니다.')}</div>;
+    }
+
+    const control = (option: FmtOption) => {
+        const value = effectiveFmtValue(state, option);
+        const labels = fmtLabels[option.name]?.values ?? {};
+        const nameOf = (choice: string) => labels[choice] ? t(labels[choice]) : choice;
+        const set = (next: string) => change({ name: option.name, value: next });
+        switch (option.kind) {
+            case 'integer':
+                return <NumberField value={Number(value)} min={option.min} max={option.max} onChange={(number) => set(String(number))} />;
+            case 'boolean':
+                return <Switch checked={value === 'true'} onChange={(checked) => set(String(checked))} />;
+            case 'choice':
+                return (
+                    <select value={value} onChange={(event) => set(event.target.value)}>
+                        {option.choices.map((choice) => <option key={choice} value={choice}>{nameOf(choice)}</option>)}
+                    </select>
+                );
+            case 'keepOrInteger':
+                return (
+                    <select value={value} onChange={(event) => set(event.target.value)}>
+                        <option value="keep">{nameOf('keep')}</option>
+                        {Array.from({ length: option.max - option.min + 1 }, (_, index) => String(option.min + index)).map((number) => <option key={number} value={number}>{number}</option>)}
+                    </select>
+                );
+        }
+    };
+    const row = (option: FmtOption) => {
+        const label = fmtLabels[option.name];
+        return (
+            <Row key={option.name} title={label ? t(label.title) : option.name} hint={label ? label.hint && t(label.hint) : option.description} code={option.name}>
+                <div className="fmt-control">
+                    {control(option)}
+                    <button className="icon-only" disabled={state.written[option.name] === undefined} title={t('기본값으로 되돌리기 (문서에서 이 옵션의 #fmt 줄을 지웁니다)')}
+                        onClick={() => change({ name: option.name, value: null })}><RotateCcw size={13} /></button>
+                </div>
+            </Row>
+        );
+    };
+    const grouped = new Set(fmtGroups.flatMap((group) => group.names));
+    const others = state.options.filter((option) => !grouped.has(option.name));
+    return (
+        <>
+            <p className="setting-hint">{t('지금 편집기에서 보이는 문서 {0}의 포맷 설정입니다. 값을 바꾸면 그 문서에 #fmt 줄이 적히고, 코드의 마법봉 단추(포맷)가 이 설정대로 정리합니다. 실행 취소로 되돌릴 수 있습니다.', state.document)}</p>
+            {state.count === 0 && (
+                <div className="notice warning">
+                    <TriangleAlert size={14} />
+                    <span>{t('이 문서에는 #fmt 설정이 없어 포맷하지 않습니다. 아래에서 값을 하나라도 바꾸면 #fmt 줄이 생기고 그때부터 포맷합니다.')}</span>
+                    <button className="plain-button" onClick={() => change({ defaults: true })}>{t('기본 설정 넣기')}</button>
+                </div>
+            )}
+            {fmtGroups.map((group) => {
+                const options = group.names.flatMap((name) => state.options.filter((option) => option.name === name));
+                return options.length > 0 && <section key={group.title}><h2 className="setting-group">{t(group.title)}</h2>{options.map(row)}</section>;
+            })}
+            {others.length > 0 && <section><h2 className="setting-group">{t('기타')}</h2>{others.map(row)}</section>}
+        </>
+    );
+}
+
 function CompilerPage() {
     const [info, setInfo] = useState<CompilerInfo | null>(null);
     const [draft, setDraft] = useState('');
@@ -182,7 +297,7 @@ function CompilerPage() {
                 </div>
             </Row>
             {info?.error && <div className="notice warning"><CircleAlert size={14} /> {t('설정에 적은 컴파일러를 실행하지 못해 기본 컴파일러로 시작했습니다.')} {info.error}</div>}
-            <Row stack title={t('컴파일러 경로')} hint={t('비워 두면 편집기와 함께 설치된 컴파일러를 씁니다. 컴파일러는 자기 옆의 packages, libs 폴더를 함께 씁니다.')}>
+            <Row stack title={t('컴파일러 경로')} hint={t('비워 두면 편집기와 함께 설치된 컴파일러를 사용합니다. 컴파일러 실행 파일과 같은 위치의 packages 및 libs 폴더도 함께 사용합니다.')}>
                 <div className="path-edit">
                     <input className="path-input" value={draft} placeholder={info?.auto ?? ''} spellCheck={false}
                         onChange={(event) => { setDraft(event.target.value); setOutcome(null); }}
@@ -322,6 +437,7 @@ function SettingsApp() {
     const pages: { id: Page; icon: LucideIcon; title: string }[] = [
         { id: 'general', icon: Globe, title: t('일반') },
         { id: 'editor', icon: Code, title: t('코드 편집기') },
+        { id: 'format', icon: WandSparkles, title: t('포맷') },
         { id: 'compiler', icon: Cpu, title: t('컴파일러') },
         { id: 'agent', icon: Bot, title: t('AI 에이전트') },
         { id: 'show', icon: Presentation, title: t('슬라이드 쇼') },
@@ -352,6 +468,7 @@ function SettingsApp() {
                 <h1>{pages.find((each) => each.id === page)!.title}</h1>
                 {page === 'general' && <GeneralPage />}
                 {page === 'editor' && <EditorPage />}
+                {page === 'format' && <FormatPage />}
                 {page === 'compiler' && <CompilerPage />}
                 {page === 'agent' && <AgentPage />}
                 {page === 'show' && <ShowPage />}

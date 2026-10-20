@@ -1,5 +1,7 @@
-// templide 편집기의 창. 화면은 웹(../src)이고, 여기서는 컴파일러(templide.exe --serve)를 띄워
-// LSP 메시지를 화면과 주고받고, 파일을 읽고 쓴다
+//! templide 편집기의 애플리케이션 셸.
+//!
+//! 화면은 웹 코드(`../src`)로 구성하고, 이 모듈은 컴파일러 서버를 실행해
+//! LSP 메시지를 전달하며 파일 입출력을 담당한다.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::collections::HashMap;
@@ -35,7 +37,7 @@ struct Started(Instant);
 
 // 설정의 경로(setting), TEMPLIDE_EXE, 설치된 리소스 폴더의 컴파일러, 개발 중이면 저장소의 release 빌드 순서로 찾는다.
 // 리소스 폴더는 Windows가 편집기 옆, macOS가 templide.app/Contents/Resources, Linux(deb)가 /usr/lib/templide 이다.
-// 컴파일러는 자기 옆의 packages, libs를 쓰므로 셋을 같은 폴더에 설치한다 (build.py).
+// 컴파일러는 실행 파일과 같은 위치의 packages 및 libs 폴더를 사용하므로 세 항목을 함께 설치한다.
 // 두 번째 값은 어디서 찾았는지: setting, env, installed, development
 fn locate_compiler(app: &tauri::AppHandle, setting: Option<&str>) -> (PathBuf, &'static str) {
     const NAME: &str = if cfg!(windows) { "templide.exe" } else { "templide" };

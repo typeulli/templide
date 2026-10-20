@@ -343,15 +343,28 @@ namespace templide::server {
                     }
                     case ast::MASTER: {
                         const auto* node = static_cast<const ast::ASTMaster*>(statement);
-                        std::string header = text_of(node->span);
-                        header = trim(header.substr(0, header.find('{')));
+                        std::string code = "master " + node->name + " {";
+                        for (const auto* inner : node->vars) {
+                            code += "\n    " + trim(text_of(inner->span));
+                        }
                         std::string cases;
                         for (const auto* inner : node->body) {
                             cases += (cases.empty() ? "" : ", ") + static_cast<const ast::ASTMasterCase*>(inner)->name;
                         }
-                        const int id = add(SymbolKind::MASTER, node->name, node->name_token, header + " { " + (cases.empty() ? "" : "case " + cases + " ") + "}", offset(node->span));
+                        code += node->vars.empty() ? " " : "\n    ";
+                        code += (cases.empty() ? "" : "case " + cases + " ") + std::string(node->vars.empty() ? "}" : "\n}");
+                        const int id = add(SymbolKind::MASTER, node->name, node->name_token, code, offset(node->span));
                         masters.try_emplace(node->name, id);
-                        declare_parameters(id, node->parameters);
+                        // master의 var가 매개변수다. layout에서 위치나 이름으로 값을 넘긴다
+                        for (const auto* inner : node->vars) {
+                            const auto* var = static_cast<const ast::ASTVar*>(inner);
+                            const int member = add(SymbolKind::VAR, var->name->name, var->name->token, trim(text_of(var->span)), offset(var->span));
+                            index.symbols[member].owner = id;
+                            index.symbols[member].type = var->type_name->name;
+                            index.symbols[member].required = var->default_value == nullptr;
+                            members[id].try_emplace(var->name->name, member);
+                            parameters[id].push_back(member);
+                        }
                         for (const auto* inner : node->body) {
                             const auto* layout = static_cast<const ast::ASTMasterCase*>(inner);
                             const int member = add(SymbolKind::LAYOUT, layout->name, layout->name_token, node->name + "." + layout->name, offset(layout->span));
@@ -471,7 +484,14 @@ namespace templide::server {
                     case ast::MASTER: {
                         const auto* node = static_cast<const ast::ASTMaster*>(statement);
                         const int id = find_declaration(node->name_token);
-                        const Scope scope = parameter_scope(id, node->parameters);
+                        Scope scope;
+                        for (const auto* inner : node->vars) {
+                            const auto* var = static_cast<const ast::ASTVar*>(inner);
+                            var_declaration(var);
+                            if (id >= 0) {
+                                scope.vars.emplace_back(var->name->name, members[id].at(var->name->name));
+                            }
+                        }
                         for (const auto* inner : node->properties) {
                             const auto* assign = static_cast<const ast::ASTAssign*>(inner);
                             if (assign->name->name == "theme" && assign->expression->type == ast::NAME) {
@@ -774,6 +794,14 @@ namespace templide::server {
                     const auto& list = parameters[master];
                     for (std::size_t i = 0; i < arguments.size(); ++i) {
                         expression(arguments[i], scope, i < list.size() ? index.symbols[list[i]].type : "");
+                    }
+                    // 이름으로 넘긴 인자: 이름은 master의 매개변수를 가리킨다
+                    for (const auto& [parameter, value] : static_cast<const ast::ASTCall*>(object)->named) {
+                        const auto found = members[master].find(parameter->name);
+                        if (found != members[master].end()) {
+                            use(parameter->token, found->second);
+                        }
+                        expression(value, scope, found != members[master].end() ? index.symbols[found->second].type : "");
                     }
                 }
                 const auto& cases = members[master];

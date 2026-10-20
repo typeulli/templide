@@ -202,7 +202,7 @@ export function ObjectAnimations({ schema, slide, id, media, onOp, onPreview }: 
                 </span>
                 <button className="ghost-button" title={t('이 슬라이드의 애니메이션을 캔버스에서 재생')} onClick={onPreview}><Play size={13} /> {t('미리 보기')}</button>
             </div>
-            {list.length === 0 && <div className="props-empty small">{t('이 개체에는 애니메이션이 없습니다.')}<br />{t('추가하면 이 개체의 put 블록에 animate 문장이 들어갑니다')}</div>}
+            {list.length === 0 && <div className="props-empty small">{t('이 개체에는 애니메이션이 없습니다.')}<br />{t('애니메이션을 추가하면 이 개체의 put 블록에 animate 문장이 들어갑니다.')}</div>}
             {list.map(({ animation, index }) => (
                 <div key={index} className={'animation-item' + (open === index ? ' open' : '')}>
                     <button className="animation-row" onClick={() => setOpen(open === index ? null : index)}>

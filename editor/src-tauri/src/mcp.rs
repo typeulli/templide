@@ -19,9 +19,14 @@ pub struct Mcp {
 
 const INSTRUCTIONS: &str = "Connected to the templide slide editor (.tlide documents). The open document may have unsaved changes, \
 so read it with read_document and change it with edit_document instead of editing the file on disk (the user can undo with Ctrl+Z). \
-Start with get_editor_state (open files, current slide, errors); use get_selection when the user says \"this\" or \"the selected one\". \
+Keep token use low: call only the tools the task needs, read only the lines you need (read_document offset/limit), and do not call get_editor_state or render_slide out of habit. \
+For accessibility problems call get_accessibility (it gives each line, its code and the fix, so do not read the whole document first). \
+get_editor_state gives the open files, current slide and errors; use get_selection when the user says \"this\" or \"the selected one\". \
 Before writing syntax you are unsure of, call get_language_guide (no argument lists the topics; it also gives the objects and properties this compiler knows). \
-get_resources shows the included packages and .tasset files. After editing, fix the errors in the reply and check the result with render_slide.";
+get_resources shows the included packages and .tasset files; add_asset copies image, video and audio files into a .tasset bundle and gives the file(\"...\") expression to write. get_definition shows a template or master with its source and uses. \
+Slides are added, duplicated, deleted and moved with edit_slides (more reliable than editing the code); document_history undoes, redoes and restores earlier states when a change went wrong. \
+save_document, format_document (needs #fmt lines), set_target and build (targets) work like the toolbar buttons; open_document opens or creates another .tlide and makes it the document the tools work on. \
+After editing, fix the errors in the reply; call render_slide (an image, about 1.2k tokens) only to check a visual change.";
 
 fn random_token() -> String {
     use std::hash::{BuildHasher, Hasher};

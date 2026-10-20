@@ -296,3 +296,193 @@ $ {"op": "table", "id": "@table", "action": "remove_row", "index": 99}
 {"op": "table", "id": "@table", "action": "remove_column", "index": 3}
 # 없는 자리와 마지막 하나는 거절된다
 {"op": "table", "id": "@table", "action": "remove_row", "index": 99}
+-- definition_template.tlide --
+/* template 편집 화면. 안의 요소는 slide에 적은 것처럼 고칠 수 있고, 매개변수에서 온 값만 잠긴다. 기본값을 고치고 지우고 매개변수를 더하고 뺀다 */
+#include <std/stddef>
+
+template card {
+    var text title;
+    var int w = 300;
+    var color tone;
+    put shape {
+        kind = roundRect;
+        x = 100; y = 100; width = w; height = 120;
+        fill = tone;
+    }
+    put text_box { text = title; x = 110; y = 110; width = 280; height = 40; }
+}
+
+slide {
+    put card { title = "A"; w = 240; tone = hex(F00); }
+}
+
+target out { path = "out.html"; type = html; }
+-- definition_template.expected --
+$ {"definition": {"kind": "template", "name": "card"}, "op": "move", "id": "@shape", "dx": 20, "dy": 10}
+[diff]
+-        x = 100; y = 100; width = w; height = 120;
++        x = 120; y = 110; width = w; height = 120;
+
+$ {"definition": {"kind": "template", "name": "card"}, "op": "set", "id": "@shape", "name": "height", "length": 90}
+[diff]
+-        x = 120; y = 110; width = w; height = 120;
++        x = 120; y = 110; width = w; height = 90;
+
+$ {"definition": {"kind": "template", "name": "card"}, "op": "set", "id": "@shape", "name": "width", "length": 200}
+[error] This value comes from a template parameter; change its default value in the parameter list
+
+$ {"definition": {"kind": "template", "name": "card"}, "op": "var_default", "name": "w", "length": 420}
+[diff]
+-    var int w = 300;
++    var int w = 420;
+
+$ {"definition": {"kind": "template", "name": "card"}, "op": "var_default", "name": "tone", "color": "#3498DB"}
+[diff]
+-    var color tone;
++    var color tone = hex(3498DB);
+
+$ {"definition": {"kind": "template", "name": "card"}, "op": "var_default_clear", "name": "w"}
+[diff]
+-    var int w = 420;
++    var int w;
+
+$ {"definition": {"kind": "template", "name": "card"}, "op": "var_add", "type": "int", "name": "count", "default": "0"}
+[diff]
++    var int count = 0;
+
+$ {"definition": {"kind": "template", "name": "card"}, "op": "insert", "page": 1, "object": "text_box", "properties": [{"name": "text", "string": "New"}, {"name": "x", "length": 5}, {"name": "y", "length": 5}, {"name": "width", "length": 100}, {"name": "height", "length": 40}]}
+[diff]
++    put text_box { text = "New"; x = 5px; y = 5px; width = 100px; height = 40px; }
+-- definition_template.edits --
+# 요소를 옮기고 크기를 바꾼다 (template 안의 값이라도 리터럴이면 바로 고친다)
+{"definition": {"kind": "template", "name": "card"}, "op": "move", "id": "@shape", "dx": 20, "dy": 10}
+{"definition": {"kind": "template", "name": "card"}, "op": "set", "id": "@shape", "name": "height", "length": 90}
+# 매개변수에서 온 값은 잠겨 있다
+{"definition": {"kind": "template", "name": "card"}, "op": "set", "id": "@shape", "name": "width", "length": 200}
+# 기본값 고치기, 새로 넣기, 지우기
+{"definition": {"kind": "template", "name": "card"}, "op": "var_default", "name": "w", "length": 420}
+{"definition": {"kind": "template", "name": "card"}, "op": "var_default", "name": "tone", "color": "#3498DB"}
+{"definition": {"kind": "template", "name": "card"}, "op": "var_default_clear", "name": "w"}
+# 매개변수 더하기 (기본값과 함께 넣어 이미 쓰는 put이 깨지지 않는다)
+{"definition": {"kind": "template", "name": "card"}, "op": "var_add", "type": "int", "name": "count", "default": "0"}
+# 새 요소를 template 블록 끝에 넣는다
+{"definition": {"kind": "template", "name": "card"}, "op": "insert", "page": 1, "object": "text_box", "properties": [{"name": "text", "string": "New"}, {"name": "x", "length": 5}, {"name": "y", "length": 5}, {"name": "width", "length": 100}, {"name": "height", "length": 40}]}
+-- definition_master.tlide --
+/* master case 편집 화면. case의 배경과 요소를 slide처럼 고친다 */
+#include <std/stddef>
+
+master brand {
+    var color ink = hex(222);
+    case title {
+        background = hex(FFF8E0);
+        put text_box { text = "Title"; x = 80; y = 60; width = 600; height = 80; }
+    }
+    case body {
+        put shape { kind = rect; x = 0; y = 0; width = 1280; height = 12; }
+    }
+}
+
+slide {
+    layout = brand(hex(222)).title;
+}
+
+target out { path = "out.html"; type = html; }
+-- definition_master.expected --
+$ {"definition": {"kind": "master", "name": "brand", "case": "title"}, "op": "slide_set", "page": 1, "name": "background", "color": "#112233"}
+[diff]
+-        background = hex(FFF8E0);
++        background = hex(112233);
+
+$ {"definition": {"kind": "master", "name": "brand", "case": "title"}, "op": "move", "id": "@text_box", "dx": 40, "dy": 0}
+[diff]
+-        put text_box { text = "Title"; x = 80; y = 60; width = 600; height = 80; }
++        put text_box { text = "Title"; x = 120; y = 60; width = 600; height = 80; }
+
+$ {"definition": {"kind": "master", "name": "brand", "case": "title"}, "op": "text", "id": "@text_box", "paragraph": 0, "run": 0, "text": "Edited"}
+[diff]
+-        put text_box { text = "Title"; x = 120; y = 60; width = 600; height = 80; }
++        put text_box { text = "Edited"; x = 120; y = 60; width = 600; height = 80; }
+
+$ {"definition": {"kind": "master", "name": "brand", "case": "body"}, "op": "slide_set", "page": 1, "name": "background", "color": "#EEEEEE"}
+[diff]
++        background = hex(EEEEEE);
+
+$ {"definition": {"kind": "master", "name": "brand", "case": "body"}, "op": "delete", "id": "@shape"}
+[diff]
+-        put shape { kind = rect; x = 0; y = 0; width = 1280; height = 12; }
+
+$ {"definition": {"kind": "master", "name": "brand", "case": "body"}, "op": "var_default", "name": "ink", "color": "#FF0000"}
+[diff]
+-    var color ink = hex(222);
++    var color ink = hex(FF0000);
+
+$ {"definition": {"kind": "master", "name": "brand", "case": "body"}, "op": "var_add", "type": "int", "name": "count", "default": "3"}
+[diff]
++    var int count = 3;
+-- definition_master.edits --
+{"definition": {"kind": "master", "name": "brand", "case": "title"}, "op": "slide_set", "page": 1, "name": "background", "color": "#112233"}
+{"definition": {"kind": "master", "name": "brand", "case": "title"}, "op": "move", "id": "@text_box", "dx": 40, "dy": 0}
+{"definition": {"kind": "master", "name": "brand", "case": "title"}, "op": "text", "id": "@text_box", "paragraph": 0, "run": 0, "text": "Edited"}
+# 배경이 없는 case에도 넣을 수 있다
+{"definition": {"kind": "master", "name": "brand", "case": "body"}, "op": "slide_set", "page": 1, "name": "background", "color": "#EEEEEE"}
+{"definition": {"kind": "master", "name": "brand", "case": "body"}, "op": "delete", "id": "@shape"}
+# master의 매개변수도 template처럼 고친다
+{"definition": {"kind": "master", "name": "brand", "case": "body"}, "op": "var_default", "name": "ink", "color": "#FF0000"}
+{"definition": {"kind": "master", "name": "brand", "case": "body"}, "op": "var_add", "type": "int", "name": "count", "default": "3"}
+-- slide_move.tlide --
+/* 썸네일을 끌어 slide를 옮긴다. slide 바로 위(빈 줄 없이)에 자기 줄을 차지한 주석은 함께 가고, 빈 줄로 떨어진 주석과 정의는 제자리에 있다 */
+#include <std/stddef>
+
+/* 정의 위 설명 */
+object tag { var text text; }
+
+/* 첫째 설명 */
+slide { put tag { text = "1"; } }
+
+/* 둘째 설명 1 */
+/* 둘째 설명 2 */
+slide { put tag { text = "2"; } }
+
+/* 셋째와 떨어진 주석 */
+
+slide { put tag { text = "3"; } }
+-- slide_move.expected --
+$ {"op": "slide", "action": "move", "page": 3, "to": 1}
+[diff]
++slide { put tag { text = "3"; } }
+-slide { put tag { text = "3"; } }
+
+$ {"op": "slide", "action": "move", "page": 1, "to": 3}
+[diff]
+-slide { put tag { text = "3"; } }
++slide { put tag { text = "3"; } }
+
+$ {"op": "slide", "action": "up", "page": 2}
+[diff]
++/* 둘째 설명 1 */
++/* 둘째 설명 2 */
++slide { put tag { text = "2"; } }
+-/* 둘째 설명 1 */
+-/* 둘째 설명 2 */
+-slide { put tag { text = "2"; } }
+
+$ {"op": "slide", "action": "down", "page": 1}
+[diff]
++/* 첫째 설명 */
++slide { put tag { text = "1"; } }
+-/* 첫째 설명 */
+-slide { put tag { text = "1"; } }
+
+$ {"op": "slide", "action": "move", "page": 2, "to": 2}
+[diff]
+(바뀐 것 없음)
+
+$ {"op": "slide", "action": "move", "page": 1, "to": 9}
+[error] No slide 9
+-- slide_move.edits --
+{"op": "slide", "action": "move", "page": 3, "to": 1}
+{"op": "slide", "action": "move", "page": 1, "to": 3}
+{"op": "slide", "action": "up", "page": 2}
+{"op": "slide", "action": "down", "page": 1}
+{"op": "slide", "action": "move", "page": 2, "to": 2}
+{"op": "slide", "action": "move", "page": 1, "to": 9}

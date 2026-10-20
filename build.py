@@ -1,8 +1,10 @@
 """컴파일러와 편집기를 release로 빌드하고 설치 파일을 만든다. 저장소 맨 위에서 실행한다.
 
-    python build.py [--target <Rust 타깃>] [--skip-compiler]
+    python build.py [--target <Rust 타깃>] [--skip-compiler] [--fast]
 
 --target은 편집기의 Rust 타깃이고, 없으면 이 컴퓨터의 타깃이다. 만드는 설치 파일은 타깃의 운영체제로 정해진다.
+--fast는 편집기를 release-thin(thin LTO) 프로파일로 빌드해 마지막 단계(templide-editor)를 여러 코어로 돌린다. 설치 파일이 조금 크고
+이름 뒤에 -fast가 붙어서 배포용을 덮어쓰지 않는다. 배포용은 --fast 없이 만든다. 처음 한 번은 의존성을 모두 새로 컴파일한다.
 - Windows (x86_64-, i686-, aarch64-pc-windows-msvc): NSIS 설치 파일 (*-setup.exe)
 - Linux (x86_64-unknown-linux-gnu): .deb
 - macOS (universal-apple-darwin): .dmg. 컴파일러도 arm64와 x86_64를 합쳐 빌드한다
@@ -102,6 +104,7 @@ def main():
     parser = argparse.ArgumentParser(description='컴파일러와 편집기를 빌드하고 설치 파일을 만든다')
     parser.add_argument('--target', help='편집기의 Rust 타깃 (기본: 이 컴퓨터)')
     parser.add_argument('--skip-compiler', action='store_true', help='이미 빌드된 cmake-build-release의 컴파일러를 쓴다')
+    parser.add_argument('--fast', action='store_true', help='편집기를 thin LTO로 빌드한다 (빠르지만 조금 크다. 설치 파일 이름에 -fast가 붙는다)')
     args = parser.parse_args()
     host = host_target()
     target = args.target or host
@@ -119,15 +122,20 @@ def main():
     # 이 컴퓨터의 타깃이면 --target을 빼서 target/release를 그대로 쓴다 (평소 빌드와 캐시를 같이 쓴다)
     if target != host:
         command += ['--target', target]
+    # --fast는 release-thin 프로파일이다 (src-tauri/Cargo.toml). target/release-thin에 따로 쌓이므로 release의 캐시를 건드리지 않는다
+    profile = 'release-thin' if args.fast else 'release'
+    if args.fast:
+        command += ['--', '--profile', profile]
     run('편집기와 설치 파일', command, EDITOR)
 
-    release = TAURI / 'target' / ('release' if target == host else f'{target}/release')
+    release = TAURI / 'target' / (profile if target == host else f'{target}/{profile}')
     kind, pattern = BUNDLES[system]
     built = sorted((release / 'bundle' / kind).glob(pattern), key=lambda path: path.stat().st_mtime)
     if not built:
         sys.exit(f'{release / "bundle" / kind}에 설치 파일이 없습니다')
     INSTALLER.mkdir(exist_ok=True)
-    installer = INSTALLER / built[-1].name
+    # 빠른 빌드는 이름 뒤에 -fast를 붙여 배포용 설치 파일을 덮어쓰지 않게 한다
+    installer = INSTALLER / (f'{built[-1].stem}-fast{built[-1].suffix}' if args.fast else built[-1].name)
     shutil.copy2(built[-1], installer)
     print(f'\n설치 파일: {installer}')
 

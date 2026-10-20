@@ -7,5 +7,9 @@ cmake-build-*/
 
 /editor/src/generated/
 
+# 빌드할 때 받아 오는 KaTeX (tools/fetch_katex.cmake)
+/libs/katex/
+/libs/katex.tmp/
+
 __pycache__/
 *.py[cod]

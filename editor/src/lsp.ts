@@ -166,8 +166,38 @@ export type SlideInfo = {
 // 고른 target의 문서 속성
 type DocumentInfo = { title?: string; author?: string; loop?: boolean; type?: string; path?: string; source?: Origin; properties?: Record<string, Origin> };
 
+// 편집 화면으로 열 정의. template, 또는 master의 case 하나
+export type DefinitionRef = { kind: 'template' | 'master'; name: string; case?: string };
+
+// template, master의 var(매개변수) 하나. 기본값이 없으면 value는 그 타입의 기본값(미리 보기에 쓴 값)이다
+export type DefinitionVar = {
+    name: string;
+    type: string;
+    hasDefault: boolean;
+    defaultText: string;
+    value?: Value | unknown[];
+    origin?: Origin; // 기본값을 적은 곳
+    declaration: Range;
+};
+
+// 정의를 편집할 때 deck에 붙어 오는 정보. 덱은 그 정의 하나를 슬라이드 한 장으로 펼친 것이다
+export type DefinitionInfo = {
+    kind: 'template' | 'master';
+    name: string;
+    case: string;
+    cases: string[];
+    package: boolean;     // 표준 라이브러리에 있어 고칠 수 없다
+    vars: DefinitionVar[];
+    diagnostics: { message: string }[]; // 펼치다 난 오류
+    uri?: string;
+    range?: Range;
+};
+
+export type DefinitionEntry = { kind: 'template' | 'master'; name: string; cases: string[]; package: boolean; uri: string; range: Range };
+
 export type DeckResult = {
     error?: string;
+    definition?: DefinitionInfo;
     deck: any;
     targets: { name: string; type: string }[];
     target: string | null;
@@ -185,6 +215,7 @@ export type SchemaVar = { name: string; type: string; default: string; required:
 
 // templide/schema. 마지막으로 분석에 성공한 문서의 이름들
 export type Schema = {
+    definitions: DefinitionEntry[]; // template과 master (document 안의 위치와 함께)
     // asset 문들. bundle은 묶음 파일의 경로, written은 asset 문에 적은 경로다
     assets: { bundle: string; written: string; default: boolean; hasBy: boolean; namespaces: string[]; aliases: Record<string, string>; entries: string[] }[];
     constants: Record<string, string>; // image, video, audio로 이름 붙인 값 -> 그 타입
@@ -192,7 +223,7 @@ export type Schema = {
     objects: Record<string, SchemaVar[]>;
     templates: Record<string, SchemaVar[]>;
     enums: Record<string, string[]>;
-    masters: Record<string, { parameters: string[]; cases: string[] }>;
+    masters: Record<string, { parameters: SchemaVar[]; cases: string[] }>;
     themes: string[];
     commonProperties: SchemaVar[];
     textProperties: SchemaVar[];
@@ -206,7 +237,42 @@ export type Schema = {
     themeColors: string[];
 };
 
-export type Diagnostic = { range: Range; message: string; severity: number };
+// code는 컴파일러 진단 코드(E2029, W2001, A0001 ...)다. 없는 진단도 있다
+export type Diagnostic = { range: Range; message: string; severity: number; code?: string };
+
+// templide/accessibility의 결과 하나
+export type AccessFinding = { uri: string; range: Range; severity: number; level: 'error' | 'warning' | 'info'; code: string; name?: string; message: string };
+
+// templide/assets: 문서 폴더의 그림, 비디오, 오디오와 .tasset 묶음 안의 파일. used는 지금 문서가 쓰는지
+export type AssetKind = 'image' | 'video' | 'audio';
+export type AssetListing = {
+    folder: string;
+    files: { path: string; kind: AssetKind; size: number; used: boolean }[];
+    bundles: { path: string; entries: { name: string; kind: AssetKind; size: number; used: boolean }[]; error: string }[];
+    truncated: boolean;
+};
+
+// templide/format. formatted면 text가 새 내용이고, noSettings면 #fmt가 없어 포맷하지 않은 것이다 (defaults는 넣을 기본 설정 줄들)
+export type FormatReply = {
+    status: 'formatted' | 'unchanged' | 'noSettings' | 'error';
+    text?: string;
+    defaults?: string;
+    message?: string;
+    diagnostics?: { level: string; code: string; message: string }[];
+};
+
+// templide/fmtOptions. options는 #fmt로 정할 수 있는 모든 옵션이고, directives는 이 문서에 적힌 #fmt 줄이다 (줄과 열은 1부터)
+export type FmtOption = {
+    name: string;
+    kind: 'integer' | 'boolean' | 'choice' | 'keepOrInteger';
+    choices: string[]; // choice의 선택지 (boolean은 true, false)
+    min: number;
+    max: number;
+    default: string;
+    description: string;
+};
+export type FmtDirective = { name: string; value: string; line: number; column: number; valueLine: number; valueColumn: number; valueLength: number };
+export type FmtOptionsReply = { options: FmtOption[]; directives: FmtDirective[]; defaults: string; error?: string };
 
 export type TargetWarning = Diagnostic & { uri: string };
 

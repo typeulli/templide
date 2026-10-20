@@ -46,6 +46,7 @@ const reasons = (): Record<string, string> => ({
     for: t('for 반복으로 만든 값'),
     package: t('패키지 파일에 있는 값'),
     layout: t('마스터 레이아웃의 값'),
+    parameter: t('템플릿 매개변수에서 온 값'),
 });
 
 // 고칠 수 없으면 그 이유
@@ -110,7 +111,7 @@ type Drag =
 
 export type Point = { x: number; y: number };
 
-export function SlideView({ deck, index, selected, editable, editing, zoom, onZoom, onSelect, onPaint, onMove, onResize, onText, onNotice, stale, preview, onPreviewEnd, drawing, onDraw, connecting, cells, focusSignal, onCells, onCellText, onTableSizes, onCellAction, onCellMenu }: {
+export function SlideView({ deck, index, selected, editable, editing, zoom, onZoom, onSelect, onPaint, onMove, onResize, onText, onNotice, onOpenTemplate, stale, preview, onPreviewEnd, drawing, onDraw, connecting, cells, focusSignal, onCells, onCellText, onTableSizes, onCellAction, onCellMenu }: {
     deck: DeckResult;
     index: number;
     selected: string | null;
@@ -124,6 +125,7 @@ export function SlideView({ deck, index, selected, editable, editing, zoom, onZo
     onResize(id: string, change: Resize, instance: boolean): Promise<boolean>;
     onText(id: string, paragraph: number, run: number, text: string): Promise<boolean>;
     onNotice(message: string): void;
+    onOpenTemplate?(id: string): void; // 템플릿이 만든 요소를 두 번 누르면 그 템플릿의 편집 화면으로 들어간다
     stale: boolean;
     // 미리 보기 중이면 이 슬라이드의 전환과 애니메이션을 재생한다 (key가 바뀌면 처음부터)
     preview: { transition: boolean; key: number } | null;
@@ -460,6 +462,9 @@ export function SlideView({ deck, index, selected, editable, editing, zoom, onZo
         // 글자 밖(글상자의 빈 곳)을 눌렀으면 가장 가까운 run을 고친다
         const run = (event.target as HTMLElement).closest<HTMLElement>('.tl-run') ?? (node ? nearestRun(node, event.clientX, event.clientY) : null);
         if (!run || !node || !editable) {
+            if (node && !run && editable && onOpenTemplate && deck.elements[node.dataset.src!]?.fromTemplate) {
+                onOpenTemplate(node.dataset.src!);
+            }
             return;
         }
         const id = node.dataset.src!;
@@ -468,6 +473,10 @@ export function SlideView({ deck, index, selected, editable, editing, zoom, onZo
         const runIndex = Array.from(paragraph.querySelectorAll('.tl-run')).indexOf(run);
         const reason = lockOf(deck.elements[id]?.text?.[paragraphIndex]?.[runIndex]);
         if (reason) {
+            if (deck.elements[id]?.fromTemplate && onOpenTemplate) {
+                onOpenTemplate(id);
+                return;
+            }
             onNotice(t('이 글자는 고칠 수 없습니다: {0}. 코드에서 고쳐 주세요', reason));
             return;
         }

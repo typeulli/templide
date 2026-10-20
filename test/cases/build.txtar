@@ -234,35 +234,37 @@ slide { }
 target a { path = "a.pptx"; type = pptx; }
 -- cli_usage.expected --
 $ templide --check
-[exit] 1
+[exit] 2
 [stderr]
-usage: templide [--ast | --ir | --check] [--watch] [--target <name>]... <file>
+usage: templide [--ast | --ir | --check] [--watch] [--target <name>]... [--format text|json|github] [--strict] [--fmt] [--access] <file>
+       templide fmt [--check | --stdout] <file>...
+       templide tool access <file>
        templide --serve
 
 $ templide cli_usage.tlide --check --ast
-[exit] 1
+[exit] 2
 [stderr]
 error: --check and --watch cannot be used with --ast or --ir
 
 $ templide cli_usage.tlide --ir --check
-[exit] 1
+[exit] 2
 [stderr]
 error: --check and --watch cannot be used with --ast or --ir
 
 $ templide nothing_here.tlide --check
-[exit] 1
+[exit] 2
 [stderr]
-nothing_here.tlide: error: Cannot open file
+nothing_here.tlide: error[E2162]: Cannot open file
 
 $ templide nothing_here.tlide --ast
-[exit] 1
+[exit] 2
 [stderr]
-Cannot open file: nothing_here.tlide
+error[E2162]: Cannot open file
 
 $ templide nothing_here.tlide
-[exit] 1
+[exit] 2
 [stderr]
-nothing_here.tlide: error: Cannot open file
+nothing_here.tlide: error[E2162]: Cannot open file
 -- cli_usage.steps --
 # 파일을 안 줌
 --check
@@ -289,7 +291,7 @@ no target; only the document was checked
 $ templide no_target.tlide
 [exit] 1
 [stderr]
-error: no target to build
+error[E3002]: no target to build
 -- no_target.steps --
 no_target.tlide --check
 no_target.tlide
@@ -313,7 +315,7 @@ h: ok
 $ templide pdf_no_browser.tlide --target p
 [exit] 1
 [stderr]
-error: target p: cannot find a browser to make the PDF with; install Chrome or Edge, or set TEMPLIDE_BROWSER to the path of one
+error[E3003]: target p: cannot find a browser to make the PDF with; install Chrome or Edge, or set TEMPLIDE_BROWSER to the path of one
 
 $ templide pdf_no_browser.tlide --target h
 [exit] 0
@@ -375,7 +377,7 @@ target shots { path = "shots.png"; type = png; }
 $ templide png_no_browser.tlide
 [exit] 1
 [stderr]
-error: target shots: cannot find a browser to make the images with; install Chrome or Edge, or set TEMPLIDE_BROWSER to the path of one
+error[E3003]: target shots: cannot find a browser to make the images with; install Chrome or Edge, or set TEMPLIDE_BROWSER to the path of one
 -- png_no_browser.steps --
 @env TEMPLIDE_BROWSER=$DIR/no-such-browser
 png_no_browser.tlide
@@ -472,15 +474,15 @@ out/c.pptx (zip)
 $ templide target_select.tlide --target nope
 [exit] 1
 [stderr]
-error: unknown target: nope
+error[E3001]: unknown target: nope
 
 $ templide target_select.tlide --target a --target nope
 [exit] 1
 [stderr]
-error: unknown target: nope
+error[E3001]: unknown target: nope
 
 $ templide target_select.tlide --target
-[exit] 1
+[exit] 2
 [stderr]
 error: --target needs a target name
 -- target_select.steps --
@@ -514,3 +516,595 @@ deck: wrote 산출물/발표.pptx
 -- 한글_빌드/발표.steps --
 발표.tlide --check
 발표.tlide
+-- diagnostic_formats/main.tlide --
+/* 경고만 있는 문서: --strict는 경고도 실패로 센다. 진단 형식(text, json, github)과 끝 코드 */
+object swatch { var color c; }
+
+slide {
+    put swatch { c = oklch(70%, 0.4, 150deg); }
+}
+-- diagnostic_formats/main.expected --
+$ templide main.tlide --check
+[exit] 0
+[stdout]
+no target; only the document was checked
+[stderr]
+main.tlide:5:22: warning[W2001]: This oklch color is outside the sRGB range that pptx and html can show; using the nearest color hex(00C248)
+
+$ templide main.tlide --check --strict
+[exit] 1
+[stdout]
+no target; only the document was checked
+[stderr]
+main.tlide:5:22: warning[W2001]: This oklch color is outside the sRGB range that pptx and html can show; using the nearest color hex(00C248)
+
+$ templide main.tlide --check --format json
+[exit] 0
+[stdout]
+{
+  "version": 1,
+  "diagnostics": [
+    {
+      "file": "main.tlide",
+      "line": 5,
+      "column": 22,
+      "level": "warning",
+      "code": "W2001",
+      "name": "color-gamut",
+      "message": "This oklch color is outside the sRGB range that pptx and html can show; using the nearest color hex(00C248)"
+    }
+  ],
+  "summary": {
+    "errors": 0,
+    "warnings": 1,
+    "infos": 0
+  }
+}
+
+$ templide main.tlide --check --format github
+[exit] 0
+[stdout]
+::warning file=main.tlide,line=5,col=22,title=W2001::This oklch color is outside the sRGB range that pptx and html can show; using the nearest color hex(00C248)
+no target; only the document was checked
+
+$ templide main.tlide --check --format json --strict
+[exit] 1
+[stdout]
+{
+  "version": 1,
+  "diagnostics": [
+    {
+      "file": "main.tlide",
+      "line": 5,
+      "column": 22,
+      "level": "warning",
+      "code": "W2001",
+      "name": "color-gamut",
+      "message": "This oklch color is outside the sRGB range that pptx and html can show; using the nearest color hex(00C248)"
+    }
+  ],
+  "summary": {
+    "errors": 0,
+    "warnings": 1,
+    "infos": 0
+  }
+}
+
+$ templide _broken.tlide --check
+[exit] 1
+[stderr]
+_broken.tlide:5:5: error[E2031]: Missing property 'text' for 'text_box'
+_broken.tlide:5:20: error[E2029]: 'text_box' has no property 'txt'
+  help: did you mean 'text'?
+
+$ templide _broken.tlide --check --format json
+[exit] 1
+[stdout]
+{
+  "version": 1,
+  "diagnostics": [
+    {
+      "file": "_broken.tlide",
+      "line": 5,
+      "column": 5,
+      "level": "error",
+      "code": "E2031",
+      "message": "Missing property 'text' for 'text_box'"
+    },
+    {
+      "file": "_broken.tlide",
+      "line": 5,
+      "column": 20,
+      "level": "error",
+      "code": "E2029",
+      "message": "'text_box' has no property 'txt'",
+      "help": "did you mean 'text'?"
+    }
+  ],
+  "summary": {
+    "errors": 2,
+    "warnings": 0,
+    "infos": 0
+  }
+}
+
+$ templide _broken.tlide --check --format=github
+[exit] 1
+[stdout]
+::error file=_broken.tlide,line=5,col=5,title=E2031::Missing property 'text' for 'text_box'
+::error file=_broken.tlide,line=5,col=20,title=E2029::'text_box' has no property 'txt'%0Adid you mean 'text'?
+
+$ templide _broken.tlide --check --format xml
+[exit] 2
+[stderr]
+error: --format must be text, json or github
+
+$ templide _broken.tlide --check --format
+[exit] 2
+[stderr]
+error: --format must be text, json or github
+
+$ templide _broken.tlide --check --lang en
+[exit] 2
+[stderr]
+error: unknown option: --lang
+
+$ templide _broken.tlide --check --no-such-option
+[exit] 2
+[stderr]
+error: unknown option: --no-such-option
+-- diagnostic_formats/_broken.tlide --
+/* 오류가 있는 문서: text_box의 속성 이름이 틀렸다 (고치는 방법이 붙는다) */
+#include <std/stddef>
+
+slide {
+    put text_box { txt = "x"; x = 10px; y = 10px; width = 100px; height = 30px; }
+}
+-- diagnostic_formats/main.steps --
+# 경고만 있으면 성공하고, --strict면 실패한다
+main.tlide --check
+main.tlide --check --strict
+main.tlide --check --format json
+main.tlide --check --format github
+main.tlide --check --format json --strict
+# 오류와 고치는 방법. 진단 메시지는 영어뿐이다. text, JSON, GitHub 형식
+_broken.tlide --check
+_broken.tlide --check --format json
+_broken.tlide --check --format=github
+# 사용법 오류는 종료 코드 2다
+_broken.tlide --check --format xml
+_broken.tlide --check --format
+_broken.tlide --check --lang en
+_broken.tlide --check --no-such-option
+-- fmt_command/main.tlide --
+/* tlide fmt: 파일을 고치고(fmt), 고치지 않고 알리고(--check), 컴파일러의 --check에 합칠 수(--fmt) 있다 */
+#fmt indent_size 2
+#include <std/stddef>
+slide {
+put text_box { text = "a"; x = 10px; y = 10px; width = 100px; height = 30px; }
+    put text_box { text = "b"; x = 10px; y = 50px; width = 100px; height = 30px; }
+}
+target out { path = "out.pptx"; type = pptx; }
+-- fmt_command/main.expected --
+$ templide fmt --check main.tlide
+[exit] 1
+[stderr]
+main.tlide: error[E4003]: File is not formatted; run 'templide fmt' to format it
+
+$ templide main.tlide --check
+[exit] 0
+[stdout]
+out: ok
+
+$ templide main.tlide --check --fmt
+[exit] 0
+[stdout]
+out: ok
+[stderr]
+main.tlide: warning[W4001]: File is not formatted; run 'templide fmt' to format it
+
+$ templide main.tlide --check --fmt --strict
+[exit] 1
+[stdout]
+out: ok
+[stderr]
+main.tlide: warning[W4001]: File is not formatted; run 'templide fmt' to format it
+
+$ templide main.tlide --check --fmt --format json
+[exit] 0
+[stdout]
+{
+  "version": 1,
+  "diagnostics": [
+    {
+      "file": "main.tlide",
+      "level": "warning",
+      "code": "W4001",
+      "name": "fmt-needed",
+      "message": "File is not formatted; run 'templide fmt' to format it"
+    }
+  ],
+  "summary": {
+    "errors": 0,
+    "warnings": 1,
+    "infos": 0
+  }
+}
+
+$ templide fmt main.tlide
+[exit] 0
+[stdout]
+formatted main.tlide
+
+$ templide fmt main.tlide
+[exit] 0
+[stdout]
+unchanged main.tlide
+
+$ templide fmt --check main.tlide
+[exit] 0
+[stdout]
+unchanged main.tlide
+
+$ templide main.tlide --check --fmt --strict
+[exit] 0
+[stdout]
+out: ok
+
+$ templide fmt _plain.tlide
+[exit] 0
+[stdout]
+skipped _plain.tlide (no #fmt)
+
+$ templide fmt --check _plain.tlide
+[exit] 0
+[stdout]
+skipped _plain.tlide (no #fmt)
+
+$ templide fmt
+[exit] 2
+[stderr]
+usage: templide fmt [--check | --stdout] [--format text|json|github] <file>...
+
+$ templide fmt nothing_here.tlide
+[exit] 2
+[stderr]
+nothing_here.tlide: error[E2162]: Cannot open file
+
+$ templide fmt --stdout --check main.tlide
+[exit] 2
+[stderr]
+usage: templide fmt [--check | --stdout] [--format text|json|github] <file>...
+
+$ templide fmt --stdout main.tlide _plain.tlide
+[exit] 2
+[stderr]
+usage: templide fmt [--check | --stdout] [--format text|json|github] <file>...
+-- fmt_command/_plain.tlide --
+slide{}
+-- fmt_command/main.steps --
+# 포맷이 필요한 파일
+fmt --check main.tlide
+main.tlide --check
+main.tlide --check --fmt
+main.tlide --check --fmt --strict
+main.tlide --check --fmt --format json
+# 고친다. 다시 하면 바뀐 것이 없다
+fmt main.tlide
+fmt main.tlide
+fmt --check main.tlide
+main.tlide --check --fmt --strict
+# #fmt가 없는 파일은 건너뛴다
+fmt _plain.tlide
+fmt --check _plain.tlide
+# 사용법 오류와 파일 오류
+fmt
+fmt nothing_here.tlide
+fmt --stdout --check main.tlide
+fmt --stdout main.tlide _plain.tlide
+-- access_tool/main.tlide --
+#include <std/stddef>
+#include <std/styles>
+master deck {
+    case content {
+        put placeholder { role = title; x = 60px; y = 30px; width = 1160px; height = 80px; }
+    }
+}
+slide {
+    layout = deck.content;
+    title = "접근성 예제";
+    background = hex(FFFFFF);
+    put image { data = file("x.png"); x = 0; y = 400; width = 100; height = 100; }
+    put image { data = file("x.png"); x = 100; y = 400; width = 100; height = 100; alt = ""; }
+    put image { data = file("x.png"); x = 200; y = 400; width = 100; height = 100; alt = "로고"; }
+    put text_box { text = (style(color = hex(CCCCCC)) "light gray text"); x = 0; y = 300; width = 400; height = 40; }
+    put text_box { text = (style(font-size = 10pt) "tiny"); x = 0; y = 340; width = 400; height = 40; }
+    put text_box { text = "아래 글을 먼저 읽는다"; x = 0; y = 500px; width = 400; height = 40; }
+    put text_box { text = "위에 있는 글"; x = 0; y = 100px; width = 400; height = 40; }
+    put shape { kind = rect; x = 500; y = 400; width = 50; height = 50; }
+    put table { cells = [["a", "b"], ["c", "d"]]; x = 0; y = 600; width = 300; height = 100; }
+    put table { cells = [["a", "b"]]; header_rows = 1; x = 400; y = 600; width = 300; height = 50; }
+}
+slide {
+    put text_box { text = (style(color = hex(777777)) "gray on gray"); fill = hex(888888); x = 0; y = 0; width = 100; height = 40; }
+}
+-- access_tool/main.expected --
+$ templide tool access main.tlide
+[exit] 1
+[stderr]
+main.tlide:12:5: error[A0001]: The image has no alt text; add alt = "...", or alt = "" if it is only decoration
+main.tlide:15:5: warning[A0002]: Text color #CCCCCC on #FFFFFF has a contrast ratio of 1.6:1; at least 3.0:1 is needed
+main.tlide:15:5: warning[A0005]: Reading order differs from the visual order: 'text_box' is read after 'image' but is placed above it
+main.tlide:16:5: warning[A0003]: Text is 10pt, smaller than the 12pt minimum
+main.tlide:19:5: info[A0008]: The shape has no alt text; describe it with alt = "..." or mark it as decoration with alt = ""
+main.tlide:20:5: warning[A0007]: The table has no header row or column; set header_rows = 1 so screen readers can read the headings
+main.tlide:23:1: warning[A0004]: Slide 2 has no title; screen readers use it to name the slide
+  help: use a layout with a title placeholder (layout = NAME; title = "...";): deck.content
+main.tlide:24:5: warning[A0002]: Text color #777777 on #888888 has a contrast ratio of 1.3:1; at least 3.0:1 is needed
+
+$ templide tool access main.tlide --format json
+[exit] 1
+[stdout]
+{
+  "version": 1,
+  "diagnostics": [
+    {
+      "file": "main.tlide",
+      "line": 12,
+      "column": 5,
+      "level": "error",
+      "code": "A0001",
+      "name": "alt-missing",
+      "message": "The image has no alt text; add alt = \"...\", or alt = \"\" if it is only decoration"
+    },
+    {
+      "file": "main.tlide",
+      "line": 15,
+      "column": 5,
+      "level": "warning",
+      "code": "A0002",
+      "name": "low-contrast",
+      "message": "Text color #CCCCCC on #FFFFFF has a contrast ratio of 1.6:1; at least 3.0:1 is needed"
+    },
+    {
+      "file": "main.tlide",
+      "line": 15,
+      "column": 5,
+      "level": "warning",
+      "code": "A0005",
+      "name": "reading-order",
+      "message": "Reading order differs from the visual order: 'text_box' is read after 'image' but is placed above it"
+    },
+    {
+      "file": "main.tlide",
+      "line": 16,
+      "column": 5,
+      "level": "warning",
+      "code": "A0003",
+      "name": "small-text",
+      "message": "Text is 10pt, smaller than the 12pt minimum"
+    },
+    {
+      "file": "main.tlide",
+      "line": 19,
+      "column": 5,
+      "level": "info",
+      "code": "A0008",
+      "name": "decorative-alt",
+      "message": "The shape has no alt text; describe it with alt = \"...\" or mark it as decoration with alt = \"\""
+    },
+    {
+      "file": "main.tlide",
+      "line": 20,
+      "column": 5,
+      "level": "warning",
+      "code": "A0007",
+      "name": "table-header",
+      "message": "The table has no header row or column; set header_rows = 1 so screen readers can read the headings"
+    },
+    {
+      "file": "main.tlide",
+      "line": 23,
+      "column": 1,
+      "level": "warning",
+      "code": "A0004",
+      "name": "slide-title",
+      "message": "Slide 2 has no title; screen readers use it to name the slide",
+      "help": "use a layout with a title placeholder (layout = NAME; title = \"...\";): deck.content"
+    },
+    {
+      "file": "main.tlide",
+      "line": 24,
+      "column": 5,
+      "level": "warning",
+      "code": "A0002",
+      "name": "low-contrast",
+      "message": "Text color #777777 on #888888 has a contrast ratio of 1.3:1; at least 3.0:1 is needed"
+    }
+  ],
+  "summary": {
+    "errors": 1,
+    "warnings": 6,
+    "infos": 1
+  }
+}
+
+$ templide tool access main.tlide --format github
+[exit] 1
+[stdout]
+::error file=main.tlide,line=12,col=5,title=A0001::The image has no alt text; add alt = "...", or alt = "" if it is only decoration
+::warning file=main.tlide,line=15,col=5,title=A0002::Text color #CCCCCC on #FFFFFF has a contrast ratio of 1.6:1; at least 3.0:1 is needed
+::warning file=main.tlide,line=15,col=5,title=A0005::Reading order differs from the visual order: 'text_box' is read after 'image' but is placed above it
+::warning file=main.tlide,line=16,col=5,title=A0003::Text is 10pt, smaller than the 12pt minimum
+::notice file=main.tlide,line=19,col=5,title=A0008::The shape has no alt text; describe it with alt = "..." or mark it as decoration with alt = ""
+::warning file=main.tlide,line=20,col=5,title=A0007::The table has no header row or column; set header_rows = 1 so screen readers can read the headings
+::warning file=main.tlide,line=23,col=1,title=A0004::Slide 2 has no title; screen readers use it to name the slide%0Ause a layout with a title placeholder (layout = NAME; title = "...";): deck.content
+::warning file=main.tlide,line=24,col=5,title=A0002::Text color #777777 on #888888 has a contrast ratio of 1.3:1; at least 3.0:1 is needed
+
+$ templide tool access _chart.tlide
+[exit] 1
+[stderr]
+_chart.tlide:10:5: error[A0001]: The chart has no alt text; add alt = "...", or alt = "" if it is only decoration
+
+$ templide tool access _clean.tlide
+[exit] 0
+
+$ templide tool access _clean.tlide --strict
+[exit] 0
+
+$ templide main.tlide --check
+[exit] 0
+[stdout]
+no target; only the document was checked
+
+$ templide main.tlide --check --access
+[exit] 1
+[stdout]
+no target; only the document was checked
+[stderr]
+main.tlide:12:5: error[A0001]: The image has no alt text; add alt = "...", or alt = "" if it is only decoration
+main.tlide:15:5: warning[A0002]: Text color #CCCCCC on #FFFFFF has a contrast ratio of 1.6:1; at least 3.0:1 is needed
+main.tlide:15:5: warning[A0005]: Reading order differs from the visual order: 'text_box' is read after 'image' but is placed above it
+main.tlide:16:5: warning[A0003]: Text is 10pt, smaller than the 12pt minimum
+main.tlide:19:5: info[A0008]: The shape has no alt text; describe it with alt = "..." or mark it as decoration with alt = ""
+main.tlide:20:5: warning[A0007]: The table has no header row or column; set header_rows = 1 so screen readers can read the headings
+main.tlide:23:1: warning[A0004]: Slide 2 has no title; screen readers use it to name the slide
+  help: use a layout with a title placeholder (layout = NAME; title = "...";): deck.content
+main.tlide:24:5: warning[A0002]: Text color #777777 on #888888 has a contrast ratio of 1.3:1; at least 3.0:1 is needed
+
+$ templide _clean.tlide --check --access --strict
+[exit] 0
+[stdout]
+out: ok
+
+$ templide tool access _broken.tlide
+[exit] 1
+[stderr]
+_broken.tlide:2:43: error[E2029]: 'image' has no property 'alta'
+  help: did you mean 'alt'?
+
+$ templide tool access
+[exit] 2
+[stderr]
+usage: templide tool access [--format text|json|github] [--strict] <file>
+
+$ templide tool access nothing_here.tlide
+[exit] 2
+[stderr]
+nothing_here.tlide: error[E2162]: Cannot open file
+-- access_tool/_clean.tlide --
+#include <std/stddef>
+master deck {
+    case content {
+        put placeholder { role = title; x = 60px; y = 30px; width = 1160px; height = 80px; }
+    }
+}
+slide {
+    layout = deck.content;
+    title = "접근성 검사를 통과하는 슬라이드";
+    put text_box { text = "본문"; x = 60px; y = 130px; width = 600px; height = 40px; }
+    put image { data = file("x.png"); alt = "로고"; x = 60px; y = 200px; width = 100px; height = 100px; }
+    put image { data = file("x.png"); alt = ""; x = 200px; y = 200px; width = 100px; height = 100px; }
+    put table { cells = [["이름", "값"], ["a", "1"]]; header_rows = 1; x = 60px; y = 320px; width = 400px; height = 100px; }
+}
+target out { path = "out.pptx"; type = pptx; }
+-- access_tool/_chart.tlide --
+#include <std/stddef>
+master deck {
+    case content {
+        put placeholder { role = title; x = 60px; y = 30px; width = 1160px; height = 80px; }
+    }
+}
+slide {
+    layout = deck.content;
+    title = "차트의 대체 텍스트";
+    put chart { kind = column; values = [[1, 2]]; x = 0; y = 0; width = 400; height = 300; }
+    put chart { kind = line; values = [[1, 2]]; x = 400; y = 0; width = 400; height = 300; alt = "꺾은선 차트"; }
+}
+-- access_tool/_broken.tlide --
+#include <std/stddef>
+slide { put image { data = file("x.png"); alta = "로고"; x = 0; y = 0; width = 10; height = 10; } }
+-- access_tool/x.png (base64) --
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6
+kgAAAABJRU5ErkJggg==
+-- access_tool/main.steps --
+# 접근성 검사. 결과는 원문 순서로 나오고, 오류가 있으면 종료 코드 1이다
+tool access main.tlide
+tool access main.tlide --format json
+tool access main.tlide --format github
+# 이미지, 비디오, 오디오와 차트는 alt가 있어야 한다
+tool access _chart.tlide
+# 문제가 없는 문서
+tool access _clean.tlide
+tool access _clean.tlide --strict
+# --check에는 --access를 붙여야 합쳐진다
+main.tlide --check
+main.tlide --check --access
+_clean.tlide --check --access --strict
+# 문서에 오류가 있으면 그것만 알린다. 사용법 오류는 2다
+tool access _broken.tlide
+tool access
+tool access nothing_here.tlide
+-- math_web/main.tlide --
+/* 수식이 있으면 web 출력에 KaTeX(katex/)가 함께 들어가고, 없으면 들어가지 않는다 */
+#include <std/stddef>
+slide {
+    put math { latex = "E = mc^2"; x = 0px; y = 0px; width = 400px; height = 100px; }
+}
+target site { path = "site"; type = web; }
+-- math_web/main.expected --
+$ templide main.tlide
+[exit] 0
+[stdout]
+site: wrote site
+[files]
+site/index.html (html)
+site/katex/LICENSE (file)
+site/katex/fonts/KaTeX_AMS-Regular.woff2 (file)
+site/katex/fonts/KaTeX_Caligraphic-Bold.woff2 (file)
+site/katex/fonts/KaTeX_Caligraphic-Regular.woff2 (file)
+site/katex/fonts/KaTeX_Fraktur-Bold.woff2 (file)
+site/katex/fonts/KaTeX_Fraktur-Regular.woff2 (file)
+site/katex/fonts/KaTeX_Main-Bold.woff2 (file)
+site/katex/fonts/KaTeX_Main-BoldItalic.woff2 (file)
+site/katex/fonts/KaTeX_Main-Italic.woff2 (file)
+site/katex/fonts/KaTeX_Main-Regular.woff2 (file)
+site/katex/fonts/KaTeX_Math-BoldItalic.woff2 (file)
+site/katex/fonts/KaTeX_Math-Italic.woff2 (file)
+site/katex/fonts/KaTeX_SansSerif-Bold.woff2 (file)
+site/katex/fonts/KaTeX_SansSerif-Italic.woff2 (file)
+site/katex/fonts/KaTeX_SansSerif-Regular.woff2 (file)
+site/katex/fonts/KaTeX_Script-Regular.woff2 (file)
+site/katex/fonts/KaTeX_Size1-Regular.woff2 (file)
+site/katex/fonts/KaTeX_Size2-Regular.woff2 (file)
+site/katex/fonts/KaTeX_Size3-Regular.woff2 (file)
+site/katex/fonts/KaTeX_Size4-Regular.woff2 (file)
+site/katex/fonts/KaTeX_Typewriter-Regular.woff2 (file)
+site/katex/katex.min.css (file)
+site/katex/katex.min.js (file)
+site/reveal/LICENSE (file)
+site/reveal/plugin/notes.js (file)
+site/reveal/reveal.css (file)
+site/reveal/reveal.js (file)
+site/templide.js (file)
+
+$ templide _plain.tlide
+[exit] 0
+[stdout]
+site: wrote plain
+[files]
+plain/index.html (html)
+plain/reveal/LICENSE (file)
+plain/reveal/plugin/notes.js (file)
+plain/reveal/reveal.css (file)
+plain/reveal/reveal.js (file)
+plain/templide.js (file)
+-- math_web/_plain.tlide --
+#include <std/stddef>
+slide {
+    put text_box { text = "수식 없음"; x = 0px; y = 0px; width = 400px; height = 100px; }
+}
+target site { path = "plain"; type = web; }
+-- math_web/main.steps --
+main.tlide
+_plain.tlide

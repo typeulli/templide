@@ -302,7 +302,7 @@ export function AssetView({ path, active, documents, onReveal, onChanged, onPick
                             )}
                             <div className="asset-detail-info muted">{kindNames()[kindOf(current.name)]} · {sizeText(current.size)}</div>
                         </>
-                    ) : <div className="props-empty">{t('파일을 고르면')}<br />{t('여기서 미리 봅니다')}</div>}
+                    ) : <div className="props-empty">{t('파일을 고르면 여기서 미리 봅니다.')}</div>}
                 </aside>
             </div>
             {notice && (

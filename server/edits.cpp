@@ -148,6 +148,9 @@ namespace templide::server {
         if (reason == "layout") {
             return "This value belongs to a master layout; change it in the code";
         }
+        if (reason == "parameter") {
+            return "This value comes from a template parameter; change its default value in the parameter list";
+        }
         return "This value cannot be edited";
     }
 
@@ -246,6 +249,91 @@ namespace templide::server {
             return failure("No property to set");
         }
         return insert_statement(origin, origin.name + " = " + text + ";");
+    }
+
+    EditResult Editor::set_default(const ir::SourceRange& declaration, const std::optional<ir::SourceRange>& existing, const ir::Origin& literal, const std::string& name, const NewValue& value) const {
+        std::string error;
+        const std::string text = code(literal, name, value, error);
+        if (!error.empty()) {
+            return failure(error);
+        }
+        if (existing) {
+            return {{{existing->path, existing->begin, existing->end, text}}, ""};
+        }
+        const std::string* source = text_of(declaration.path);
+        if (source == nullptr || declaration.end > source->size() || declaration.end == 0) {
+            return failure("No variable to set");
+        }
+        // 선언은 ';'로 끝난다. 그 앞에 넣는다
+        std::size_t at = (*source)[declaration.end - 1] == ';' ? declaration.end - 1 : declaration.end;
+        while (at > declaration.begin && ((*source)[at - 1] == ' ' || (*source)[at - 1] == '\t')) {
+            --at;
+        }
+        return {{{declaration.path, at, at, " = " + text}}, ""};
+    }
+
+    EditResult Editor::clear_default(const ir::SourceRange& existing) const {
+        const std::string* source = text_of(existing.path);
+        if (source == nullptr || existing.end > source->size()) {
+            return failure("No variable to change");
+        }
+        std::size_t begin = existing.begin;
+        while (begin > 0 && std::isspace(static_cast<unsigned char>((*source)[begin - 1]))) {
+            --begin;
+        }
+        if (begin == 0 || (*source)[begin - 1] != '=') {
+            return failure("The default value cannot be removed here");
+        }
+        --begin;
+        while (begin > 0 && ((*source)[begin - 1] == ' ' || (*source)[begin - 1] == '\t')) {
+            --begin;
+        }
+        return {{{existing.path, begin, existing.end, ""}}, ""};
+    }
+
+    EditResult Editor::add_var(const ir::SourceRange& definition, const std::optional<ir::SourceRange>& last_var, const std::string& type,const std::string& name, const std::string& default_code) const {
+        const std::string* source = text_of(definition.path);
+        if (source == nullptr || definition.end > source->size()) {
+            return failure("No template to add a variable to");
+        }
+        if (!is_name(name)) {
+            return failure("'" + name + "' is not a name");
+        }
+        for (const char c : type) {
+            if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '<' || c == '>')) {
+                return failure("'" + type + "' is not a type");
+            }
+        }
+        const std::string declaration = "var " + type + " " + name + (default_code.empty() ? "" : " = " + default_code) + ";";
+        if (last_var && last_var->path == definition.path && last_var->end <= source->size()) {
+            // 마지막 var와 같은 들여쓰기로 그 다음 줄에 넣는다
+            std::size_t line_begin = last_var->begin;
+            while (line_begin > 0 && (*source)[line_begin - 1] != '\n') {
+                --line_begin;
+            }
+            std::size_t indent_end = line_begin;
+            while (indent_end < last_var->begin && ((*source)[indent_end] == ' ' || (*source)[indent_end] == '\t')) {
+                ++indent_end;
+            }
+            return {{{definition.path, last_var->end, last_var->end, "\n" + source->substr(line_begin, indent_end - line_begin) + declaration}}, ""};
+        }
+        const std::size_t open = source->find('{', definition.begin);
+        if (open == std::string::npos || open >= definition.end) {
+            return failure("The template has no block");
+        }
+        // 첫 문장 줄의 들여쓰기를 따른다. 비어 있으면 4칸
+        std::string indent = "    ";
+        std::size_t line = source->find('\n', open);
+        if (line != std::string::npos && line < definition.end) {
+            std::size_t end = line + 1;
+            while (end < definition.end && ((*source)[end] == ' ' || (*source)[end] == '\t')) {
+                ++end;
+            }
+            if (end > line + 1 && end < definition.end && (*source)[end] != '}' && (*source)[end] != '\n') {
+                indent = source->substr(line + 1, end - line - 1);
+            }
+        }
+        return {{{definition.path, open + 1, open + 1, "\n" + indent + declaration}}, ""};
     }
 
     EditResult Editor::set_property(const ir::Element& element, const std::string& property, const NewValue& value) const {
@@ -463,6 +551,44 @@ namespace templide::server {
         return {{{a.path, a.begin, a.end, text->substr(b.begin, b.end - b.begin)}, {b.path, b.begin, b.end, text->substr(a.begin, a.end - a.begin)}}, ""};
     }
 
+    ir::SourceRange Editor::with_leading_comments(const ir::SourceRange& range) const {
+        const std::string* text = text_of(range.path);
+        if (text == nullptr) {
+            return range;
+        }
+        std::size_t begin = range.begin;
+        while (begin > 0 && ((*text)[begin - 1] == ' ' || (*text)[begin - 1] == '\t')) {
+            --begin;
+        }
+        if (begin != 0 && (*text)[begin - 1] != '\n') {
+            return range; // 같은 줄에 앞선 문장이 있다
+        }
+        while (begin > 0) {
+            // 바로 앞 줄이 주석으로 끝나는가 (끝의 공백과 \r은 건너뛴다)
+            std::size_t end = begin - 1;
+            while (end > 0 && ((*text)[end - 1] == ' ' || (*text)[end - 1] == '\t' || (*text)[end - 1] == '\r')) {
+                --end;
+            }
+            if (end < 2 || text->compare(end - 2, 2, "*/") != 0) {
+                break;
+            }
+            const std::size_t open = text->rfind("/*", end - 2);
+            if (open == std::string::npos) {
+                break;
+            }
+            // 주석은 자기 줄에서 시작해야 한다 (앞에 다른 글이 있으면 그 줄의 줄 끝 주석이다)
+            const std::size_t newline = open == 0 ? std::string::npos : text->rfind('\n', open - 1);
+            const std::size_t line_start = newline == std::string::npos ? 0 : newline + 1;
+            if (text->find_first_not_of(" \t", line_start) != open) {
+                break;
+            }
+            begin = line_start;
+        }
+        ir::SourceRange result = range;
+        result.begin = std::min(begin, range.begin);
+        return result;
+    }
+
     EditResult Editor::move_lines(const ir::SourceRange& statement, const ir::SourceRange& target, bool after) const {
         const std::string* text = text_of(statement.path);
         const auto from = whole_lines(statement);
@@ -577,6 +703,9 @@ namespace templide::server {
         if (a.kind != ir::Origin::Kind::BLOCK || b.kind != ir::Origin::Kind::BLOCK) {
             return failure(lock_message(a.kind != ir::Origin::Kind::BLOCK ? a.reason : b.reason));
         }
+        if (auto moved = move_slide_to(slides, page, other); moved.error.empty()) {
+            return moved;
+        }
         return swap(a.range, b.range);
     }
 
@@ -592,8 +721,8 @@ namespace templide::server {
         if (a.kind != ir::Origin::Kind::BLOCK || b.kind != ir::Origin::Kind::BLOCK) {
             return failure(lock_message(a.kind != ir::Origin::Kind::BLOCK ? a.reason : b.reason));
         }
-        // 앞으로 옮기면 to번째 slide 앞에, 뒤로 옮기면 그 뒤에 둔다
-        return move_lines(a.range, b.range, to > page);
+        // 앞으로 옮기면 to번째 slide 앞에(그 slide의 위 주석보다 앞에), 뒤로 옮기면 그 뒤에 둔다. 옮기는 slide는 바로 위 주석을 데리고 간다
+        return move_lines(with_leading_comments(a.range), to > page ? b.range : with_leading_comments(b.range), to > page);
     }
 
     EditResult Editor::copy(const ir::Element& element, const ir::Slide& slide, double dx, double dy) const {

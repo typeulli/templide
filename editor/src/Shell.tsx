@@ -3,15 +3,17 @@
 // 컴파일러 연결, MCP, 창 닫기 확인, 다른 프로세스가 보낸 파일(탐색기에서 연 파일)을 탭으로 여는 일은 여기서 한 번만 한다
 import { memo, useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
+import { emit, listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { ask, message, open as openDialog } from '@tauri-apps/plugin-dialog';
 import { FileText, Package, X } from 'lucide-react';
-import { App, LogoButton, WindowControls, isMac, type DocumentHandle } from './App';
+import { App, LogoButton, WindowControls, isMac, starterDocument, type DocumentHandle } from './App';
 import { AssetView, type OpenDocument } from './AssetView';
 import { lsp, type Range } from './lsp';
-import { serveMcp, type EditorAccess } from './mcp';
+import { noFmtDocument, type FmtChange } from './fmtSettings';
+import { serveMcp, type EditorAccess, type ShellAccess } from './mcp';
 import { useSettings } from './settings';
+import { writeTextFile } from './textFile';
 import { matchCommand, type CommandId } from './shortcuts';
 import { openSettings } from './settingsWindow';
 import './tabs.css';
@@ -39,7 +41,15 @@ const noDocument: EditorAccess = {
     goto: () => {},
     select: () => {},
     resolve: () => null,
-    build: async () => ({ error: 'No document is open in the editor' }),
+    build: async () => undefined,
+    save: async () => false,
+    format: async () => null,
+    selectTarget: async () => false,
+    slides: async () => ({ error: 'No document is open in the editor' }),
+    history: () => [],
+    undo: async () => 0,
+    restore: async () => false,
+    accessibility: async () => null,
 };
 
 // 창 전체에 걸리는 단축키. 문서 하나에 하는 것(저장, 내보내기 등)은 그 탭의 App(App.tsx)이 받는다
@@ -76,21 +86,23 @@ export function Shell() {
     const activate = useCallback((id: string) => update(tabsRef.current, id), [update]);
 
     // 파일을 탭으로 연다. 이미 열려 있으면 그 탭을 보이고, 보이는 탭이 아무것도 열지 않은 빈 탭이면 그 자리에 연다
-    const open = useCallback((file: string) => {
+    // (keepEmpty면 빈 탭도 그대로 둔다). 그 탭의 id를 돌려준다
+    const open = useCallback((file: string, keepEmpty = false): string => {
         const current = tabsRef.current;
         const existing = current.find((tab) => tab.path && samePath(tab.path, file));
         if (existing) {
             update(current, existing.id);
-            return;
+            return existing.id;
         }
         const tab = createTab(file);
         const index = current.findIndex((each) => each.id === activeRef.current);
         const active = current[index];
-        if (active && active.kind === 'tlide' && !active.path && !active.dirty) {
+        if (!keepEmpty && active && active.kind === 'tlide' && !active.path && !active.dirty) {
             update(current.map((each) => each.id === active.id ? tab : each), tab.id);
         } else {
             update([...current.slice(0, index + 1), tab, ...current.slice(index + 1)], tab.id);
         }
+        return tab.id;
     }, [update]);
 
     const pick = useCallback(async () => {
@@ -230,6 +242,43 @@ export function Shell() {
         }
     }, []);
 
+    // 에이전트(MCP)가 다루는 문서. 에이전트는 자기를 실행한 탭(session)의 문서를 다루다가, open_document로 연 문서로 옮겨 간다.
+    // session이 비어 있으면 보이는 탭이다
+    const agentTab = useRef(new Map<string, string>()); // session -> 옮겨 간 탭 id
+    const tabOfAgent = useCallback((session: string): string => {
+        const moved = agentTab.current.get(session);
+        return moved && tabsRef.current.some((tab) => tab.id === moved) ? moved : session || activeRef.current || '';
+    }, []);
+    // 파일을 열고 에이전트가 그 문서를 다루게 한다. 읽고 처음 컴파일할 때까지 기다린다 (길어지면 그냥 돌려준다).
+    // 에이전트를 실행한 탭이 아무것도 열지 않은 빈 탭일 수 있으므로 빈 탭을 갈아 끼우지 않는다
+    const agentOpen = useCallback(async (session: string, file: string): Promise<string | null> => {
+        if (!await invoke<boolean>('path_exists', { path: file })) {
+            return `File not found: ${file}`;
+        }
+        const id = open(file, true);
+        agentTab.current.set(session, id);
+        for (let waited = 0; waited < 10000; waited += 50) {
+            const state = accesses.current.get(id);
+            if (state?.path && state.text !== null && (state.deck || state.diagnostics.length > 0)) {
+                break;
+            }
+            await new Promise((done) => setTimeout(done, 50));
+        }
+        return null;
+    }, [open]);
+    // 없는 .tlide를 만들고(덮어쓰지 않는다) 연다. content가 없으면 새 파일 단추와 같은 처음 내용이다
+    const agentCreate = useCallback(async (session: string, file: string, content?: string): Promise<string | null> => {
+        if (await invoke<boolean>('path_exists', { path: file })) {
+            return `${file} already exists and was not changed. Open it without create`;
+        }
+        const folder = file.replace(/[\\/][^\\/]*$/, '');
+        if (!await invoke<boolean>('path_exists', { path: folder })) {
+            return `Folder not found: ${folder}`;
+        }
+        await writeTextFile(file, content ?? starterDocument(file), 'UTF-8', false);
+        return agentOpen(session, file);
+    }, [agentOpen]);
+
     // 단축키
     useEffect(() => {
         const keydown = (event: KeyboardEvent) => {
@@ -277,15 +326,27 @@ export function Shell() {
                     handle.reconnect();
                 }
             });
+            // 설정 창의 '포맷' 페이지: 보이는 탭의 문서에 적힌 #fmt를 알려 주고, 설정 창에서 바꾼 옵션을 그 문서에 적는다
+            const sendFmtState = async () => {
+                const handle = handles.current.get(activeRef.current ?? '');
+                await emit('fmt-state', await handle?.fmt().catch(() => noFmtDocument) ?? noFmtDocument);
+            };
+            // 첫 문서를 여는 길에 끼지 않도록 기다리지 않는다 (listen마다 Rust와 한 번씩 오가야 한다)
+            listen('fmt-query', sendFmtState).catch((error) => console.error('fmt-query', error));
+            listen<FmtChange>('fmt-change', async (event) => {
+                await handles.current.get(activeRef.current ?? '')?.changeFmt(event.payload).catch((error) => console.error('fmt-change', error));
+                await sendFmtState();
+            }).catch((error) => console.error('fmt-change', error));
             // 에이전트는 자기를 실행한 탭(session)의 문서를 고친다. session이 없으면 보이는 탭
             serveMcp(
-                (session) => accesses.current.get(session || activeRef.current || '') ?? noDocument,
-                // 에이전트에게 열린 .tlide 문서들을 알린다. 에이전트를 실행한 탭(없으면 보이는 탭)에 current를 붙인다
+                (session) => accesses.current.get(tabOfAgent(session)) ?? noDocument,
+                // 에이전트에게 열린 .tlide 문서들을 알린다. 에이전트가 지금 다루는 탭에 current를 붙인다
                 (session) => tabsRef.current.filter((tab) => tab.kind === 'tlide').map((tab) => ({
                     path: tab.path,
                     dirty: handles.current.get(tab.id)?.dirty() || undefined,
-                    current: tab.id === (session || activeRef.current) || undefined,
+                    current: tab.id === tabOfAgent(session) || undefined,
                 })),
+                { open: agentOpen, create: agentCreate, bundleChanged },
             ).catch((error) => console.error('mcp', error));
             // 저장하지 않은 탭이 있으면 창을 닫기 전에 묻는다
             getCurrentWindow().onCloseRequested(async (event) => {

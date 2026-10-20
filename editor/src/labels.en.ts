@@ -2,7 +2,7 @@
 
 export const objectNames: Record<string, string> = {
     text_box: 'Text box', shape: 'Shape', image: 'Picture', line: 'Line', group: 'Group', backdrop: 'Backdrop blur', connector: 'Connector',
-    freeform: 'Freeform', placeholder: 'Placeholder', video: 'Video', audio: 'Audio', table: 'Table',
+    freeform: 'Freeform', placeholder: 'Placeholder', video: 'Video', audio: 'Audio', table: 'Table', chart: 'Chart', math: 'Equation',
 };
 
 export const propertyNames: Record<string, string> = {
@@ -24,11 +24,15 @@ export const propertyNames: Record<string, string> = {
     hide_icon: 'Hide icon during show', across_slides: 'Play across slides', volume: 'Volume', trim_start: 'Trim start', trim_end: 'Trim end',
     fade_in: 'Fade in', fade_out: 'Fade out', background: 'Background', hidden: 'Hide slide', advance_after: 'Advance automatically',
     transition_sound: 'Transition sound', title: 'Title', author: 'Author',
+    latex: 'LaTeX', values: 'Values', categories: 'Categories', names: 'Series names', xs: 'X values', x_title: 'Category axis title', y_title: 'Value axis title', legend: 'Legend', data_labels: 'Data labels',
+    smooth: 'Smooth', markers: 'Markers', gridlines: 'Gridlines', colors: 'Colors', range: 'Value range', font_size: 'Font size', text_color: 'Text color',
     cells: 'Cells', col_widths: 'Column widths', row_heights: 'Row heights', header_rows: 'Header rows', header_cols: 'Header columns', banded_rows: 'Banded rows',
     banded_cols: 'Banded columns', header_fill: 'Header fill', band_fill: 'Band fill', align: 'Horizontal alignment',
 };
 
 export const enumNames: Record<string, string> = {
+    // chart kinds
+    column: 'Column', bar: 'Bar', line: 'Line', area: 'Area', pie: 'Pie', scatter: 'Scatter',
     // vertical alignment, fit
     top: 'Top', middle: 'Middle', bottom: 'Bottom', stretch: 'Stretch', cover: 'Fill (crop)', contain: 'Fit (show all)',
     // line
