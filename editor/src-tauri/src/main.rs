@@ -377,6 +377,66 @@ fn agent_stop(agents: State<Agents>, id: String) -> Result<(), String> {
     Ok(())
 }
 
+// program --version의 출력. 버전마다 실행 인자가 다른 에이전트(OpenCode 1.x와 2.x)를 실행하기 전에 묻는다
+#[tauri::command]
+async fn program_version(program: String, search: Vec<String>) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = locate_program(&program, &search).ok_or_else(|| format!("{program}: not found"))?;
+        let mut command = Command::new(&path);
+        command.arg("--version").stdin(Stdio::null()).stderr(Stdio::null());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        }
+        let output = command.output().map_err(|e| format!("{program}: {e}"))?;
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// 설정 창의 모델 추천 목록. host(http://주소:포트)의 Ollama에 설치된 모델 중 도구 호출(tools)을 지원하는 것의 이름.
+// 창의 출처(http://tauri.localhost)가 Ollama의 CORS 기본 허용 목록에 없어서 화면 대신 여기서 묻는다
+#[tauri::command]
+async fn ollama_models(host: String) -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let tags = ollama_request(&host, "GET", "/api/tags", "")?;
+        let mut models = Vec::new();
+        for name in tags["models"].as_array().into_iter().flatten().filter_map(|model| model["name"].as_str()) {
+            let show = ollama_request(&host, "POST", "/api/show", &serde_json::json!({ "model": name }).to_string())?;
+            if show["capabilities"].as_array().is_some_and(|list| list.iter().any(|each| each == "tools")) {
+                models.push(name.to_string());
+            }
+        }
+        Ok(models)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// Ollama API를 한 번 부른다. HTTP/1.0으로 보내므로 응답은 연결이 닫힐 때까지 읽으면 된다 (청크 인코딩이 오지 않는다).
+// Ollama는 기본으로 127.0.0.1에서만 받으므로 IPv4 주소부터 붙어 본다. Windows는 닫힌 포트(::1)에 붙다가 2초쯤 걸려 실패한다
+fn ollama_request(host: &str, method: &str, path: &str, body: &str) -> Result<serde_json::Value, String> {
+    use std::net::ToSocketAddrs;
+    let address = host.strip_prefix("http://").ok_or("only http:// addresses are supported")?.trim_end_matches('/');
+    let mut sockets: Vec<_> = address.to_socket_addrs().map_err(|e| format!("{address}: {e}"))?.collect();
+    sockets.sort_by_key(|socket| socket.is_ipv6());
+    let mut stream = sockets.iter()
+        .find_map(|socket| TcpStream::connect_timeout(socket, Duration::from_secs(2)).ok())
+        .ok_or_else(|| format!("{address}: could not connect"))?;
+    stream.set_read_timeout(Some(Duration::from_secs(10))).map_err(|e| e.to_string())?;
+    write!(stream, "{method} {path} HTTP/1.0\r\nHost: {address}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len()).map_err(|e| e.to_string())?;
+    let mut response = Vec::new();
+    stream.read_to_end(&mut response).map_err(|e| e.to_string())?;
+    let response = String::from_utf8_lossy(&response);
+    let (head, body) = response.split_once("\r\n\r\n").ok_or("invalid response")?;
+    match head.split_whitespace().nth(1) {
+        Some("200") => serde_json::from_str(body).map_err(|e| e.to_string()),
+        status => Err(format!("{path}: HTTP {}", status.unwrap_or("?"))),
+    }
+}
+
 // 연 파일 감시. 다른 프로그램(AI 탭의 에이전트 등)이 파일을 고치면 "file-changed" {path}를 보낸다.
 // 탭마다 연 파일을 따로 본다. 키는 소문자 경로다
 
@@ -752,7 +812,7 @@ fn main() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![lsp_send, compiler_info, compiler_use, settings::settings_load, settings::settings_save, settings::settings_path, encoding::read_text, encoding::write_text, open_files, export_file, import_files, open_in_editor, path_exists, mark, read_data_url, open_path, agent_start, agent_write, agent_resize, agent_stop, watch_file, unwatch_file, system_fonts, mcp::mcp_set_tools, mcp::mcp_reply, mcp::mcp_config])
+        .invoke_handler(tauri::generate_handler![lsp_send, compiler_info, compiler_use, settings::settings_load, settings::settings_save, settings::settings_path, encoding::read_text, encoding::write_text, open_files, export_file, import_files, open_in_editor, path_exists, mark, read_data_url, open_path, agent_start, agent_write, agent_resize, agent_stop, program_version, ollama_models, watch_file, unwatch_file, system_fonts, mcp::mcp_set_tools, mcp::mcp_reply, mcp::mcp_config])
         .build(tauri::generate_context!())
         .expect("error while running templide editor");
     app.run(move |_, event| {

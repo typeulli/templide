@@ -23,11 +23,11 @@ p.setting-hint { margin: 6px 0 12px; }
 .setting-row.stack .setting-control { flex: 1; }
 .setting-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 14px 0; }
 
-.settings select, .settings .number-input, .settings .path-input, .settings .search-box {
+.settings select, .settings .number-input, .settings .path-input, .settings .text-input, .settings .search-box {
     height: 30px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--panel); outline: none;
 }
-.settings select, .settings .number-input, .settings .path-input { padding: 0 8px; }
-.settings select:focus, .settings .number-input:focus, .settings .path-input:focus, .settings .search-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.settings select, .settings .number-input, .settings .path-input, .settings .text-input { padding: 0 8px; }
+.settings select:focus, .settings .number-input:focus, .settings .path-input:focus, .settings .text-input:focus, .settings .search-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .settings .number-input { width: 84px; }
 .settings select { min-width: 160px; }
 
@@ -74,6 +74,39 @@ p.setting-hint { margin: 6px 0 12px; }
 .settings .notice.warning { align-items: center; gap: 10px; margin: 0 0 4px; }
 .settings .notice.warning span { flex: 1; }
 .settings .notice.warning .plain-button { flex: none; height: 26px; }
+
+/* AI 에이전트 프로필 */
+
+.profile-group { display: flex; align-items: center; gap: 4px; padding-bottom: 6px; }
+.profile-group h2 { flex: 1; margin: 0; font: inherit; }
+.profile-group .plain-button { height: 26px; padding: 0 10px; color: var(--text); font-weight: 400; }
+.profile-group .icon-only { width: 26px; height: 26px; }
+.profile { border-bottom: 1px solid var(--border); }
+.profile-row { display: flex; align-items: center; gap: 6px; min-height: 42px; cursor: pointer; }
+.profile-chevron { flex: none; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: none; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; }
+.profile-row:hover .profile-chevron { color: var(--text); }
+.profile-title { flex: 1; min-width: 0; padding: 0 8px; overflow: hidden; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
+.profile-summary { margin-left: 8px; color: var(--muted); font-size: 12px; font-weight: 400; }
+.profile-name { flex: 1; min-width: 0; height: 30px; padding: 0 7px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--text); font: inherit; font-weight: 600; text-overflow: ellipsis; outline: none; cursor: text; }
+.profile-name:hover { border-color: var(--border-strong); }
+.profile-name:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); background: var(--panel); }
+.profile-problem { flex: none; color: var(--danger); }
+.profile-badge { flex: none; padding: 2px 8px; border-radius: 10px; background: var(--accent-soft); color: #0b6dbd; font-size: 11px; font-weight: 600; }
+.profile-default { flex: none; height: 24px; padding: 0 8px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--panel); font-size: 12px; cursor: pointer; visibility: hidden; }
+.profile-default:hover { background: var(--hover); }
+.profile-row:hover .profile-default, .profile.open .profile-default, .profile-default:focus-visible { visibility: visible; }
+.profile-body { padding: 0 0 14px 28px; }
+.profile-fields { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content minmax(0, 1fr); align-items: center; gap: 8px 10px; }
+.profile-fields label { display: contents; }
+.profile-fields label > span { color: var(--muted); font-size: 12px; }
+.profile-fields .wide > span { grid-column: 1; }
+.profile-fields .wide > .text-input { grid-column: 2 / -1; }
+.settings .profile-fields select, .settings .profile-fields .text-input { min-width: 0; color: var(--text); }
+.profile-body .setting-hint, .profile-body .setting-problem { margin: 8px 0 0; }
+.profile-actions { display: flex; gap: 8px; margin-top: 12px; }
+.profile-actions .plain-button { height: 26px; padding: 0 10px; }
+.agent-path { display: flex; align-items: center; gap: 6px; padding: 8px 0 0; }
+.agent-path > span { flex: none; width: 96px; }
 
 /* 단축키 */
 

@@ -3,7 +3,7 @@
  * 로고를 누르면 창이 열리고, 변경한 값은 즉시 적용한 뒤 저장한다.
  */
 // 컴파일러 경로는 Rust의 compiler_use가 프로세스를 다시 시작하고 저장한다.
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { invoke } from '@tauri-apps/api/core';
 import { emit, listen } from '@tauri-apps/api/event';
@@ -11,10 +11,11 @@ import { getVersion } from '@tauri-apps/api/app';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { ask, open as openDialog } from '@tauri-apps/plugin-dialog';
-import { Bot, CircleAlert, CircleCheck, Code, Cpu, FolderOpen, Globe, Info, Keyboard, LoaderCircle, Presentation, RotateCcw, TriangleAlert, WandSparkles, type LucideIcon } from 'lucide-react';
+import { Bot, ChevronDown, ChevronRight, CircleAlert, CircleCheck, Code, Cpu, FolderOpen, Globe, Info, Keyboard, LoaderCircle, Plus, Presentation, RotateCcw, Trash2, TriangleAlert, WandSparkles, type LucideIcon } from 'lucide-react';
 import logo from '../../assets/icon/templide.svg';
 import license from '../../LICENSE?raw';
 import { agents } from './Agents';
+import { agentLabels, agentProviders, defaultOllamaHost, defaultProfiles, isLocalProvider, modelSuggestions, ollamaHost, profileLabel, providerLabels, type AgentId, type AgentProfile, type ProviderId } from './agentProfiles';
 import { languages, t, useLang, type LanguageSetting } from './i18n';
 import { encodingHint, encodingLabel, encodingNames } from './encodings';
 import { effectiveFmtValue, fmtGroups, fmtLabels, type FmtChange, type FmtState } from './fmtSettings';
@@ -322,6 +323,7 @@ function CompilerPage() {
 
 function AgentPage() {
     const settings = useSettings();
+    const [open, setOpen] = useState<string | null>(null); // 펼친 프로필 id. 한 번에 하나만 펼친다
     const setPath = (id: string, path: string) => updateSettings((next) => {
         if (path.trim()) {
             next.agent.paths[id] = path.trim();
@@ -336,31 +338,223 @@ function AgentPage() {
             setPath(id, chosen);
         }
     };
+    const changeProfile = (profile: AgentProfile) => updateSettings((next) => {
+        next.agent.profiles = next.agent.profiles.map((each) => each.id === profile.id ? profile : each);
+        return next;
+    });
+    const removeProfile = (id: string) => updateSettings((next) => {
+        next.agent.profiles = next.agent.profiles.filter((each) => each.id !== id);
+        return next;
+    });
+    // 새 프로필은 펼쳐서 바로 고치게 한다
+    const addProfile = () => {
+        const id = crypto.randomUUID();
+        updateSettings((next) => {
+            next.agent.profiles.push({ id, name: '', agent: 'claude-code', provider: 'anthropic', model: '', host: '' });
+            return next;
+        });
+        setOpen(id);
+    };
+    // 기본 프로필 두 개를 처음 값으로 되돌리고(지웠으면 다시 만든다) 맨 위에 둔다. 직접 만든 프로필은 그대로 둔다
+    const restoreProfiles = () => updateSettings((next) => {
+        const own = next.agent.profiles.filter((each) => !defaultProfiles.some((preset) => preset.id === each.id));
+        next.agent.profiles = [...structuredClone(defaultProfiles), ...own];
+        return next;
+    });
+    const profiles = settings.agent.profiles;
     return (
         <>
-            <Row title={t('기본 에이전트')} hint={t('코드 패널의 AI 탭을 열 때 처음 고르는 에이전트입니다.')}>
-                <select value={settings.agent.default} onChange={(event) => updateSettings((next) => ({ ...next, agent: { ...next.agent, default: event.target.value } }))}>
-                    {agents.map((each) => <option key={each.id} value={each.id}>{each.label}</option>)}
-                </select>
-            </Row>
-            {agents.map((each) => (
-                <Row key={each.id} stack title={t('{0} 실행 파일', each.label)} hint={t('비워 두면 PATH에서 {0}을(를) 찾습니다.', each.program)}>
-                    <div className="path-edit">
-                        <AgentPath value={settings.agent.paths[each.id] ?? ''} onCommit={(path) => setPath(each.id, path)} />
-                        <button className="plain-button" onClick={() => browse(each.id)}><FolderOpen size={14} /> {t('찾아보기')}</button>
+            <section>
+                <div className="setting-group profile-group">
+                    <h2>{t('프로필')}</h2>
+                    <button className="plain-button" onClick={addProfile}><Plus size={14} /> {t('추가')}</button>
+                    <button className="icon-only" title={t('기본 프로필 복원')} onClick={restoreProfiles}><RotateCcw size={14} /></button>
+                </div>
+                {profiles.map((each) => (
+                    <ProfileItem key={each.id} profile={each} open={open === each.id} isDefault={each.id === settings.agent.default} deletable={profiles.length > 1}
+                        onToggle={() => setOpen(open === each.id ? null : each.id)} onChange={changeProfile} onDelete={() => removeProfile(each.id)}
+                        onDefault={() => updateSettings((next) => ({ ...next, agent: { ...next.agent, default: each.id } }))} />
+                ))}
+            </section>
+            <section>
+                <h2 className="setting-group">{t('실행 파일')}</h2>
+                {agents.map((each) => (
+                    <div key={each.id} className="agent-path">
+                        <span>{each.label}</span>
+                        <AgentPath value={settings.agent.paths[each.id] ?? ''} placeholder={t('PATH에서 {0} 찾기', each.program)} onCommit={(path) => setPath(each.id, path)} />
+                        <button className="icon-only" title={t('찾아보기')} onClick={() => browse(each.id)}><FolderOpen size={15} /></button>
                     </div>
-                </Row>
-            ))}
+                ))}
+            </section>
+        </>
+    );
+}
+
+// Ollama에 설치된 모델 중 도구 호출을 지원하는 것. host가 null이면 묻지 않는다.
+// 창으로 돌아오면 다시 묻는다 (그사이에 ollama pull로 모델을 받았을 수 있다)
+function useOllamaModels(host: string | null) {
+    const [state, setState] = useState<{ models: string[] } | { error: string } | null>(null);
+    useEffect(() => {
+        setState(null);
+        if (host === null) {
+            return;
+        }
+        let stopped = false;
+        const load = () => {
+            invoke<string[]>('ollama_models', { host }).then(
+                (models) => !stopped && setState({ models }),
+                (error) => !stopped && setState({ error: String(error) }),
+            );
+        };
+        load();
+        window.addEventListener('focus', load);
+        return () => {
+            stopped = true;
+            window.removeEventListener('focus', load);
+        };
+    }, [host]);
+    return state;
+}
+
+// 프로필 목록의 한 줄. 줄을 누르면 아래에 칸이 펼쳐지고, 펼친 동안 굵은 이름을 눌러 바로 고친다
+function ProfileItem({ profile, open, isDefault, deletable, onToggle, onChange, onDelete, onDefault }: {
+    profile: AgentProfile; open: boolean; isDefault: boolean; deletable: boolean;
+    onToggle(): void; onChange(profile: AgentProfile): void; onDelete(): void; onDefault(): void;
+}) {
+    const local = isLocalProvider(profile.provider);
+    const host = profile.provider === 'ollama' ? ollamaHost(profile) : null;
+    const ollama = useOllamaModels(host);
+    const suggestions = ollama && 'models' in ollama ? ollama.models : modelSuggestions[profile.provider] ?? [];
+    const agentLabel = agentLabels[profile.agent];
+    // 제공자를 바꾸면 모델 이름도 맞지 않으므로 비운다. 에이전트를 바꿔도 제공자가 그대로면 모델을 둔다
+    const setAgent = (agent: AgentId) => {
+        const provider = agentProviders[agent].includes(profile.provider) ? profile.provider : agentProviders[agent][0];
+        onChange({ ...profile, agent, provider, model: provider === profile.provider ? profile.model : '' });
+    };
+    const notes: { text: string; problem?: boolean }[] = [];
+    if (!local) {
+        notes.push({ text: t('로그인과 요금은 {0} 안에서 본인 계정으로 합니다.', agentLabel) });
+    } else {
+        notes.push({ text: profile.provider === 'ollama'
+            ? t('모델 목록에는 도구 호출(tools)을 지원하는 모델만 표시됩니다. 컨텍스트 길이는 64K 이상을 권장합니다.')
+            : t('LM Studio에서 로컬 서버를 켜 두어야 합니다. 컨텍스트 길이는 64K 이상을 권장합니다.') });
+        if (ollama && 'error' in ollama) {
+            notes.push({ text: t('Ollama({0})에 연결하지 못해 모델 목록을 가져오지 못했습니다. ({1})', host, ollama.error), problem: true });
+        } else if (ollama && ollama.models.length === 0) {
+            notes.push({ text: t('도구 호출을 지원하는 모델이 설치되어 있지 않습니다. ollama pull로 받아 주세요.'), problem: true });
+        }
+        if (!profile.model.trim()) {
+            notes.push({ text: t('모델을 정해 주세요.'), problem: true });
+        }
+    }
+    const auto = profileLabel({ ...profile, name: '' });
+    const problem = notes.some((note) => note.problem);
+    // 줄 안의 이름 칸과 버튼을 누른 것은 펼치기로 치지 않는다 (화살표 버튼은 줄로 넘긴다)
+    const own = (event: MouseEvent) => event.stopPropagation();
+    return (
+        <div className={'profile' + (open ? ' open' : '')}>
+            <div className="profile-row" onClick={onToggle}>
+                <button className="profile-chevron" aria-expanded={open}>{open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button>
+                {open
+                    ? <ProfileName profile={profile} onClick={own} onCommit={(name) => onChange({ ...profile, name })} />
+                    : <span className="profile-title">{profileLabel(profile)}{profile.name.trim() && profile.name.trim() !== auto && <span className="profile-summary">{auto}</span>}</span>}
+                {problem && <CircleAlert size={14} className="profile-problem" />}
+                {isDefault
+                    ? <span className="profile-badge" title={t('코드 패널의 AI 탭을 열 때 처음 고르는 프로필입니다.')}>{t('기본')}</span>
+                    : <button className="profile-default" title={t('코드 패널의 AI 탭을 열 때 처음 고르는 프로필입니다.')} onClick={(event) => { own(event); onDefault(); }}>{t('기본으로')}</button>}
+            </div>
+            {open && (
+                <div className="profile-body">
+                    <div className="profile-fields">
+                        <label><span>{t('에이전트')}</span>
+                            <select value={profile.agent} onChange={(event) => setAgent(event.target.value as AgentId)}>
+                                {agents.map((each) => <option key={each.id} value={each.id}>{each.label}</option>)}
+                            </select>
+                        </label>
+                        {agentProviders[profile.agent].length > 1 && (
+                            <label><span>{t('제공자')}</span>
+                                <select value={profile.provider} onChange={(event) => onChange({ ...profile, provider: event.target.value as ProviderId, model: '' })}>
+                                    {agentProviders[profile.agent].map((each) => <option key={each} value={each}>{providerLabels[each]}</option>)}
+                                </select>
+                            </label>
+                        )}
+                        <label className="wide"><span>{t('모델')}</span>
+                            <TextField value={profile.model} placeholder={local ? '' : t('{0} 기본 모델', agentLabel)} suggestions={suggestions} onCommit={(model) => onChange({ ...profile, model: model.trim() })} />
+                        </label>
+                        {profile.provider === 'ollama' && (
+                            <label className="wide"><span>{t('Ollama 주소')}</span>
+                                <TextField value={profile.host} placeholder={defaultOllamaHost} onCommit={(value) => onChange({ ...profile, host: value.trim() })} />
+                            </label>
+                        )}
+                    </div>
+                    {notes.map((note) => <div key={note.text} className={note.problem ? 'setting-problem' : 'setting-hint'}>{note.text}</div>)}
+                    <div className="profile-actions">
+                        <button className="plain-button danger" disabled={!deletable} title={deletable ? undefined : t('프로필이 하나뿐이라 지울 수 없습니다.')} onClick={onDelete}><Trash2 size={14} /> {t('프로필 지우기')}</button>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+// 프로필의 굵은 제목. 눌러서 바로 이름을 고친다 (Enter, 칸을 벗어나면 저장하고 Esc는 취소).
+// 비우거나 조합으로 만든 이름을 적으면 이름을 적지 않은 것으로 보고, 조합이 바뀌면 이름도 따라 바뀐다.
+// 글자를 고치지 않고 나가면 그대로 둔다 (기본 프로필의 이름 'Claude Code'는 조합으로 만든 이름과 같다)
+function ProfileName({ profile, onClick, onCommit }: { profile: AgentProfile; onClick(event: MouseEvent): void; onCommit(name: string): void }) {
+    const auto = profileLabel({ ...profile, name: '' });
+    const [draft, setDraft] = useState<string | null>(null); // null이면 고치는 중이 아니다
+    const cancelled = useRef(false);
+    const commit = () => {
+        const untouched = draft === null || cancelled.current || draft.trim() === profileLabel(profile);
+        const name = untouched ? profile.name : draft.trim() === auto ? '' : draft.trim();
+        cancelled.current = false;
+        setDraft(null);
+        if (name !== profile.name) {
+            onCommit(name);
+        }
+    };
+    return (
+        <input className="profile-name" value={draft ?? profileLabel(profile)} placeholder={auto} spellCheck={false} title={t('눌러서 이름 고치기')}
+            onFocus={() => setDraft(profileLabel(profile))} onChange={(event) => setDraft(event.target.value)} onBlur={commit} onClick={onClick}
+            onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                    event.currentTarget.blur();
+                } else if (event.key === 'Escape') {
+                    event.preventDefault(); // 설정 창이 닫히지 않게
+                    cancelled.current = true;
+                    event.currentTarget.blur();
+                }
+            }} />
+    );
+}
+
+// 입력을 마치면(Enter, 칸을 벗어남, 추천 목록에서 고름) 저장한다
+function TextField({ value, placeholder, suggestions, onCommit }: { value: string; placeholder?: string; suggestions?: string[]; onCommit(value: string): void }) {
+    const [draft, setDraft] = useState(value);
+    const list = useId();
+    useEffect(() => setDraft(value), [value]);
+    const commit = (next: string) => next !== value && onCommit(next);
+    return (
+        <>
+            <input className="text-input" value={draft} placeholder={placeholder} spellCheck={false} list={suggestions?.length ? list : undefined}
+                onChange={(event) => {
+                    setDraft(event.target.value);
+                    if ((event.nativeEvent as InputEvent).inputType === 'insertReplacementText') {
+                        commit(event.target.value);
+                    }
+                }}
+                onBlur={() => commit(draft)} onKeyDown={(event) => event.key === 'Enter' && commit(draft)} />
+            {!!suggestions?.length && <datalist id={list}>{suggestions.map((each) => <option key={each} value={each} />)}</datalist>}
         </>
     );
 }
 
 // 입력을 마치면(Enter, 칸을 벗어남) 저장한다
-function AgentPath({ value, onCommit }: { value: string; onCommit(path: string): void }) {
+function AgentPath({ value, placeholder, onCommit }: { value: string; placeholder: string; onCommit(path: string): void }) {
     const [draft, setDraft] = useState(value);
     useEffect(() => setDraft(value), [value]);
     return (
-        <input className="path-input" value={draft} spellCheck={false} onChange={(event) => setDraft(event.target.value)}
+        <input className="path-input" value={draft} placeholder={placeholder} spellCheck={false} onChange={(event) => setDraft(event.target.value)}
             onBlur={() => draft.trim() !== value && onCommit(draft)} onKeyDown={(event) => event.key === 'Enter' && onCommit(draft)} />
     );
 }

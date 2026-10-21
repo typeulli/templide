@@ -10,6 +10,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { resolveLanguage, setLanguage, type LanguageSetting } from './i18n';
 import { isEncodingName } from './encodings';
+import { defaultProfiles, parseProfiles, type AgentProfile } from './agentProfiles';
 
 export type Settings = {
     language: LanguageSetting;
@@ -29,8 +30,9 @@ export type Settings = {
         endScreen: boolean; // 마지막에서 한 번 더 넘기면 끝 화면을 보여 준다
     };
     agent: {
-        default: string;               // AI 탭을 열 때 처음 고르는 에이전트 id
+        default: string;               // AI 탭을 열 때 처음 고르는 프로필 id
         paths: Record<string, string>; // 에이전트 id -> 실행 파일 경로. 없으면 PATH에서 찾는다
+        profiles: AgentProfile[];      // AI 탭에서 고르는 프로필 (agentProfiles.ts)
     };
     // 명령 id -> 키. 기본값에서 바꾼 명령만 있고, 빈 배열이면 키를 모두 뗀 것이다 (shortcuts.ts)
     shortcuts: Record<string, string[]>;
@@ -41,7 +43,7 @@ export const defaultSettings: Settings = {
     general: { codePanelOpen: true, defaultEncoding: 'UTF-8', autoGuessEncoding: false },
     editor: { fontSize: 14, wordWrap: false, minimap: false, lineNumbers: true, tabSize: 4 },
     show: { endScreen: true },
-    agent: { default: 'claude-code', paths: {} },
+    agent: { default: 'claude-code', paths: {}, profiles: defaultProfiles },
     shortcuts: {},
 };
 
@@ -80,6 +82,10 @@ function parse(stored: unknown): Settings {
     merged.agent.paths = Object.fromEntries(
         Object.entries(given.agent?.paths ?? {}).filter(([, path]) => typeof path === 'string' && path.trim() !== ''),
     ) as Settings['agent']['paths'];
+    merged.agent.profiles = parseProfiles(given.agent?.profiles);
+    if (!merged.agent.profiles.some((profile) => profile.id === merged.agent.default)) {
+        merged.agent.default = merged.agent.profiles[0].id;
+    }
     return merged;
 }
 

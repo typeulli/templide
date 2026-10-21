@@ -2,6 +2,37 @@
 
 Changes for each templide release. Entries follow the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
+## [1.4.1] - 2026-10-20
+
+Changes since v1.4.0. This release adds agent profiles to the AI tab, and the AI tab can now run local models from Ollama or LM Studio through OpenCode.
+
+### Added
+
+#### AI Agent
+
+- **Agent profiles**: A profile combines an agent program, a model provider, and a model. Manage profiles on the `AI Agent` page in Settings, and pick one from the dropdown in the AI tab. Each file tab runs each profile in its own session.
+- **Default profiles**: `Claude Code` (Anthropic) and `Codex` (OpenAI) are included and use each agent's default model. They can be edited or deleted, and `Restore default profiles` brings them back without touching other profiles.
+- **Model selection**: Claude Code receives the profile's model through `--model` and Codex through `-m`. Leave the model empty to use the agent's default. Claude Code profiles suggest `sonnet`, `opus`, and `haiku`.
+- **Local models through OpenCode**: OpenCode profiles run models on this computer with Ollama or LM Studio.
+  - Ollama's address can be set per profile (default `http://localhost:11434`). The model list shows only installed Ollama models that support tool calling.
+  - LM Studio uses its local server at `http://127.0.0.1:1234`.
+  - A context length of 64K or more is recommended.
+  - Starting a local-model profile without a model shows a message with an `Open settings` button.
+- **OpenCode 1.x and 2.x**: The editor runs `opencode --version` before launching OpenCode.
+  - Settings and the MCP connection are passed through the `OPENCODE_CONFIG_CONTENT` environment variable. OpenCode's configuration files are not modified.
+  - 2.x runs with `--standalone`, so it does not join a background server that still holds the MCP address of an earlier editor run.
+  - Code Mode is turned off for the editor's MCP server, so small models call the editor's tools directly.
+- Claude Code and Codex use only their own providers. Sign-in and billing happen inside the agent with your own account, and the editor does not handle API keys.
+
+### Changed
+
+- **`AI Agent` settings page**:
+  - Profiles are shown as a collapsible list. Click a row to edit it; only one profile is expanded at a time.
+  - Click the bold name of an expanded profile to rename it. Profiles without a name are named after their combination, such as `Claude Code` or `OpenCode · Ollama · gemma4:e4b`. The provider is omitted when the agent has only one.
+  - Rows with a problem, such as a missing model, show a warning icon.
+- **Default profile**: The `Default agent` dropdown was replaced by a `Default` badge in the profile list; other profiles have a `Make default` button. The previously selected default agent becomes the default profile.
+- **Executable paths**: Each agent's executable path, now including OpenCode, takes one line. An empty field shows which program is looked up in `PATH`.
+
 ## [1.4.0] - 2026-10-20
 
 Changes since v1.3.0. This release adds charts, equations, a code formatter, accessibility checks, and diagnostic codes, as well as dedicated editing views for `template` and `master` definitions.
